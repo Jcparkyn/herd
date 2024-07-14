@@ -25,12 +25,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(statement) => {
                 // println!("ast: {}", print_expr(&ast));
                 match interpreter.execute(&statement) {
-                    Ok(()) => {},
+                    Ok(()) => {}
                     Err(err) => println!("Error while evaluating: {}", err),
                 }
-            },
+            }
         }
-        
     }
 }
 
@@ -60,7 +59,9 @@ mod tests {
         use crate::interpreter::Value;
 
         let expr = lang::ExprParser::new().parse(exp).unwrap();
-        assert_eq!(interpreter::Interpreter::new().eval(&expr).unwrap(), Value::Number(expected as f64));
+        assert_eq!(
+            interpreter::Interpreter::new().eval(&expr).unwrap(),
+            Value::Number(expected as f64)
+        );
     }
 }
-

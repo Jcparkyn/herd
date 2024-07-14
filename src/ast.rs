@@ -2,14 +2,13 @@ use std::fmt::Debug;
 
 #[derive(PartialEq)]
 pub enum Statement {
-  Declaration(String, Box<Expr>),
-  Assignment(String, Box<Expr>),
-  Print(Box<Expr>),
+    Declaration(String, Box<Expr>),
+    Assignment(String, Box<Expr>),
+    Print(Box<Expr>),
 }
 
 use std::fmt::Error;
 use std::fmt::Formatter;
-
 
 #[derive(PartialEq)]
 pub enum Expr {
@@ -43,7 +42,7 @@ impl Debug for Expr {
 }
 
 impl Debug for Opcode {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), Error>  {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         f.write_str(match self {
             Opcode::Mul => "*",
             Opcode::Div => "/",
