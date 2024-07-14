@@ -1,16 +1,8 @@
 use std::fmt::Debug;
-// pub struct Function {
-//   params: Vec<String>,
-//   body: Expr, // or something else?
-// }
-
-// pub enum ValueIndex {
-//   ObjectIndex(String),
-//   ArrayIndex(i64),
-// }
 
 #[derive(PartialEq)]
 pub enum Statement {
+  Declaration(String, Box<Expr>),
   Assignment(String, Box<Expr>),
   Print(Box<Expr>),
 }

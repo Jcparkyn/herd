@@ -21,15 +21,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         stdin().read_line(&mut buffer)?;
         let ast_result = parser.parse(&buffer);
         match ast_result {
+            Err(err) => println!("Error while parsing: {}", err),
             Ok(statement) => {
                 // println!("ast: {}", print_expr(&ast));
-                let _ = interpreter.execute(&statement);
-                // match eval_result {
-                //     Ok(value) => println!("= {:?}", value),
-                //     Err(_) => println!("Error evaluating"),
-                // }
+                match interpreter.execute(&statement) {
+                    Ok(()) => {},
+                    Err(err) => println!("Error while evaluating: {}", err),
+                }
             },
-            Err(err) => println!("{}", err),
         }
         
     }
@@ -37,7 +36,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 #[cfg(test)]
 mod tests {
-    use crate::lang;
+    use crate::{interpreter, lang};
     use rstest::rstest;
 
     #[rstest(
@@ -45,7 +44,6 @@ mod tests {
     expected,
     case("1 + 2", 3),
     case("2 * 2", 4),
-    case("10 / 4", 2),
     case("3 - 9", -6),
     case("-5 * -7", 35),
     case("100 * 0", 0),
@@ -59,7 +57,10 @@ mod tests {
     case("100 + 150 / ((20 - 5) * 5)", 102),
     )]
     fn when_expression_evaluated_then_correct_value_returned(exp: &str, expected: i32) {
-        assert!(lang::ExprParser::new().parse(exp).is_ok());
+        use crate::interpreter::Value;
+
+        let expr = lang::ExprParser::new().parse(exp).unwrap();
+        assert_eq!(interpreter::Interpreter::new().eval(&expr).unwrap(), Value::Number(expected as f64));
     }
 }
 

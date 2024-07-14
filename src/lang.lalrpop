@@ -5,7 +5,8 @@ grammar;
 
 pub Statement: Statement = {
     "print" <e:Expr> ";" => Statement::Print(e),
-    <name:Identifier> "=" <e:Expr> ";" => Statement::Assignment(name, e),
+    <name:Identifier> "=" <e:Expr> ";" => Statement::Declaration(name, e),
+    <name:Identifier> ":=" <e:Expr> ";" => Statement::Assignment(name, e),
 }
 
 NumLiteral: f64 = {
