@@ -5,6 +5,7 @@ grammar;
 
 pub Statement: Statement = {
     "print" <e:Expr> ";" => Statement::Print(e),
+    <name:Identifier> "=" <e:Expr> ";" => Statement::Assignment(name, e),
 }
 
 NumLiteral: f64 = {
@@ -14,11 +15,16 @@ NumLiteral: f64 = {
 BoolLiteral: bool = {
     "true" => true,
     "false" => false,
+};
+
+Identifier: String = {
+    <r"[a-zA-Z]\w*"> => <>.to_string(),
 }
 
 Term: Box<Expr> = {
     NumLiteral => Box::new(Expr::Number(<>)),
     BoolLiteral => Box::new(Expr::Bool(<>)),
+    Identifier => Box::new(Expr::Variable(<>)),
     "(" <Expr> ")",
 };
 

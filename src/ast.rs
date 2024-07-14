@@ -11,17 +11,20 @@ use std::fmt::Debug;
 
 #[derive(PartialEq)]
 pub enum Statement {
+  Assignment(String, Box<Expr>),
   Print(Box<Expr>),
 }
 
 use std::fmt::Error;
 use std::fmt::Formatter;
 
+
 #[derive(PartialEq)]
 pub enum Expr {
     Number(f64),
     Bool(bool),
     Op(Box<Expr>, Opcode, Box<Expr>),
+    Variable(String),
 }
 
 #[derive(PartialEq, Eq, Hash)]
@@ -42,6 +45,7 @@ impl Debug for Expr {
             Expr::Number(n) => n.fmt(f),
             Expr::Bool(b) => b.fmt(f),
             Expr::Op(l, op, r) => write!(f, "({:?} {:?} {:?})", l, op, r),
+            Expr::Variable(v) => v.fmt(f),
         }
     }
 }

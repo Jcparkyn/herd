@@ -1,14 +1,20 @@
+use std::collections::HashMap;
+
 use crate::ast::{Expr, Opcode, Statement};
 
 
 pub struct Interpreter {
-
+  environment: Environment,
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone, Copy)]
 pub enum Value {
   Number(f64),
   Bool(bool),
+}
+
+pub struct Environment {
+  values: HashMap<String, Value>,
 }
 
 impl Value {
@@ -27,12 +33,28 @@ impl Value {
   // }
 }
 
-impl Interpreter {
-  pub fn new() -> Interpreter {
-    Interpreter {}
+impl Environment {
+  pub fn new() -> Environment {
+    Environment {
+      values: HashMap::new(),
+    }
   }
 
-  pub fn execute(&self, statement: &Statement) -> Result<(), ()> {
+  pub fn set(&mut self, name: String, value: Value) {
+    self.values.insert(name, value);
+  }
+
+  pub fn get(&self, name: &str) -> Option<&Value> {
+    self.values.get(name)
+  }
+}
+
+impl Interpreter {
+  pub fn new() -> Interpreter {
+    Interpreter { environment: Environment::new() }
+  }
+
+  pub fn execute(&mut self, statement: &Statement) -> Result<(), ()> {
     match statement {
       // Statement::Let(name, expr) => {
       //   let value = self.eval(&expr)?;
@@ -43,6 +65,10 @@ impl Interpreter {
         println!("{:?}", value);
         Ok(())
       }
+      Statement::Assignment(name, expr) => {
+        self.environment.set(name.to_string(), self.eval(&expr)?);
+        Ok(())
+      }
     }
   }
 
@@ -51,6 +77,7 @@ impl Interpreter {
     match expr {
       Expr::Number(num) => Ok(Number(*num)),
       Expr::Bool(b) => Ok(Bool(*b)),
+      Expr::Variable(name) => self.environment.get(name).copied().ok_or(()),
       Expr::Op(left_expr, op, right_expr) => {
         let l = self.eval(&left_expr)?;
         let r = self.eval(&right_expr)?;

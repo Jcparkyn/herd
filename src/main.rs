@@ -1,4 +1,3 @@
-use ast::Expr;
 use interpreter::Interpreter;
 use lalrpop_util::lalrpop_mod;
 use std::io::{stdin, stdout, Write};
@@ -12,13 +11,9 @@ lalrpop_mod!(
     pub lang
 );
 
-fn print_expr(expr: &Expr) -> String {
-    format!("{:?}", expr)
-}
-
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let parser = lang::StatementParser::new();
-    let interpreter = Interpreter::new();
+    let mut interpreter = Interpreter::new();
     loop {
         print!("> ");
         stdout().flush()?;
