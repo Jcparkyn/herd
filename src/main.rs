@@ -17,7 +17,7 @@ fn print_expr(expr: &Expr) -> String {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let parser = lang::ExprParser::new();
+    let parser = lang::StatementParser::new();
     let interpreter = Interpreter::new();
     loop {
         print!("> ");
@@ -26,13 +26,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         stdin().read_line(&mut buffer)?;
         let ast_result = parser.parse(&buffer);
         match ast_result {
-            Ok(ast) => {
-                println!("ast: {}", print_expr(&ast));
-                let eval_result = interpreter.eval(&ast);
-                match eval_result {
-                    Ok(value) => println!("= {:?}", value),
-                    Err(_) => println!("Error evaluating"),
-                }
+            Ok(statement) => {
+                // println!("ast: {}", print_expr(&ast));
+                let _ = interpreter.execute(&statement);
+                // match eval_result {
+                //     Ok(value) => println!("= {:?}", value),
+                //     Err(_) => println!("Error evaluating"),
+                // }
             },
             Err(err) => println!("{}", err),
         }

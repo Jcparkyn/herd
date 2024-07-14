@@ -9,9 +9,10 @@ use std::fmt::Debug;
 //   ArrayIndex(i64),
 // }
 
-// pub enum Statement {
-//   Assignment(Vec<ValueIndex>, Expr)
-// }
+#[derive(PartialEq)]
+pub enum Statement {
+  Print(Box<Expr>),
+}
 
 use std::fmt::Error;
 use std::fmt::Formatter;

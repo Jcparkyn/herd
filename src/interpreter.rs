@@ -1,4 +1,4 @@
-use crate::ast::{Expr, Opcode};
+use crate::ast::{Expr, Opcode, Statement};
 
 
 pub struct Interpreter {
@@ -30,6 +30,20 @@ impl Value {
 impl Interpreter {
   pub fn new() -> Interpreter {
     Interpreter {}
+  }
+
+  pub fn execute(&self, statement: &Statement) -> Result<(), ()> {
+    match statement {
+      // Statement::Let(name, expr) => {
+      //   let value = self.eval(&expr)?;
+      //   println!("{} = {:?}", name, value);
+      // }
+      Statement::Print(expr) => {
+        let value = self.eval(&expr)?;
+        println!("{:?}", value);
+        Ok(())
+      }
+    }
   }
 
   pub fn eval(&self, expr: &Expr) -> Result<Value, ()> {
