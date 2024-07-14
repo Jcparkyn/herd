@@ -16,6 +16,7 @@
 #[derive(PartialEq, Debug)]
 pub enum Expr {
     Number(f64),
+    Bool(bool),
     Op(Box<Expr>, Opcode, Box<Expr>),
 }
 

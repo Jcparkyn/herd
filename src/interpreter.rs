@@ -35,6 +35,7 @@ impl Interpreter {
   pub fn eval(&self, expr: &Expr) -> Result<Value, ()> {
     match expr {
       Expr::Number(num) => Ok(Value::Number(*num)),
+      Expr::Bool(b) => Ok(Value::Bool(*b)),
       Expr::Op(left_expr, op, right_expr) => {
         let l = self.eval(&left_expr)?;
         let r = self.eval(&right_expr)?;

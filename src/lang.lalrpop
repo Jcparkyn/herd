@@ -3,13 +3,19 @@ use crate::ast::{Expr, Opcode};
 
 grammar;
 
-Num: f64 = {
+NumLiteral: f64 = {
     r"-?[0-9]+" => f64::from_str(<>).unwrap()
 };
 
+BoolLiteral: bool = {
+    "true" => true,
+    "false" => false,
+}
+
 Term: Box<Expr> = {
-    Num => Box::new(Expr::Number(<>)),
-    "(" <Expr> ")"
+    NumLiteral => Box::new(Expr::Number(<>)),
+    BoolLiteral => Box::new(Expr::Bool(<>)),
+    "(" <Expr> ")",
 };
 
 pub Expr: Box<Expr> = {
