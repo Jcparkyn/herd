@@ -8,14 +8,23 @@ pub struct Interpreter {
 #[derive(PartialEq, Debug)]
 pub enum Value {
   Number(f64),
+  Bool(bool),
 }
 
 impl Value {
   pub fn as_number(self) -> Result<f64, ()> {
     match self {
       Value::Number(n) => Ok(n),
+      _ => Err(()),
     }
   }
+
+  // pub fn as_bool(self) -> Result<bool, ()> {
+  //   match self {
+  //     Value::Bool(b) => Ok(b),
+  //     _ => Err(()),
+  //   }
+  // }
 }
 
 impl Interpreter {
@@ -34,6 +43,10 @@ impl Interpreter {
           Opcode::Sub => Ok(Value::Number(l.as_number()? - r.as_number()?)),
           Opcode::Mul => Ok(Value::Number(l.as_number()? * r.as_number()?)),
           Opcode::Div => Ok(Value::Number(l.as_number()? / r.as_number()?)),
+          Opcode::Gt => Ok(Value::Bool(l.as_number()? > r.as_number()?)),
+          Opcode::Lt => Ok(Value::Bool(l.as_number()? < r.as_number()?)),
+          Opcode::Eq => Ok(Value::Bool(l == r)),
+          Opcode::Neq => Ok(Value::Bool(l != r)),
         }
       } 
     }

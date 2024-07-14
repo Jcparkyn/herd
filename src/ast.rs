@@ -25,4 +25,8 @@ pub enum Opcode {
     Div,
     Add,
     Sub,
+    Gt,
+    Lt,
+    Eq,
+    Neq,
 }

@@ -31,7 +31,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let eval_result = interpreter.eval(&ast);
                 match eval_result {
                     Ok(value) => println!("= {:?}", value),
-                    Err(err) => println!("Error evaluating"),
+                    Err(_) => println!("Error evaluating"),
                 }
             },
             Err(err) => println!("{}", err),

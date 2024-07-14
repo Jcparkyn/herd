@@ -20,6 +20,10 @@ pub Expr: Box<Expr> = {
 ExprOp: Opcode = {
     "+" => Opcode::Add,
     "-" => Opcode::Sub,
+    ">" => Opcode::Gt,
+    "<" => Opcode::Lt,
+    "==" => Opcode::Eq,
+    "!=" => Opcode::Neq,
 };
 
 Factor: Box<Expr> = {
