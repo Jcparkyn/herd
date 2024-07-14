@@ -33,21 +33,22 @@ impl Interpreter {
   }
 
   pub fn eval(&self, expr: &Expr) -> Result<Value, ()> {
+    use Value::*;
     match expr {
-      Expr::Number(num) => Ok(Value::Number(*num)),
-      Expr::Bool(b) => Ok(Value::Bool(*b)),
+      Expr::Number(num) => Ok(Number(*num)),
+      Expr::Bool(b) => Ok(Bool(*b)),
       Expr::Op(left_expr, op, right_expr) => {
         let l = self.eval(&left_expr)?;
         let r = self.eval(&right_expr)?;
         match op {
-          Opcode::Add => Ok(Value::Number(l.as_number()? + r.as_number()?)),
-          Opcode::Sub => Ok(Value::Number(l.as_number()? - r.as_number()?)),
-          Opcode::Mul => Ok(Value::Number(l.as_number()? * r.as_number()?)),
-          Opcode::Div => Ok(Value::Number(l.as_number()? / r.as_number()?)),
-          Opcode::Gt => Ok(Value::Bool(l.as_number()? > r.as_number()?)),
-          Opcode::Lt => Ok(Value::Bool(l.as_number()? < r.as_number()?)),
-          Opcode::Eq => Ok(Value::Bool(l == r)),
-          Opcode::Neq => Ok(Value::Bool(l != r)),
+          Opcode::Add => Ok(Number(l.as_number()? + r.as_number()?)),
+          Opcode::Sub => Ok(Number(l.as_number()? - r.as_number()?)),
+          Opcode::Mul => Ok(Number(l.as_number()? * r.as_number()?)),
+          Opcode::Div => Ok(Number(l.as_number()? / r.as_number()?)),
+          Opcode::Gt => Ok(Bool(l.as_number()? > r.as_number()?)),
+          Opcode::Lt => Ok(Bool(l.as_number()? < r.as_number()?)),
+          Opcode::Eq => Ok(Bool(l == r)),
+          Opcode::Neq => Ok(Bool(l != r)),
         }
       } 
     }
