@@ -1,21 +1,21 @@
 
-pub struct Function {
-  params: Vec<String>,
-  body: Expr, // or something else?
-}
+// pub struct Function {
+//   params: Vec<String>,
+//   body: Expr, // or something else?
+// }
 
-pub enum ValueIndex {
-  ObjectIndex(String),
-  ArrayIndex(i64),
-}
+// pub enum ValueIndex {
+//   ObjectIndex(String),
+//   ArrayIndex(i64),
+// }
 
-pub enum Statement {
-  Assignment(Vec<ValueIndex>, Expr)
-}
+// pub enum Statement {
+//   Assignment(Vec<ValueIndex>, Expr)
+// }
 
-#[derive(PartialEq, Eq, Hash, Debug)]
+#[derive(PartialEq, Debug)]
 pub enum Expr {
-    Number(i32),
+    Number(f64),
     Op(Box<Expr>, Opcode, Box<Expr>),
 }
 

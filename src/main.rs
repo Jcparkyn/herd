@@ -1,8 +1,10 @@
 use ast::Expr;
+use interpreter::Interpreter;
 use lalrpop_util::lalrpop_mod;
-use std::{fmt::Debug, io::{stdin, stdout, Write}};
+use std::io::{stdin, stdout, Write};
 
 mod ast;
+mod interpreter;
 
 lalrpop_mod!(
     #[allow(clippy::ptr_arg)]
@@ -10,19 +12,13 @@ lalrpop_mod!(
     pub lang
 );
 
-fn print_expr(expr: Expr) -> String {
-    // expr.fmt(f)
+fn print_expr(expr: &Expr) -> String {
     format!("{:?}", expr)
-    // match expr {
-    //     Expr::Number(x) => "2".to_string(),
-    //     Expr::Op(left, op, right) => print_expr(*left) + &print_expr(*right),
-    // }
 }
-
-// fn print
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let parser = lang::ExprParser::new();
+    let interpreter = Interpreter::new();
     loop {
         print!("> ");
         stdout().flush()?;
@@ -30,9 +26,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         stdin().read_line(&mut buffer)?;
         let ast_result = parser.parse(&buffer);
         match ast_result {
-            Ok(ast) => println!("ast: {}", print_expr(*ast)),
+            Ok(ast) => {
+                println!("ast: {}", print_expr(&ast));
+                let eval_result = interpreter.eval(&ast);
+                match eval_result {
+                    Ok(value) => println!("= {:?}", value),
+                    Err(err) => println!("Error evaluating"),
+                }
+            },
             Err(err) => println!("{}", err),
         }
+        
     }
 }
 
