@@ -20,6 +20,7 @@ use std::fmt::Formatter;
 pub enum Expr {
     Number(f64),
     Bool(bool),
+    Nil,
     Op {
         op: Opcode,
         lhs: Box<Expr>,
@@ -49,6 +50,7 @@ impl Debug for Expr {
             Expr::Op { op, lhs, rhs } => write!(f, "({:?} {:?} {:?})", lhs, op, rhs),
             Expr::Variable(v) => v.fmt(f),
             Expr::Block(b) => b.fmt(f),
+            Expr::Nil => f.write_str("nil"),
         }
     }
 }

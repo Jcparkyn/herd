@@ -13,6 +13,7 @@ pub struct Interpreter {
 pub enum Value {
     Number(f64),
     Bool(bool),
+    Nil,
 }
 
 pub struct Environment {
@@ -129,6 +130,7 @@ impl Interpreter {
         match expr {
             Expr::Number(num) => Ok(Number(*num)),
             Expr::Bool(b) => Ok(Bool(*b)),
+            Expr::Nil => Ok(Nil),
             Expr::Variable(name) => self
                 .environment
                 .get(name)
@@ -154,7 +156,7 @@ impl Interpreter {
                     self.execute(&stmt)?;
                 }
                 self.environment.pop_scope();
-                Ok(Value::Number(-1.0)) // TODO
+                Ok(Value::Nil) // TODO
             }
         }
     }

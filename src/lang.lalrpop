@@ -26,6 +26,7 @@ Identifier: String = {
 Term: Box<Expr> = {
     NumLiteral => Box::new(Expr::Number(<>)),
     BoolLiteral => Box::new(Expr::Bool(<>)),
+    "nil" => Box::new(Expr::Nil),
     Identifier => Box::new(Expr::Variable(<>)),
     "(" <Expr> ")",
     "{" <s:Statement*> "}" => Box::new(Expr::Block(Block { statements: s })),
