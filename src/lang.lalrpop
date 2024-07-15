@@ -30,7 +30,7 @@ Term: Box<Expr> = {
 };
 
 pub Expr: Box<Expr> = {
-    Expr ExprOp Factor => Box::new(Expr::Op(<>)),
+    <lhs:Expr> <op:ExprOp> <rhs:Factor> => Box::new(Expr::Op { op, lhs, rhs }),
     Factor,
 };
 
@@ -44,7 +44,7 @@ ExprOp: Opcode = {
 };
 
 Factor: Box<Expr> = {
-    Factor FactorOp Term => Box::new(Expr::Op(<>)),
+    <lhs:Factor> <op:FactorOp> <rhs:Term> => Box::new(Expr::Op { op, lhs, rhs }),
     Term,
 };
 

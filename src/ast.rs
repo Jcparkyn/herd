@@ -14,7 +14,11 @@ use std::fmt::Formatter;
 pub enum Expr {
     Number(f64),
     Bool(bool),
-    Op(Box<Expr>, Opcode, Box<Expr>),
+    Op {
+        op: Opcode,
+        lhs: Box<Expr>,
+        rhs: Box<Expr>,
+    },
     Variable(String),
 }
 
@@ -35,7 +39,7 @@ impl Debug for Expr {
         match self {
             Expr::Number(n) => n.fmt(f),
             Expr::Bool(b) => b.fmt(f),
-            Expr::Op(l, op, r) => write!(f, "({:?} {:?} {:?})", l, op, r),
+            Expr::Op { op, lhs, rhs } => write!(f, "({:?} {:?} {:?})", lhs, op, rhs),
             Expr::Variable(v) => v.fmt(f),
         }
     }

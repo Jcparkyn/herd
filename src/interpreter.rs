@@ -125,9 +125,9 @@ impl Interpreter {
                 .get(name)
                 .copied()
                 .ok_or(VariableNotDefined(name.clone())),
-            Expr::Op(left_expr, op, right_expr) => {
-                let l = self.eval(&left_expr)?;
-                let r = self.eval(&right_expr)?;
+            Expr::Op { op, lhs, rhs } => {
+                let l = self.eval(&lhs)?;
+                let r = self.eval(&rhs)?;
                 match op {
                     Opcode::Add => Ok(Number(l.as_number()? + r.as_number()?)),
                     Opcode::Sub => Ok(Number(l.as_number()? - r.as_number()?)),
