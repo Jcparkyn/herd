@@ -1,5 +1,5 @@
 use interpreter::Interpreter;
-use lalrpop_util::lalrpop_mod;
+use lalrpop_util::{lalrpop_mod, ParseError};
 use std::io::{stdin, stdout, Write};
 
 mod ast;
@@ -18,15 +18,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         print!("> ");
         stdout().flush()?;
         let mut buffer = String::new();
-        stdin().read_line(&mut buffer)?;
-        let ast_result = parser.parse(&buffer);
-        match ast_result {
-            Err(err) => println!("Error while parsing: {}", err),
-            Ok(statement) => {
-                println!("ast: {:?}", statement);
-                match interpreter.execute(&statement) {
-                    Ok(()) => {}
-                    Err(err) => println!("Error while evaluating: {}", err),
+        loop {
+            stdin().read_line(&mut buffer)?;
+            let ast_result = parser.parse(&buffer);
+            match ast_result {
+                Err(ParseError::UnrecognizedEof { .. }) => {}
+                Err(err) => {
+                    println!("Error while parsing: {}", err);
+                    break;
+                }
+                Ok(statement) => {
+                    println!("ast: {:?}", statement);
+                    match interpreter.execute(&statement) {
+                        Ok(()) => {}
+                        Err(err) => println!("Error while evaluating: {}", err),
+                    }
+                    break;
                 }
             }
         }
