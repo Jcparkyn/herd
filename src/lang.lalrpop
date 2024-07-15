@@ -1,10 +1,11 @@
 use std::str::FromStr;
-use crate::ast::{Expr, Opcode, Statement};
+use crate::ast::{Expr, Opcode, Statement, Block};
 
 grammar;
 
 pub Statement: Statement = {
     "print" <e:Expr> ";" => Statement::Print(e),
+    <Expr> ";" => Statement::Expression(<>),
     <name:Identifier> "=" <e:Expr> ";" => Statement::Declaration(name, e),
     <name:Identifier> ":=" <e:Expr> ";" => Statement::Assignment(name, e),
 }
@@ -27,6 +28,7 @@ Term: Box<Expr> = {
     BoolLiteral => Box::new(Expr::Bool(<>)),
     Identifier => Box::new(Expr::Variable(<>)),
     "(" <Expr> ")",
+    "{" <s:Statement*> "}" => Box::new(Expr::Block(Block { statements: s })),
 };
 
 pub Expr: Box<Expr> = {

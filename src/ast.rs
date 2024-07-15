@@ -1,9 +1,15 @@
 use std::fmt::Debug;
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
+pub struct Block {
+    pub statements: Vec<Statement>,
+}
+
+#[derive(PartialEq, Debug)]
 pub enum Statement {
     Declaration(String, Box<Expr>),
     Assignment(String, Box<Expr>),
+    Expression(Box<Expr>),
     Print(Box<Expr>),
 }
 
@@ -20,6 +26,7 @@ pub enum Expr {
         rhs: Box<Expr>,
     },
     Variable(String),
+    Block(Block),
 }
 
 #[derive(PartialEq, Eq, Hash)]
@@ -41,6 +48,7 @@ impl Debug for Expr {
             Expr::Bool(b) => b.fmt(f),
             Expr::Op { op, lhs, rhs } => write!(f, "({:?} {:?} {:?})", lhs, op, rhs),
             Expr::Variable(v) => v.fmt(f),
+            Expr::Block(b) => b.fmt(f),
         }
     }
 }

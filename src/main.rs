@@ -23,7 +23,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         match ast_result {
             Err(err) => println!("Error while parsing: {}", err),
             Ok(statement) => {
-                // println!("ast: {}", print_expr(&ast));
+                println!("ast: {:?}", statement);
                 match interpreter.execute(&statement) {
                     Ok(()) => {}
                     Err(err) => println!("Error while evaluating: {}", err),

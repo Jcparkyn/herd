@@ -16,8 +16,9 @@ pub enum Value {
 }
 
 pub struct Environment {
-    enclosing: Option<Box<Environment>>,
-    values: HashMap<String, Value>,
+    // enclosing: Option<Box<Environment>>,
+    // values: HashMap<String, Value>,
+    scopes: Vec<HashMap<String, Value>>,
 }
 
 #[derive(Debug, Clone)]
@@ -37,14 +38,12 @@ impl Display for InterpreterError {
     }
 }
 
-// impl Error for InterpreterError {}
-
 use InterpreterError::*;
 
 impl Value {
-    pub fn as_number(self) -> Result<f64, InterpreterError> {
+    pub fn as_number(&self) -> Result<f64, InterpreterError> {
         match self {
-            Value::Number(n) => Ok(n),
+            Value::Number(n) => Ok(*n),
             _ => Err(WrongType),
         }
     }
@@ -53,13 +52,12 @@ impl Value {
 impl Environment {
     pub fn new() -> Environment {
         Environment {
-            enclosing: None,
-            values: HashMap::new(),
+            scopes: vec![HashMap::new()],
         }
     }
 
     pub fn declare(&mut self, name: String, value: Value) -> Result<(), InterpreterError> {
-        match self.values.entry(name.clone()) {
+        match self.scopes.last_mut().unwrap().entry(name.clone()) {
             Entry::Occupied(_) => Err(VariableAlreadyDefined(name)),
             Entry::Vacant(e) => {
                 e.insert(value);
@@ -69,24 +67,30 @@ impl Environment {
     }
 
     pub fn assign(&mut self, name: String, value: Value) -> Result<(), InterpreterError> {
-        if self.values.contains_key(&name) {
-            self.values.insert(name, value);
-            return Ok(());
-        }
-        if let Some(enclosing) = &mut self.enclosing {
-            return enclosing.assign(name, value);
+        for scope in self.scopes.iter_mut().rev() {
+            if scope.contains_key(&name) {
+                scope.insert(name, value);
+                return Ok(());
+            }
         }
         Err(VariableNotDefined(name))
     }
 
     pub fn get(&self, name: &str) -> Option<&Value> {
-        if let Some(value) = self.values.get(name) {
-            return Some(value);
-        }
-        if let Some(enclosing) = &self.enclosing {
-            return enclosing.get(name);
+        for scope in self.scopes.iter().rev() {
+            if let Some(value) = scope.get(name) {
+                return Some(value);
+            }
         }
         return None;
+    }
+
+    pub fn push_scope(&mut self) {
+        self.scopes.push(HashMap::new());
+    }
+
+    pub fn pop_scope(&mut self) {
+        self.scopes.pop();
     }
 }
 
@@ -104,18 +108,23 @@ impl Interpreter {
                 println!("{:?}", value);
                 Ok(())
             }
-            Statement::Declaration(name, expr) => self
-                .environment
-                .declare(name.to_string(), self.eval(&expr)?),
+            Statement::Declaration(name, expr) => {
+                let value = self.eval(&expr)?;
+                self.environment.declare(name.to_string(), value)
+            }
             Statement::Assignment(name, expr) => {
-                self.environment
-                    .assign(name.to_string(), self.eval(&expr)?)?;
+                let value = self.eval(&expr)?;
+                self.environment.assign(name.to_string(), value)?;
+                Ok(())
+            }
+            Statement::Expression(expr) => {
+                self.eval(&expr)?;
                 Ok(())
             }
         }
     }
 
-    pub fn eval(&self, expr: &Expr) -> Result<Value, InterpreterError> {
+    pub fn eval(&mut self, expr: &Expr) -> Result<Value, InterpreterError> {
         use Value::*;
         match expr {
             Expr::Number(num) => Ok(Number(*num)),
@@ -138,6 +147,14 @@ impl Interpreter {
                     Opcode::Eq => Ok(Bool(l == r)),
                     Opcode::Neq => Ok(Bool(l != r)),
                 }
+            }
+            Expr::Block(block) => {
+                self.environment.push_scope();
+                for stmt in block.statements.iter() {
+                    self.execute(&stmt)?;
+                }
+                self.environment.pop_scope();
+                Ok(Value::Number(-1.0)) // TODO
             }
         }
     }
