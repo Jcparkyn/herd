@@ -45,6 +45,8 @@ pub enum Opcode {
     Lt,
     Eq,
     Neq,
+    And,
+    Or,
 }
 
 impl Debug for Expr {
@@ -86,6 +88,8 @@ impl Debug for Opcode {
             Opcode::Lt => "<",
             Opcode::Eq => "==",
             Opcode::Neq => "!=",
+            Opcode::And => "and",
+            Opcode::Or => "or",
         })
     }
 }

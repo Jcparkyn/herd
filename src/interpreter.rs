@@ -181,6 +181,8 @@ impl Interpreter {
                     Opcode::Lt => Ok(Bool(l.as_number()? < r.as_number()?)),
                     Opcode::Eq => Ok(Bool(l == r)),
                     Opcode::Neq => Ok(Bool(l != r)),
+                    Opcode::And => Ok(Bool(l.truthy() && r.truthy())),
+                    Opcode::Or => Ok(Bool(l.truthy() || r.truthy())),
                 }
             }
             Expr::Block(block) => {
