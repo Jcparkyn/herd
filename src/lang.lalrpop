@@ -12,13 +12,9 @@ pub Statement: Statement = {
 }
 
 IfExpression: Box<Expr> = {
-    "if " <cond: Expr> <b1:BlockExpression> <b2:ElseClause?> => Box::new(
+    "if " <cond: Expr> <b1:BlockExpression> <b2:("else" <BlockExpression>)?> => Box::new(
         Expr::If { condition: cond, then_branch: b1, else_branch: b2 }
     )
-}
-
-ElseClause: Block = {
-    "else" <BlockExpression> => <>
 }
 
 BlockExpression: Block = {
