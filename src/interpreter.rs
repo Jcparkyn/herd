@@ -3,7 +3,7 @@ use std::{
     fmt::Display,
 };
 
-use crate::ast::{Expr, Opcode, Statement};
+use crate::ast::{Block, Expr, Opcode, Statement};
 
 pub struct Interpreter {
     environment: Environment,
@@ -46,6 +46,14 @@ impl Value {
         match self {
             Value::Number(n) => Ok(*n),
             _ => Err(WrongType),
+        }
+    }
+
+    pub fn truthy(&self) -> bool {
+        match self {
+            Value::Number(n) => *n != 0.0,
+            Value::Bool(b) => *b,
+            Value::Nil => false,
         }
     }
 }
@@ -125,6 +133,15 @@ impl Interpreter {
         }
     }
 
+    pub fn execute_block(&mut self, block: &Block) -> Result<(), InterpreterError> {
+        self.environment.push_scope();
+        for stmt in block.statements.iter() {
+            self.execute(stmt)?;
+        }
+        self.environment.pop_scope();
+        Ok(())
+    }
+
     pub fn eval(&mut self, expr: &Expr) -> Result<Value, InterpreterError> {
         use Value::*;
         match expr {
@@ -136,6 +153,22 @@ impl Interpreter {
                 .get(name)
                 .copied()
                 .ok_or(VariableNotDefined(name.clone())),
+            Expr::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                let cond = self.eval(&condition)?;
+                if cond.truthy() {
+                    self.execute_block(&then_branch)?;
+                    return Ok(Value::Nil); // TODO
+                }
+                if let Some(else_branch2) = else_branch {
+                    self.execute_block(&else_branch2)?;
+                    return Ok(Value::Nil);
+                }
+                Ok(Value::Nil)
+            }
             Expr::Op { op, lhs, rhs } => {
                 let l = self.eval(&lhs)?;
                 let r = self.eval(&rhs)?;

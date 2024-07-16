@@ -28,6 +28,11 @@ pub enum Expr {
     },
     Variable(String),
     Block(Block),
+    If {
+        condition: Box<Expr>,
+        then_branch: Block,
+        else_branch: Option<Block>,
+    },
 }
 
 #[derive(PartialEq, Eq, Hash)]
@@ -51,6 +56,21 @@ impl Debug for Expr {
             Expr::Variable(v) => v.fmt(f),
             Expr::Block(b) => b.fmt(f),
             Expr::Nil => f.write_str("nil"),
+            Expr::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                f.write_str("if ")?;
+                condition.fmt(f)?;
+                f.write_str(" ")?;
+                then_branch.fmt(f)?;
+                if let Some(else_branch) = else_branch {
+                    f.write_str(" else ")?;
+                    else_branch.fmt(f)?;
+                }
+                Ok(())
+            }
         }
     }
 }

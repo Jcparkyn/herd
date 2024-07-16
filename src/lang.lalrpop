@@ -8,6 +8,15 @@ pub Statement: Statement = {
     <Expr> ";" => Statement::Expression(<>),
     <name:Identifier> "=" <e:Expr> ";" => Statement::Declaration(name, e),
     <name:Identifier> ":=" <e:Expr> ";" => Statement::Assignment(name, e),
+    "if " <cond: Expr> <b1:BlockExpression> "else" <b2:BlockExpression> => Statement::Expression(
+        Box::new(
+            Expr::If { condition: cond, then_branch: b1, else_branch: Some(b2) }
+        )
+    )
+}
+
+BlockExpression: Block = {
+    "{" <s:Statement*> "}" => Block { statements: s },
 }
 
 NumLiteral: f64 = {
@@ -29,7 +38,7 @@ Term: Box<Expr> = {
     "nil" => Box::new(Expr::Nil),
     Identifier => Box::new(Expr::Variable(<>)),
     "(" <Expr> ")",
-    "{" <s:Statement*> "}" => Box::new(Expr::Block(Block { statements: s })),
+    <BlockExpression> => Box::new(Expr::Block(<>)),
 };
 
 pub Expr: Box<Expr> = {
