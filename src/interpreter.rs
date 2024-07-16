@@ -193,6 +193,18 @@ impl Interpreter {
                 self.environment.pop_scope();
                 Ok(Value::Nil) // TODO
             }
+            Expr::Call { callee, args } => {
+                // TODO implement functions properly
+                if **callee == Expr::Variable("print".to_string()) {
+                    for arg in args.iter() {
+                        let value = self.eval(&arg)?;
+                        print!("{:?}", value);
+                    }
+                    println!();
+                    return Ok(Value::Nil);
+                }
+                Ok(Value::Nil)
+            }
         }
     }
 }

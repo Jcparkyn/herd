@@ -1,8 +1,14 @@
 use std::fmt::Debug;
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq)]
 pub struct Block {
     pub statements: Vec<Statement>,
+}
+
+impl Debug for Block {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        f.debug_tuple("Block").field(&self.statements).finish()
+    }
 }
 
 #[derive(PartialEq, Debug)]
@@ -32,6 +38,10 @@ pub enum Expr {
         condition: Box<Expr>,
         then_branch: Block,
         else_branch: Option<Block>,
+    },
+    Call {
+        callee: Box<Expr>,
+        args: Vec<Box<Expr>>,
     },
 }
 
@@ -63,16 +73,14 @@ impl Debug for Expr {
                 then_branch,
                 else_branch,
             } => {
-                f.write_str("if ")?;
-                condition.fmt(f)?;
-                f.write_str(" ")?;
-                then_branch.fmt(f)?;
+                write!(f, "if ({:?}) then {:?}", condition, then_branch)?;
                 if let Some(else_branch) = else_branch {
                     f.write_str(" else ")?;
                     else_branch.fmt(f)?;
                 }
                 Ok(())
             }
+            Expr::Call { callee, args } => f.debug_tuple("Call").field(callee).field(args).finish(),
         }
     }
 }

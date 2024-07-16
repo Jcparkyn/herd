@@ -4,7 +4,6 @@ use crate::ast::{Expr, Opcode, Statement, Block};
 grammar;
 
 pub Statement: Statement = {
-    "print" <e:Expr> ";" => Statement::Print(e),
     <Expr> ";" => Statement::Expression(<>),
     <name:Identifier> "=" <e:Expr> ";" => Statement::Declaration(name, e),
     <name:Identifier> ":=" <e:Expr> ";" => Statement::Assignment(name, e),
@@ -12,7 +11,7 @@ pub Statement: Statement = {
 }
 
 IfExpression: Box<Expr> = {
-    "if " <cond: Expr> <b1:BlockExpression> <b2:("else" <BlockExpression>)?> => Box::new(
+    "if " <cond:Expr> "then" <b1:BlockExpression> <b2:("else" <BlockExpression>)?> => Box::new(
         Expr::If { condition: cond, then_branch: b1, else_branch: b2 }
     )
 }
@@ -48,9 +47,17 @@ Tier<Op,NextTier>: Box<Expr> = {
     NextTier
 };
 
+CallExpr: Box<Expr> = {
+    <callee:Term> <args:Term+> => Box::new(Expr::Call { callee, args }),
+}
+
 pub Expr = Tier<LogicOp, ComparisonExpr>;
-ComparisonExpr = Tier<ComparisonOp, AddSubExpr>;
-AddSubExpr = Tier<AddSubOp, Factor>;
+ComparisonExpr = Tier<ComparisonOp, AddSubCallExpr>;
+AddSubCallExpr: Box<Expr> = {
+    <lhs:AddSubCallExpr> <op:AddSubOp> <rhs:Factor> => Box::new(Expr::Op { op, lhs, rhs }),
+    Factor,
+    CallExpr,
+}
 Factor = Tier<FactorOp, Term>;
 
 LogicOp: Opcode = {
