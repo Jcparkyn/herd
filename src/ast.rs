@@ -1,5 +1,10 @@
 use std::fmt::Debug;
 
+use std::fmt::Error;
+use std::fmt::Formatter;
+
+use crate::types::BuiltInFunction;
+
 #[derive(PartialEq)]
 pub struct Block {
     pub statements: Vec<Statement>,
@@ -18,9 +23,6 @@ pub enum Statement {
     Expression(Box<Expr>),
     Print(Box<Expr>),
 }
-
-use std::fmt::Error;
-use std::fmt::Formatter;
 
 #[derive(PartialEq)]
 pub enum Expr {
@@ -43,6 +45,7 @@ pub enum Expr {
         callee: Box<Expr>,
         args: Vec<Box<Expr>>,
     },
+    BuiltInFunction(BuiltInFunction),
 }
 
 #[derive(PartialEq, Eq, Hash)]
@@ -64,6 +67,7 @@ impl Debug for Expr {
         match self {
             Expr::Number(n) => n.fmt(f),
             Expr::Bool(b) => b.fmt(f),
+            Expr::BuiltInFunction(b) => b.fmt(f),
             Expr::Op { op, lhs, rhs } => write!(f, "({:?} {:?} {:?})", lhs, op, rhs),
             Expr::Variable(v) => v.fmt(f),
             Expr::Block(b) => b.fmt(f),

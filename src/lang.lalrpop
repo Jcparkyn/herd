@@ -1,5 +1,6 @@
 use std::str::FromStr;
 use crate::ast::{Expr, Opcode, Statement, Block};
+use crate::types::{BuiltInFunction};
 
 grammar;
 
@@ -29,6 +30,11 @@ BoolLiteral: bool = {
     "false" => false,
 };
 
+BuiltInFunction: BuiltInFunction = {
+    "print" => BuiltInFunction::Print,
+    "not" => BuiltInFunction::Not,
+}
+
 Identifier: String = {
     <r"[a-zA-Z]\w*"> => <>.to_string(),
 }
@@ -37,6 +43,7 @@ Term: Box<Expr> = {
     NumLiteral => Box::new(Expr::Number(<>)),
     BoolLiteral => Box::new(Expr::Bool(<>)),
     "nil" => Box::new(Expr::Nil),
+    BuiltInFunction => Box::new(Expr::BuiltInFunction(<>)),
     Identifier => Box::new(Expr::Variable(<>)),
     "(" <Expr> ")",
     <BlockExpression> => Box::new(Expr::Block(<>)),

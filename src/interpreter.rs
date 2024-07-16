@@ -3,17 +3,14 @@ use std::{
     fmt::Display,
 };
 
-use crate::ast::{Block, Expr, Opcode, Statement};
+use crate::types::Value;
+use crate::{
+    ast::{Block, Expr, Opcode, Statement},
+    types::BuiltInFunction,
+};
 
 pub struct Interpreter {
     environment: Environment,
-}
-
-#[derive(PartialEq, Debug, Clone, Copy)]
-pub enum Value {
-    Number(f64),
-    Bool(bool),
-    Nil,
 }
 
 pub struct Environment {
@@ -26,6 +23,8 @@ pub struct Environment {
 pub enum InterpreterError {
     VariableAlreadyDefined(String),
     VariableNotDefined(String),
+    TooManyArguments,
+    NotEnoughArguments,
     WrongType,
 }
 
@@ -34,6 +33,8 @@ impl Display for InterpreterError {
         match self {
             VariableAlreadyDefined(name) => write!(f, "Variable {} is already defined", name),
             VariableNotDefined(name) => write!(f, "Variable {} is not defined", name),
+            TooManyArguments => write!(f, "Too many arguments"),
+            NotEnoughArguments => write!(f, "Not enough arguments"),
             WrongType => write!(f, "Wrong type"),
         }
     }
@@ -54,6 +55,7 @@ impl Value {
             Value::Number(n) => *n != 0.0,
             Value::Bool(b) => *b,
             Value::Nil => false,
+            Value::Builtin(_) => true,
         }
     }
 }
@@ -193,18 +195,39 @@ impl Interpreter {
                 self.environment.pop_scope();
                 Ok(Value::Nil) // TODO
             }
+            Expr::BuiltInFunction(f) => Ok(Builtin(f.clone())),
             Expr::Call { callee, args } => {
-                // TODO implement functions properly
-                if **callee == Expr::Variable("print".to_string()) {
-                    for arg in args.iter() {
-                        let value = self.eval(&arg)?;
-                        print!("{:?}", value);
-                    }
-                    println!();
-                    return Ok(Value::Nil);
+                let arg_values = args
+                    .iter()
+                    .map(|arg| self.eval(arg))
+                    .collect::<Result<Vec<_>, _>>()?;
+
+                match self.eval(&callee)? {
+                    Value::Builtin(c) => self.call_builtin(c, arg_values),
+                    _ => Err(WrongType),
                 }
-                Ok(Value::Nil)
             }
+        }
+    }
+
+    fn call_builtin(
+        &self,
+        builtin: BuiltInFunction,
+        args: Vec<Value>,
+    ) -> Result<Value, InterpreterError> {
+        match builtin {
+            BuiltInFunction::Print => {
+                match args.as_slice() {
+                    [a] => println!("{:?}", a),
+                    _ => println!("{:?}", args),
+                }
+                return Ok(Value::Nil);
+            }
+            BuiltInFunction::Not => match args.as_slice() {
+                [] => Err(NotEnoughArguments),
+                [a] => Ok(Value::Bool(!a.truthy())),
+                _ => Err(TooManyArguments),
+            },
         }
     }
 }
