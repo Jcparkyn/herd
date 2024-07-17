@@ -4,6 +4,7 @@ use std::io::{stdin, stdout, Write};
 
 mod ast;
 mod interpreter;
+mod parse_helpers;
 
 lalrpop_mod!(
     #[allow(clippy::ptr_arg)]

@@ -37,6 +37,7 @@ pub enum Statement {
 pub enum Expr {
     Number(f64),
     Bool(bool),
+    String(String),
     Nil,
     Op {
         op: Opcode,
@@ -80,6 +81,7 @@ impl Debug for Expr {
         match self {
             Expr::Number(n) => n.fmt(f),
             Expr::Bool(b) => b.fmt(f),
+            Expr::String(s) => write!(f, "'{}'", s),
             Expr::BuiltInFunction(b) => b.fmt(f),
             Expr::Op { op, lhs, rhs } => write!(f, "({:?} {:?} {:?})", lhs, op, rhs),
             Expr::Variable(v) => v.fmt(f),

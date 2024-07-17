@@ -43,6 +43,7 @@ use InterpreterError::*;
 pub enum Value {
     Number(f64),
     Bool(bool),
+    String(String),
     Builtin(BuiltInFunction),
     Lambda {
         params: Vec<String>,
@@ -63,6 +64,7 @@ impl Value {
         match self {
             Value::Number(n) => *n != 0.0,
             Value::Bool(b) => *b,
+            Value::String(s) => !s.is_empty(),
             Value::Nil => false,
             Value::Builtin(_) => true,
             Value::Lambda { .. } => true,
@@ -158,6 +160,7 @@ impl Interpreter {
         match expr {
             Expr::Number(num) => Ok(Number(*num)),
             Expr::Bool(b) => Ok(Bool(*b)),
+            Expr::String(s) => Ok(String(s.clone())),
             Expr::Nil => Ok(Nil),
             Expr::Variable(name) => self
                 .environment
@@ -178,22 +181,7 @@ impl Interpreter {
                 }
                 Ok(Value::Nil)
             }
-            Expr::Op { op, lhs, rhs } => {
-                let l = self.eval(&lhs)?;
-                let r = self.eval(&rhs)?;
-                match op {
-                    Opcode::Add => Ok(Number(l.as_number()? + r.as_number()?)),
-                    Opcode::Sub => Ok(Number(l.as_number()? - r.as_number()?)),
-                    Opcode::Mul => Ok(Number(l.as_number()? * r.as_number()?)),
-                    Opcode::Div => Ok(Number(l.as_number()? / r.as_number()?)),
-                    Opcode::Gt => Ok(Bool(l.as_number()? > r.as_number()?)),
-                    Opcode::Lt => Ok(Bool(l.as_number()? < r.as_number()?)),
-                    Opcode::Eq => Ok(Bool(l == r)),
-                    Opcode::Neq => Ok(Bool(l != r)),
-                    Opcode::And => Ok(Bool(l.truthy() && r.truthy())),
-                    Opcode::Or => Ok(Bool(l.truthy() || r.truthy())),
-                }
-            }
+            Expr::Op { op, lhs, rhs } => self.eval_binary_op(lhs, rhs, op),
             Expr::Block(block) => self.eval_block(block),
             Expr::BuiltInFunction(f) => Ok(Builtin(f.clone())),
             Expr::Call { callee, args } => {
@@ -223,6 +211,41 @@ impl Interpreter {
                 params: params.to_vec(),
                 body: body.clone(),
             }),
+        }
+    }
+
+    fn eval_binary_op(
+        &mut self,
+        lhs: &Expr,
+        rhs: &Expr,
+        op: &Opcode,
+    ) -> Result<Value, InterpreterError> {
+        use Value::*;
+        match op {
+            Opcode::Add => match (self.eval(&lhs)?, self.eval(&rhs)?) {
+                (Number(n1), Number(n2)) => Ok(Number(n1 + n2)),
+                (String(s1), String(s2)) => Ok(String(s1 + &s2)),
+                _ => Err(WrongType),
+            },
+            Opcode::Sub => Ok(Number(
+                self.eval(&lhs)?.as_number()? - self.eval(&rhs)?.as_number()?,
+            )),
+            Opcode::Mul => Ok(Number(
+                self.eval(&lhs)?.as_number()? * self.eval(&rhs)?.as_number()?,
+            )),
+            Opcode::Div => Ok(Number(
+                self.eval(&lhs)?.as_number()? / self.eval(&rhs)?.as_number()?,
+            )),
+            Opcode::Gt => Ok(Bool(
+                self.eval(&lhs)?.as_number()? > self.eval(&rhs)?.as_number()?,
+            )),
+            Opcode::Lt => Ok(Bool(
+                self.eval(&lhs)?.as_number()? < self.eval(&rhs)?.as_number()?,
+            )),
+            Opcode::Eq => Ok(Bool(self.eval(&lhs)? == self.eval(&rhs)?)),
+            Opcode::Neq => Ok(Bool(self.eval(&lhs)? != self.eval(&rhs)?)),
+            Opcode::And => Ok(Bool(self.eval(&lhs)?.truthy() && self.eval(&rhs)?.truthy())),
+            Opcode::Or => Ok(Bool(self.eval(&lhs)?.truthy() || self.eval(&rhs)?.truthy())),
         }
     }
 

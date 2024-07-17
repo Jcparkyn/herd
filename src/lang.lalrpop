@@ -1,5 +1,6 @@
 use std::{str::FromStr,rc::Rc};
 use crate::ast::{Expr, Opcode, Statement, Block, BuiltInFunction};
+use crate::parse_helpers::parse_string_literal;
 
 grammar;
 
@@ -51,6 +52,7 @@ Term: Box<Expr> = {
     BoolLiteral => Box::new(Expr::Bool(<>)),
     "nil" => Box::new(Expr::Nil),
     BuiltInFunction => Box::new(Expr::BuiltInFunction(<>)),
+    r"'[^']*'" => Box::new(Expr::String(parse_string_literal(<>))),
     Identifier => Box::new(Expr::Variable(<>)),
     "(" <Expr> ")",
     <BlockExpression> => Box::new(Expr::Block(<>)),
