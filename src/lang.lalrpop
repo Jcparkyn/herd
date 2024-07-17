@@ -1,6 +1,5 @@
-use std::str::FromStr;
-use crate::ast::{Expr, Opcode, Statement, Block};
-use crate::types::{BuiltInFunction};
+use std::{str::FromStr,rc::Rc};
+use crate::ast::{Expr, Opcode, Statement, Block, BuiltInFunction};
 
 grammar;
 
@@ -35,6 +34,10 @@ BuiltInFunction: BuiltInFunction = {
     "not" => BuiltInFunction::Not,
 }
 
+LambdaExpression: Box<Expr> = {
+    "{" <params:Comma<Identifier>> "->" <statements:Statement*> "}" => Box::new(Expr::Lambda { params, body: Rc::new(Block { statements }) })
+}
+
 Identifier: String = {
     <r"[a-zA-Z]\w*"> => <>.to_string(),
 }
@@ -47,6 +50,7 @@ Term: Box<Expr> = {
     Identifier => Box::new(Expr::Variable(<>)),
     "(" <Expr> ")",
     <BlockExpression> => Box::new(Expr::Block(<>)),
+    LambdaExpression,
 };
 
 Tier<Op,NextTier>: Box<Expr> = {
@@ -87,4 +91,14 @@ AddSubOp: Opcode = {
 FactorOp: Opcode = {
     "*" => Opcode::Mul,
     "/" => Opcode::Div,
+};
+
+Comma<T>: Vec<T> = {
+    <mut v:(<T> ",")*> <e:T?> => match e {
+        None => v,
+        Some(e) => {
+            v.push(e);
+            v
+        }
+    }
 };

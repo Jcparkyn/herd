@@ -1,13 +1,10 @@
 use std::{
     collections::{hash_map::Entry, HashMap},
     fmt::Display,
+    rc::Rc,
 };
 
-use crate::types::Value;
-use crate::{
-    ast::{Block, Expr, Opcode, Statement},
-    types::BuiltInFunction,
-};
+use crate::ast::{Block, BuiltInFunction, Expr, Opcode, Statement};
 
 pub struct Interpreter {
     environment: Environment,
@@ -42,6 +39,18 @@ impl Display for InterpreterError {
 
 use InterpreterError::*;
 
+#[derive(PartialEq, Debug, Clone)]
+pub enum Value {
+    Number(f64),
+    Bool(bool),
+    Builtin(BuiltInFunction),
+    Lambda {
+        params: Vec<String>,
+        body: Rc<Block>,
+    },
+    Nil,
+}
+
 impl Value {
     pub fn as_number(&self) -> Result<f64, InterpreterError> {
         match self {
@@ -56,6 +65,7 @@ impl Value {
             Value::Bool(b) => *b,
             Value::Nil => false,
             Value::Builtin(_) => true,
+            Value::Lambda { .. } => true,
         }
     }
 }
@@ -153,7 +163,7 @@ impl Interpreter {
             Expr::Variable(name) => self
                 .environment
                 .get(name)
-                .copied()
+                .cloned()
                 .ok_or(VariableNotDefined(name.clone())),
             Expr::If {
                 condition,
@@ -204,9 +214,26 @@ impl Interpreter {
 
                 match self.eval(&callee)? {
                     Value::Builtin(c) => self.call_builtin(c, arg_values),
+                    Value::Lambda { params, body } => {
+                        if params.len() != arg_values.len() {
+                            return Err(TooManyArguments); // TODO
+                        }
+                        let mut lambda_interpreter = Interpreter::new();
+                        for (name, value) in params.iter().zip(arg_values.iter()) {
+                            lambda_interpreter
+                                .environment
+                                .declare(name.clone(), value.clone())?;
+                        }
+                        lambda_interpreter.execute_block(&body)?;
+                        Ok(Value::Nil)
+                    }
                     _ => Err(WrongType),
                 }
             }
+            Expr::Lambda { params, body } => Ok(Value::Lambda {
+                params: params.to_vec(),
+                body: body.clone(),
+            }),
         }
     }
 

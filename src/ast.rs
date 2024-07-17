@@ -2,8 +2,13 @@ use std::fmt::Debug;
 
 use std::fmt::Error;
 use std::fmt::Formatter;
+use std::rc::Rc;
 
-use crate::types::BuiltInFunction;
+#[derive(PartialEq, Debug, Clone, Copy)]
+pub enum BuiltInFunction {
+    Print,
+    Not,
+}
 
 #[derive(PartialEq)]
 pub struct Block {
@@ -46,6 +51,10 @@ pub enum Expr {
         args: Vec<Box<Expr>>,
     },
     BuiltInFunction(BuiltInFunction),
+    Lambda {
+        params: Vec<String>,
+        body: Rc<Block>,
+    },
 }
 
 #[derive(PartialEq, Eq, Hash)]
@@ -85,6 +94,11 @@ impl Debug for Expr {
                 Ok(())
             }
             Expr::Call { callee, args } => f.debug_tuple("Call").field(callee).field(args).finish(),
+            Expr::Lambda { params, body } => f
+                .debug_tuple("Lambda")
+                .field(params)
+                .field(&body.statements)
+                .finish(),
         }
     }
 }

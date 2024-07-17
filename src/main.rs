@@ -4,7 +4,6 @@ use std::io::{stdin, stdout, Write};
 
 mod ast;
 mod interpreter;
-mod types;
 
 lalrpop_mod!(
     #[allow(clippy::ptr_arg)]
@@ -64,7 +63,7 @@ mod tests {
     case("100 + 150 / ((20 - 5) * 5)", 102),
     )]
     fn when_expression_evaluated_then_correct_value_returned(exp: &str, expected: i32) {
-        use crate::types::Value;
+        use crate::interpreter::Value;
 
         let expr = lang::ExprParser::new().parse(exp).unwrap();
         assert_eq!(
