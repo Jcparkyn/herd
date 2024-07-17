@@ -124,11 +124,6 @@ impl Interpreter {
 
     pub fn execute(&mut self, statement: &Statement) -> Result<(), InterpreterError> {
         match statement {
-            Statement::Print(expr) => {
-                let value = self.eval(&expr)?;
-                println!("{:?}", value);
-                Ok(())
-            }
             Statement::Declaration(name, expr) => {
                 let value = self.eval(&expr)?;
                 self.environment.declare(name.to_string(), value)
@@ -145,13 +140,17 @@ impl Interpreter {
         }
     }
 
-    pub fn execute_block(&mut self, block: &Block) -> Result<(), InterpreterError> {
-        self.environment.push_scope();
-        for stmt in block.statements.iter() {
-            self.execute(stmt)?;
-        }
-        self.environment.pop_scope();
-        Ok(())
+    pub fn eval_block(&mut self, block: &Block) -> Result<Value, InterpreterError> {
+        self.run_in_scope(|s| {
+            for stmt in block.statements.iter() {
+                s.execute(stmt)?;
+            }
+            if let Some(expr) = &block.expression {
+                s.eval(expr)
+            } else {
+                Ok(Value::Nil)
+            }
+        })
     }
 
     pub fn eval(&mut self, expr: &Expr) -> Result<Value, InterpreterError> {
@@ -172,12 +171,10 @@ impl Interpreter {
             } => {
                 let cond = self.eval(&condition)?;
                 if cond.truthy() {
-                    self.execute_block(&then_branch)?;
-                    return Ok(Value::Nil); // TODO
+                    return self.eval_block(&then_branch);
                 }
                 if let Some(else_branch2) = else_branch {
-                    self.execute_block(&else_branch2)?;
-                    return Ok(Value::Nil);
+                    return self.eval_block(&else_branch2);
                 }
                 Ok(Value::Nil)
             }
@@ -197,14 +194,7 @@ impl Interpreter {
                     Opcode::Or => Ok(Bool(l.truthy() || r.truthy())),
                 }
             }
-            Expr::Block(block) => {
-                self.environment.push_scope();
-                for stmt in block.statements.iter() {
-                    self.execute(&stmt)?;
-                }
-                self.environment.pop_scope();
-                Ok(Value::Nil) // TODO
-            }
+            Expr::Block(block) => self.eval_block(block),
             Expr::BuiltInFunction(f) => Ok(Builtin(f.clone())),
             Expr::Call { callee, args } => {
                 let arg_values = args
@@ -224,8 +214,7 @@ impl Interpreter {
                                 .environment
                                 .declare(name.clone(), value.clone())?;
                         }
-                        lambda_interpreter.execute_block(&body)?;
-                        Ok(Value::Nil)
+                        lambda_interpreter.eval_block(&body)
                     }
                     _ => Err(WrongType),
                 }
@@ -256,5 +245,12 @@ impl Interpreter {
                 _ => Err(TooManyArguments),
             },
         }
+    }
+
+    fn run_in_scope<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> T {
+        self.environment.push_scope();
+        let result = f(self);
+        self.environment.pop_scope();
+        result
     }
 }

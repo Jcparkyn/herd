@@ -13,11 +13,15 @@ pub enum BuiltInFunction {
 #[derive(PartialEq)]
 pub struct Block {
     pub statements: Vec<Statement>,
+    pub expression: Option<Box<Expr>>,
 }
 
 impl Debug for Block {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        f.debug_tuple("Block").field(&self.statements).finish()
+        f.debug_tuple("Block")
+            .field(&self.statements)
+            .field(&self.expression)
+            .finish()
     }
 }
 
@@ -26,7 +30,7 @@ pub enum Statement {
     Declaration(String, Box<Expr>),
     Assignment(String, Box<Expr>),
     Expression(Box<Expr>),
-    Print(Box<Expr>),
+    // Return(Option<Box<Expr>>),
 }
 
 #[derive(PartialEq)]
@@ -94,11 +98,9 @@ impl Debug for Expr {
                 Ok(())
             }
             Expr::Call { callee, args } => f.debug_tuple("Call").field(callee).field(args).finish(),
-            Expr::Lambda { params, body } => f
-                .debug_tuple("Lambda")
-                .field(params)
-                .field(&body.statements)
-                .finish(),
+            Expr::Lambda { params, body } => {
+                f.debug_tuple("Lambda").field(params).field(body).finish()
+            }
         }
     }
 }

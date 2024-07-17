@@ -17,7 +17,11 @@ IfExpression: Box<Expr> = {
 }
 
 BlockExpression: Block = {
-    "{" <s:Statement*> "}" => Block { statements: s },
+    "{" <b:BlockBody> "}" => b
+}
+
+BlockBody: Block = {
+    <s:Statement*> <e:Expr?> => Block { statements: s, expression: e },
 }
 
 NumLiteral: f64 = {
@@ -35,7 +39,7 @@ BuiltInFunction: BuiltInFunction = {
 }
 
 LambdaExpression: Box<Expr> = {
-    "{" <params:Comma<Identifier>> "->" <statements:Statement*> "}" => Box::new(Expr::Lambda { params, body: Rc::new(Block { statements }) })
+    "{" <params:Comma<Identifier>> "->" <body:BlockBody> "}" => Box::new(Expr::Lambda { params, body: Rc::new(body) })
 }
 
 Identifier: String = {
