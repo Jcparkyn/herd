@@ -1,0 +1,7 @@
+fac = { n ->
+  if n < 2 then { 1 } else { n * (fac(n - 1)) } 
+};
+
+print (fac 1);
+print (fac 2);
+print (fac 7);

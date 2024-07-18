@@ -1,0 +1,8 @@
+print 'Expected: 12';
+print (3 * 4);
+
+print 'Expected: -1';
+print (1 - 1 - 1);
+
+print 'Expected: 14';
+print (8 + 2 * 3);
