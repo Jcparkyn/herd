@@ -4,6 +4,10 @@ use crate::parse_helpers::parse_string_literal;
 
 grammar;
 
+pub Program: Vec<Statement> = {
+    Statement+
+}
+
 pub Statement: Statement = {
     <Expr> ";" => Statement::Expression(<>),
     <name:Identifier> "=" <e:Expr> ";" => Statement::Declaration(name, e),

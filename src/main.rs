@@ -1,6 +1,9 @@
 use interpreter::Interpreter;
 use lalrpop_util::{lalrpop_mod, ParseError};
-use std::io::{stdin, stdout, Write};
+use std::{
+    env,
+    io::{stdin, stdout, Write},
+};
 
 mod ast;
 mod interpreter;
@@ -12,15 +15,59 @@ lalrpop_mod!(
     pub lang
 );
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() {
+    let args: Vec<String> = env::args().collect();
+
+    if let [_, path] = &args[..] {
+        let program = match std::fs::read_to_string(path) {
+            Ok(program) => program,
+            Err(err) => {
+                println!("Error while reading file: {}", err);
+                return;
+            }
+        };
+        let parser = lang::ProgramParser::new();
+        let mut interpreter = Interpreter::new();
+        let program_ast = parser.parse(&program);
+        match program_ast {
+            Err(err) => {
+                println!("Error while parsing: {}", err);
+            }
+            Ok(program) => {
+                for statement in program {
+                    match interpreter.execute(&statement) {
+                        Ok(()) => {}
+                        Err(err) => {
+                            println!("Error while evaluating: {}", err);
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        run_repl();
+    }
+}
+
+fn run_repl() {
     let parser = lang::StatementParser::new();
     let mut interpreter = Interpreter::new();
     loop {
         print!("> ");
-        stdout().flush()?;
+        match stdout().flush() {
+            Err(err) => {
+                println!("Error while flushing: {}", err);
+                break;
+            }
+            _ => {}
+        }
         let mut buffer = String::new();
         loop {
-            stdin().read_line(&mut buffer)?;
+            if let Err(err) = stdin().read_line(&mut buffer) {
+                println!("Error while reading: {}", err);
+                return;
+            }
             let ast_result = parser.parse(&buffer);
             match ast_result {
                 Err(ParseError::UnrecognizedEof { .. }) => {}
