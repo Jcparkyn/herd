@@ -1,7 +1,7 @@
 use std::{
     cell::{Ref, RefCell, RefMut},
     collections::{hash_map::Entry, HashMap},
-    fmt::Display,
+    fmt::{Debug, Display},
     rc::Rc,
 };
 
@@ -11,9 +11,24 @@ pub struct Interpreter {
     environment: EnvironmentRef,
 }
 
+#[derive(Clone)]
 pub struct EnvironmentRef {
     env_ref: Rc<RefCell<Environment>>,
     mutable: bool,
+}
+
+impl Debug for EnvironmentRef {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("EnvironmentRef")
+            .field(&self.mutable)
+            .finish()
+    }
+}
+
+impl PartialEq for EnvironmentRef {
+    fn eq(&self, other: &Self) -> bool {
+        Rc::ptr_eq(&self.env_ref, &other.env_ref) && self.mutable == other.mutable
+    }
 }
 
 impl EnvironmentRef {
@@ -21,6 +36,16 @@ impl EnvironmentRef {
         EnvironmentRef {
             env_ref: Rc::new(RefCell::new(environment)),
             mutable,
+        }
+    }
+
+    pub fn new_child(&self, mutable_self: bool) -> EnvironmentRef {
+        EnvironmentRef {
+            env_ref: Rc::new(RefCell::new(Environment {
+                enclosing: Some(self.clone()),
+                values: HashMap::new(),
+            })),
+            mutable: mutable_self,
         }
     }
 
@@ -78,6 +103,7 @@ pub enum Value {
     Lambda {
         params: Vec<String>,
         body: Rc<Block>,
+        closure: EnvironmentRef,
     },
     Nil,
 }
@@ -222,13 +248,18 @@ impl Interpreter {
 
                 match self.eval(&callee)? {
                     Value::Builtin(c) => self.call_builtin(c, arg_values),
-                    Value::Lambda { params, body } => self.call_lambda(params, arg_values, body),
+                    Value::Lambda {
+                        params,
+                        body,
+                        closure,
+                    } => self.call_lambda(params, arg_values, body, &closure),
                     _ => Err(WrongType),
                 }
             }
             Expr::Lambda { params, body } => Ok(Value::Lambda {
                 params: params.to_vec(),
                 body: body.clone(),
+                closure: self.environment.clone(),
             }),
         }
     }
@@ -294,11 +325,15 @@ impl Interpreter {
         params: Vec<String>,
         arg_values: Vec<Value>,
         body: Rc<Block>,
+        closure: &EnvironmentRef,
     ) -> Result<Value, InterpreterError> {
         if params.len() != arg_values.len() {
             return Err(TooManyArguments); // TODO
         }
-        let mut lambda_interpreter = Interpreter::new();
+        let new_env = closure.new_child(false);
+        let mut lambda_interpreter = Interpreter {
+            environment: new_env,
+        };
         for (name, value) in params.iter().zip(arg_values.iter()) {
             lambda_interpreter
                 .environment

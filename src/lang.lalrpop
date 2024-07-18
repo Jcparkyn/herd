@@ -9,10 +9,20 @@ pub Program: Vec<Statement> = {
 }
 
 pub Statement: Statement = {
-    <Expr> ";" => Statement::Expression(<>),
+    StatementWithSemicolon,
+    <ExpressionWithBlock> => Statement::Expression(<>),
+}
+
+StatementWithSemicolon: Statement = {
+    <ExpressionWithoutBlock> ";" => Statement::Expression(<>),
     <name:Identifier> "=" <e:Expr> ";" => Statement::Declaration(name, e),
     <name:Identifier> ":=" <e:Expr> ";" => Statement::Assignment(name, e),
-    IfExpression => Statement::Expression(<>),
+}
+
+ExpressionWithoutBlock = LogicExpr;
+ExpressionWithBlock = {
+    IfExpression,
+    <BlockExpression> => Box::new(Expr::Block(<>)),
 }
 
 IfExpression: Box<Expr> = {
@@ -26,7 +36,7 @@ BlockExpression: Block = {
 }
 
 BlockBody: Block = {
-    <s:Statement*> <e:Expr?> => Block { statements: s, expression: e },
+    <s:StatementWithSemicolon*> <e:Expr?> => Block { statements: s, expression: e },
 }
 
 NumLiteral: f64 = {
@@ -59,7 +69,6 @@ Term: Box<Expr> = {
     r"'[^']*'" => Box::new(Expr::String(parse_string_literal(<>))),
     Identifier => Box::new(Expr::Variable(<>)),
     "(" <Expr> ")",
-    <BlockExpression> => Box::new(Expr::Block(<>)),
     LambdaExpression,
 };
 
@@ -72,7 +81,12 @@ CallExpr: Box<Expr> = {
     <callee:Term> <args:Term+> => Box::new(Expr::Call { callee, args }),
 }
 
-pub Expr = Tier<LogicOp, ComparisonExpr>;
+pub Expr = {
+    ExpressionWithoutBlock,
+    ExpressionWithBlock,
+}
+
+LogicExpr = Tier<LogicOp, ComparisonExpr>;
 ComparisonExpr = Tier<ComparisonOp, AddSubCallExpr>;
 AddSubCallExpr: Box<Expr> = {
     <lhs:AddSubCallExpr> <op:AddSubOp> <rhs:Factor> => Box::new(Expr::Op { op, lhs, rhs }),
