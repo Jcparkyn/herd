@@ -62,7 +62,8 @@ DictEntry: (String, Box<Expr>) = {
 }
 
 DictExpression: Box<Expr> = {
-    "[" <entries:Comma<DictEntry>> "]" => Box::new(Expr::Dict(entries)),
+    "[" <entries:CommaPlus<DictEntry>> "]" => Box::new(Expr::Dict(entries)),
+    "[:]" => Box::new(Expr::Dict(vec![])),
 }
 
 Identifier: String = {
@@ -126,12 +127,14 @@ FactorOp: Opcode = {
     "/" => Opcode::Div,
 };
 
-Comma<T>: Vec<T> = {
-    <mut v:(<T> ",")*> <e:T?> => match e {
-        None => v,
-        Some(e) => {
-            v.push(e);
-            v
-        }
+CommaPlus<T>: Vec<T> = {
+    <mut v:(<T> ",")*> <e:T> => {
+        v.push(e);
+        v
     }
 };
+
+Comma<T>: Vec<T> = {
+    CommaPlus<T>,
+    => vec![],
+}

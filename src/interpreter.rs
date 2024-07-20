@@ -136,12 +136,15 @@ impl Display for Value {
             Value::Builtin(b) => write!(f, "{}", b.to_string()),
             Value::Lambda(l) => write!(f, "<lambda: {}>", l.params.join(", ")),
             Value::Dict(d) => {
+                if d.values.is_empty() {
+                    return write!(f, "[:]");
+                }
                 let values: Vec<_> = d
                     .values
                     .iter()
                     .map(|(name, v)| name.clone() + ": " + &v.to_string())
                     .collect();
-                write!(f, "{{ {} }}", values.join(", "))
+                write!(f, "[ {} ]", values.join(", "))
             }
             Value::Nil => write!(f, "nil"),
         }
