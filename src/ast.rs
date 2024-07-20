@@ -1,5 +1,6 @@
 use std::fmt::Debug;
 
+use std::fmt::Display;
 use std::fmt::Error;
 use std::fmt::Formatter;
 use std::rc::Rc;
@@ -8,6 +9,15 @@ use std::rc::Rc;
 pub enum BuiltInFunction {
     Print,
     Not,
+}
+
+impl Display for BuiltInFunction {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        match self {
+            BuiltInFunction::Print => write!(f, "print"),
+            BuiltInFunction::Not => write!(f, "not"),
+        }
+    }
 }
 
 #[derive(PartialEq)]
@@ -60,6 +70,7 @@ pub enum Expr {
         params: Vec<String>,
         body: Rc<Block>,
     },
+    Dict(Vec<(String, Box<Expr>)>),
 }
 
 #[derive(PartialEq, Eq, Hash)]
@@ -79,12 +90,12 @@ pub enum Opcode {
 impl Debug for Expr {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
-            Expr::Number(n) => n.fmt(f),
-            Expr::Bool(b) => b.fmt(f),
+            Expr::Number(n) => write!(f, "{}", n),
+            Expr::Bool(b) => write!(f, "{}", b),
             Expr::String(s) => write!(f, "'{}'", s),
-            Expr::BuiltInFunction(b) => b.fmt(f),
+            Expr::BuiltInFunction(b) => write!(f, "{:?}", b),
             Expr::Op { op, lhs, rhs } => write!(f, "({:?} {:?} {:?})", lhs, op, rhs),
-            Expr::Variable(v) => v.fmt(f),
+            Expr::Variable(v) => write!(f, "{:?}", v),
             Expr::Block(b) => b.fmt(f),
             Expr::Nil => f.write_str("nil"),
             Expr::If {
@@ -103,6 +114,7 @@ impl Debug for Expr {
             Expr::Lambda { params, body } => {
                 f.debug_tuple("Lambda").field(params).field(body).finish()
             }
+            Expr::Dict(entries) => write!(f, "Dict{:?}", entries),
         }
     }
 }

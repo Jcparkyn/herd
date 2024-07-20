@@ -91,12 +91,18 @@ pub struct LambdaFunction {
 }
 
 #[derive(PartialEq, Debug, Clone)]
+pub struct DictInstance {
+    values: HashMap<String, Value>,
+}
+
+#[derive(PartialEq, Debug, Clone)]
 pub enum Value {
     Number(f64),
     Bool(bool),
     String(String),
     Builtin(BuiltInFunction),
     Lambda(Rc<LambdaFunction>),
+    Dict(Rc<DictInstance>),
     Nil,
 }
 
@@ -116,6 +122,28 @@ impl Value {
             Value::Nil => false,
             Value::Builtin(_) => true,
             Value::Lambda { .. } => true,
+            Value::Dict(_) => true,
+        }
+    }
+}
+
+impl Display for Value {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Value::Number(n) => write!(f, "{}", n),
+            Value::Bool(b) => write!(f, "{}", b),
+            Value::String(s) => write!(f, "'{}'", s),
+            Value::Builtin(b) => write!(f, "{}", b.to_string()),
+            Value::Lambda(l) => write!(f, "<lambda: {}>", l.params.join(", ")),
+            Value::Dict(d) => {
+                let values: Vec<_> = d
+                    .values
+                    .iter()
+                    .map(|(name, v)| name.clone() + ": " + &v.to_string())
+                    .collect();
+                write!(f, "{{ {} }}", values.join(", "))
+            }
+            Value::Nil => write!(f, "nil"),
         }
     }
 }
@@ -264,6 +292,13 @@ impl Interpreter {
                 let f = self.eval_lambda_definition(body, params);
                 Ok(Value::Lambda(Rc::new(f)))
             }
+            Expr::Dict(entries) => {
+                let mut values = HashMap::new();
+                for (k, v) in entries.iter() {
+                    values.insert(k.clone(), self.eval(v)?);
+                }
+                Ok(Value::Dict(Rc::new(DictInstance { values })))
+            }
         }
     }
 
@@ -327,7 +362,7 @@ impl Interpreter {
         match builtin {
             BuiltInFunction::Print => {
                 match args.as_slice() {
-                    [a] => println!("{:?}", a),
+                    [a] => println!("{}", a),
                     _ => println!("{:?}", args),
                 }
                 return Ok(Value::Nil);
@@ -444,6 +479,11 @@ fn get_identifiers_in_expr(expr: &Expr, out: &mut HashSet<String>) {
         }
         Expr::Lambda { params: _, body } => {
             get_identifiers_in_block(body, out);
+        }
+        Expr::Dict(entries) => {
+            for (_, v) in entries {
+                get_identifiers_in_expr(v, out);
+            }
         }
     }
 }

@@ -1,0 +1,19 @@
+isEven_ = { isOdd, n ->
+  if n == 0 then { true } else { isOdd (n - 1) }
+};
+
+isOdd = { n ->
+  if n == 0 then { false } else { isEven_ isOdd (n - 1) }
+};
+
+isEven = { n -> isEven_ isOdd n };
+
+print (isEven 0);
+print (isEven 1);
+print (isEven 2);
+print (isEven 3);
+
+print (isOdd 0);
+print (isOdd 1);
+print (isOdd 2);
+print (isOdd 3);

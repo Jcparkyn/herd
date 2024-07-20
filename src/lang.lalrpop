@@ -57,6 +57,14 @@ LambdaExpression: Box<Expr> = {
     "{" <params:Comma<Identifier>> "->" <body:BlockBody> "}" => Box::new(Expr::Lambda { params, body: Rc::new(body) })
 }
 
+DictEntry: (String, Box<Expr>) = {
+    <key:Identifier> ":" <val:Expr> => (key, val),
+}
+
+DictExpression: Box<Expr> = {
+    "[" <entries:Comma<DictEntry>> "]" => Box::new(Expr::Dict(entries)),
+}
+
 Identifier: String = {
     <r"[a-zA-Z]\w*"> => <>.to_string(),
 }
@@ -70,6 +78,7 @@ Term: Box<Expr> = {
     Identifier => Box::new(Expr::Variable(<>)),
     "(" <Expr> ")",
     LambdaExpression,
+    DictExpression,
 };
 
 Tier<Op,NextTier>: Box<Expr> = {
