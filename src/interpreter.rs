@@ -95,16 +95,19 @@ impl Display for InterpreterError {
 use InterpreterError::*;
 
 #[derive(PartialEq, Debug, Clone)]
+pub struct LambdaFunction {
+    params: Vec<String>,
+    body: Rc<Block>,
+    closure: EnvironmentRef,
+}
+
+#[derive(PartialEq, Debug, Clone)]
 pub enum Value {
     Number(f64),
     Bool(bool),
     String(String),
     Builtin(BuiltInFunction),
-    Lambda {
-        params: Vec<String>,
-        body: Rc<Block>,
-        closure: EnvironmentRef,
-    },
+    Lambda(LambdaFunction),
     Nil,
 }
 
@@ -248,19 +251,15 @@ impl Interpreter {
 
                 match self.eval(&callee)? {
                     Value::Builtin(c) => self.call_builtin(c, arg_values),
-                    Value::Lambda {
-                        params,
-                        body,
-                        closure,
-                    } => self.call_lambda(params, arg_values, body, &closure),
+                    Value::Lambda(f) => self.call_lambda(f, arg_values),
                     _ => Err(WrongType),
                 }
             }
-            Expr::Lambda { params, body } => Ok(Value::Lambda {
+            Expr::Lambda { params, body } => Ok(Value::Lambda(LambdaFunction {
                 params: params.to_vec(),
                 body: body.clone(),
                 closure: self.environment.clone(),
-            }),
+            })),
         }
     }
 
@@ -322,25 +321,23 @@ impl Interpreter {
 
     fn call_lambda(
         &mut self,
-        params: Vec<String>,
+        function: LambdaFunction,
         arg_values: Vec<Value>,
-        body: Rc<Block>,
-        closure: &EnvironmentRef,
     ) -> Result<Value, InterpreterError> {
-        if params.len() != arg_values.len() {
+        if function.params.len() != arg_values.len() {
             return Err(TooManyArguments); // TODO
         }
-        let new_env = closure.new_child(false);
+        let new_env = function.closure.new_child(false);
         let mut lambda_interpreter = Interpreter {
             environment: new_env,
         };
-        for (name, value) in params.iter().zip(arg_values.iter()) {
+        for (name, value) in function.params.iter().zip(arg_values.iter()) {
             lambda_interpreter
                 .environment
                 .get_mut()
                 .declare(name.clone(), value.clone())?;
         }
-        lambda_interpreter.eval_block(&body)
+        lambda_interpreter.eval_block(&function.body)
     }
 
     fn run_in_scope<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> T {
