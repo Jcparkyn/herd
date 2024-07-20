@@ -1,6 +1,6 @@
 use std::{
     cell::{Ref, RefCell, RefMut},
-    collections::{hash_map::Entry, HashMap},
+    collections::{hash_map::Entry, HashMap, HashSet},
     fmt::{Debug, Display},
     rc::Rc,
 };
@@ -39,16 +39,6 @@ impl EnvironmentRef {
         }
     }
 
-    pub fn new_child(&self, mutable_self: bool) -> EnvironmentRef {
-        EnvironmentRef {
-            env_ref: Rc::new(RefCell::new(Environment {
-                enclosing: Some(self.clone()),
-                values: HashMap::new(),
-            })),
-            mutable: mutable_self,
-        }
-    }
-
     pub fn get(&self) -> Ref<Environment> {
         (*self.env_ref).borrow()
     }
@@ -61,8 +51,6 @@ impl EnvironmentRef {
 pub struct Environment {
     enclosing: Option<EnvironmentRef>,
     values: HashMap<String, Value>,
-    // root: bool,
-    // scopes: Vec<HashMap<String, Value>>,
 }
 
 #[derive(Debug, Clone)]
@@ -98,7 +86,8 @@ use InterpreterError::*;
 pub struct LambdaFunction {
     params: Vec<String>,
     body: Rc<Block>,
-    closure: EnvironmentRef,
+    closure: HashMap<String, Value>,
+    self_name: Option<String>,
 }
 
 #[derive(PartialEq, Debug, Clone)]
@@ -107,7 +96,7 @@ pub enum Value {
     Bool(bool),
     String(String),
     Builtin(BuiltInFunction),
-    Lambda(LambdaFunction),
+    Lambda(Rc<LambdaFunction>),
     Nil,
 }
 
@@ -186,8 +175,24 @@ impl Interpreter {
     pub fn execute(&mut self, statement: &Statement) -> Result<(), InterpreterError> {
         match statement {
             Statement::Declaration(name, expr) => {
-                let value = self.eval(&expr)?;
-                self.environment.get_mut().declare(name.to_string(), value)
+                let value = match **expr {
+                    Expr::Lambda {
+                        ref params,
+                        ref body,
+                    } => {
+                        // Workaround to allow simple recursive functions without Rc cycles
+                        let mut l = self.eval_lambda_definition(&body, &params);
+                        l.self_name = Some(name.clone());
+                        Value::Lambda(Rc::new(l))
+                    }
+                    ref e => self.eval(&e)?,
+                };
+
+                self.environment
+                    .get_mut()
+                    .declare(name.to_string(), value)?;
+
+                Ok(())
             }
             Statement::Assignment(name, expr) => {
                 let value = self.eval(&expr)?;
@@ -255,11 +260,27 @@ impl Interpreter {
                     _ => Err(WrongType),
                 }
             }
-            Expr::Lambda { params, body } => Ok(Value::Lambda(LambdaFunction {
-                params: params.to_vec(),
-                body: body.clone(),
-                closure: self.environment.clone(),
-            })),
+            Expr::Lambda { params, body } => {
+                let f = self.eval_lambda_definition(body, params);
+                Ok(Value::Lambda(Rc::new(f)))
+            }
+        }
+    }
+
+    fn eval_lambda_definition(&mut self, body: &Rc<Block>, params: &Vec<String>) -> LambdaFunction {
+        let mut potential_captures = HashSet::new();
+        get_identifiers_in_block(body, &mut potential_captures);
+        let mut captures = HashMap::new();
+        for pc in potential_captures {
+            if let Some(v) = self.environment.get().get(&pc) {
+                captures.insert(pc, v.clone());
+            }
+        }
+        LambdaFunction {
+            params: params.to_vec(),
+            body: body.clone(),
+            closure: captures.into(),
+            self_name: None,
         }
     }
 
@@ -321,16 +342,26 @@ impl Interpreter {
 
     fn call_lambda(
         &mut self,
-        function: LambdaFunction,
+        function: Rc<LambdaFunction>,
         arg_values: Vec<Value>,
     ) -> Result<Value, InterpreterError> {
         if function.params.len() != arg_values.len() {
             return Err(TooManyArguments); // TODO
         }
-        let new_env = function.closure.new_child(false);
-        let mut lambda_interpreter = Interpreter {
-            environment: new_env,
-        };
+        let mut lambda_interpreter = Interpreter::new();
+        for (name, value) in function.closure.iter() {
+            lambda_interpreter
+                .environment
+                .get_mut()
+                .declare(name.clone(), value.clone())?;
+        }
+        if let Some(self_name) = &function.self_name {
+            lambda_interpreter
+                .environment
+                .get_mut()
+                .declare(self_name.clone(), Value::Lambda(function.clone()))?;
+        }
+
         for (name, value) in function.params.iter().zip(arg_values.iter()) {
             lambda_interpreter
                 .environment
@@ -352,5 +383,67 @@ impl Interpreter {
         };
         let result = f(&mut new_interpreter);
         return result;
+    }
+}
+
+// TODO Ideally this should only return captured variables (excluding ones that are assigned in the block)
+fn get_identifiers_in_block(block: &Block, out: &mut HashSet<String>) {
+    for stmt in &block.statements {
+        match stmt {
+            Statement::Declaration(name, _) => {
+                out.insert(name.to_string());
+                // get_identifiers_in_expr(val, out);
+            }
+            Statement::Assignment(name, _) => {
+                out.insert(name.to_string());
+                // get_identifiers_in_expr(val, out);
+            }
+            Statement::Expression(expr) => {
+                get_identifiers_in_expr(expr, out);
+            }
+        }
+    }
+    if let Some(expr) = &block.expression {
+        get_identifiers_in_expr(expr, out);
+    }
+}
+
+fn get_identifiers_in_expr(expr: &Expr, out: &mut HashSet<String>) {
+    match expr {
+        Expr::Number(_) => {}
+        Expr::Bool(_) => {}
+        Expr::String(_) => {}
+        Expr::Nil => {}
+        Expr::Variable(name) => {
+            out.insert(name.to_string());
+        }
+        Expr::If {
+            condition,
+            then_branch,
+            else_branch,
+        } => {
+            get_identifiers_in_expr(condition, out);
+            get_identifiers_in_block(then_branch, out);
+            if let Some(else_branch2) = else_branch {
+                get_identifiers_in_block(&else_branch2, out);
+            }
+        }
+        Expr::Op { op: _, lhs, rhs } => {
+            get_identifiers_in_expr(lhs, out);
+            get_identifiers_in_expr(rhs, out);
+        }
+        Expr::Block(block) => {
+            get_identifiers_in_block(block, out);
+        }
+        Expr::BuiltInFunction(_) => {}
+        Expr::Call { callee, args } => {
+            get_identifiers_in_expr(callee, out);
+            for arg in args {
+                get_identifiers_in_expr(arg, out);
+            }
+        }
+        Expr::Lambda { params: _, body } => {
+            get_identifiers_in_block(body, out);
+        }
     }
 }
