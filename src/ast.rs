@@ -36,9 +36,15 @@ impl Debug for Block {
 }
 
 #[derive(PartialEq, Debug)]
+pub struct AssignmentTarget {
+    pub var: String,
+    pub path: Vec<String>,
+}
+
+#[derive(PartialEq, Debug)]
 pub enum Statement {
     Declaration(String, Box<Expr>),
-    Assignment(String, Box<Expr>),
+    Assignment(AssignmentTarget, Box<Expr>),
     Expression(Box<Expr>),
     // Return(Option<Box<Expr>>),
 }

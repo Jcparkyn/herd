@@ -1,5 +1,5 @@
 use std::{str::FromStr,rc::Rc};
-use crate::ast::{Expr, Opcode, Statement, Block, BuiltInFunction};
+use crate::ast::{Expr, Opcode, Statement, Block, BuiltInFunction, AssignmentTarget};
 use crate::parse_helpers::parse_string_literal;
 
 grammar;
@@ -16,7 +16,13 @@ pub Statement: Statement = {
 StatementWithSemicolon: Statement = {
     <ExpressionWithoutBlock> ";" => Statement::Expression(<>),
     <name:Identifier> ":=" <e:Expr> ";" => Statement::Declaration(name, e),
-    <name:Identifier> "=" <e:Expr> ";" => Statement::Assignment(name, e),
+    <target:AssignmentTarget> "=" <e:Expr> ";" => Statement::Assignment(target, e),
+}
+
+DictIndex: String = "." <field:Identifier> => field;
+
+AssignmentTarget: AssignmentTarget = {
+    <var:Identifier> <path:DictIndex*> => AssignmentTarget { var, path },
 }
 
 ExpressionWithoutBlock = LogicExpr;

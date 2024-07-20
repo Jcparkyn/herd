@@ -5,7 +5,7 @@ use std::{
     rc::Rc,
 };
 
-use crate::ast::{Block, BuiltInFunction, Expr, Opcode, Statement};
+use crate::ast::{AssignmentTarget, Block, BuiltInFunction, Expr, Opcode, Statement};
 
 pub struct Interpreter {
     environment: EnvironmentRef,
@@ -58,6 +58,7 @@ pub enum InterpreterError {
     VariableAlreadyDefined(String),
     VariableNotDefined(String),
     VariableNotMutable(String),
+    FieldNotExists(String),
     TooManyArguments,
     NotEnoughArguments,
     WrongType,
@@ -73,6 +74,7 @@ impl Display for InterpreterError {
                 "Variable {} was captured from another scope, so it can't be modified here",
                 name
             ),
+            FieldNotExists(name) => write!(f, "Field {} doesn't exist", name),
             TooManyArguments => write!(f, "Too many arguments"),
             NotEnoughArguments => write!(f, "Not enough arguments"),
             WrongType => write!(f, "Wrong type"),
@@ -110,6 +112,13 @@ impl Value {
     pub fn as_number(&self) -> Result<f64, InterpreterError> {
         match self {
             Value::Number(n) => Ok(*n),
+            _ => Err(WrongType),
+        }
+    }
+
+    pub fn as_dict(&self) -> Result<Rc<DictInstance>, InterpreterError> {
+        match self {
+            Value::Dict(d) => Ok(d.clone()),
             _ => Err(WrongType),
         }
     }
@@ -169,19 +178,68 @@ impl Environment {
         }
     }
 
-    pub fn assign(&mut self, name: String, value: Value) -> Result<(), InterpreterError> {
-        if let Some(v) = self.values.get_mut(&name) {
+    pub fn assign_part(
+        &self,
+        old: &Value,
+        rhs: Value,
+        field: &String,
+        path: &[String],
+    ) -> Result<Value, InterpreterError> {
+        match path {
+            [] => {
+                let mut dict = old.as_dict()?;
+                let mut_dict = Rc::make_mut(&mut dict);
+                mut_dict.values.insert(field.clone(), rhs);
+                Ok(Value::Dict(dict))
+            }
+            [next_field, rest @ ..] => {
+                let mut dict = old.as_dict()?;
+                let mut_dict = Rc::make_mut(&mut dict);
+                match mut_dict.values.entry(field.clone()) {
+                    Entry::Occupied(mut entry) => {
+                        let new_value = self.assign_part(entry.get(), rhs, next_field, rest)?;
+                        entry.insert(new_value);
+                        return Ok(Value::Dict(dict));
+                    }
+                    Entry::Vacant(_) => {
+                        return Err(FieldNotExists(field.clone()));
+                    }
+                };
+            }
+        }
+    }
+
+    pub fn rebind(&mut self, name: &String, value: Value) -> Result<(), InterpreterError> {
+        if let Some(v) = self.values.get_mut(name) {
             *v = value;
             return Ok(());
         }
         if let Some(enclosing) = &mut self.enclosing {
             if !enclosing.mutable {
-                return Err(VariableNotMutable(name));
+                return Err(VariableNotMutable(name.clone()));
             }
             let mut e = (*enclosing.env_ref).borrow_mut();
-            return e.assign(name, value);
+            return e.rebind(name, value);
         }
-        return Err(VariableNotDefined(name));
+        return Err(VariableNotDefined(name.clone()));
+    }
+
+    pub fn assign(
+        &mut self,
+        target: &AssignmentTarget,
+        value: Value,
+    ) -> Result<(), InterpreterError> {
+        match &target.path[..] {
+            [] => return self.rebind(&target.var, value),
+            [field, rest @ ..] => {
+                let current = match self.get(&target.var) {
+                    Some(x) => x,
+                    None => return Err(VariableNotDefined(target.var.clone())),
+                };
+                let new_value = self.assign_part(&current, value, field, rest)?;
+                return self.rebind(&target.var, new_value);
+            }
+        }
     }
 
     pub fn get(&self, name: &String) -> Option<Value> {
@@ -225,9 +283,9 @@ impl Interpreter {
 
                 Ok(())
             }
-            Statement::Assignment(name, expr) => {
+            Statement::Assignment(target, expr) => {
                 let value = self.eval(&expr)?;
-                self.environment.get_mut().assign(name.to_string(), value)?;
+                self.environment.get_mut().assign(target, value)?;
                 Ok(())
             }
             Statement::Expression(expr) => {
@@ -430,11 +488,9 @@ fn get_identifiers_in_block(block: &Block, out: &mut HashSet<String>) {
         match stmt {
             Statement::Declaration(name, _) => {
                 out.insert(name.to_string());
-                // get_identifiers_in_expr(val, out);
             }
-            Statement::Assignment(name, _) => {
-                out.insert(name.to_string());
-                // get_identifiers_in_expr(val, out);
+            Statement::Assignment(target, _) => {
+                out.insert(target.path[0].clone());
             }
             Statement::Expression(expr) => {
                 get_identifiers_in_expr(expr, out);
