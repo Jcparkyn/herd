@@ -15,8 +15,8 @@ pub Statement: Statement = {
 
 StatementWithSemicolon: Statement = {
     <ExpressionWithoutBlock> ";" => Statement::Expression(<>),
-    <name:Identifier> "=" <e:Expr> ";" => Statement::Declaration(name, e),
-    <name:Identifier> ":=" <e:Expr> ";" => Statement::Assignment(name, e),
+    <name:Identifier> ":=" <e:Expr> ";" => Statement::Declaration(name, e),
+    <name:Identifier> "=" <e:Expr> ";" => Statement::Assignment(name, e),
 }
 
 ExpressionWithoutBlock = LogicExpr;

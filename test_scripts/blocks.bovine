@@ -1,4 +1,4 @@
-x = 7;
+x := 7;
 
 if x < 10 then {
   print 'pass';
@@ -9,9 +9,9 @@ if x < 10 then {
 print (if x < 10 then { 'pass' } else { 'fail' });
 
 {
-  y = x + 2;
+  y := x + 2;
   print y;
 }
 
-y = 3;
+y := 3;
 print y;
