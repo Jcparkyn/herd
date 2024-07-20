@@ -1,5 +1,4 @@
 use std::{
-    cell::{Ref, RefCell, RefMut},
     collections::{hash_map::Entry, HashMap, HashSet},
     fmt::{Debug, Display},
     rc::Rc,
@@ -8,56 +7,17 @@ use std::{
 use crate::ast::{AssignmentTarget, Block, BuiltInFunction, Expr, Opcode, Statement};
 
 pub struct Interpreter {
-    environment: EnvironmentRef,
-}
-
-#[derive(Clone)]
-pub struct EnvironmentRef {
-    env_ref: Rc<RefCell<Environment>>,
-    mutable: bool,
-}
-
-impl Debug for EnvironmentRef {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("EnvironmentRef")
-            .field(&self.mutable)
-            .finish()
-    }
-}
-
-impl PartialEq for EnvironmentRef {
-    fn eq(&self, other: &Self) -> bool {
-        Rc::ptr_eq(&self.env_ref, &other.env_ref) && self.mutable == other.mutable
-    }
-}
-
-impl EnvironmentRef {
-    pub fn new(environment: Environment, mutable: bool) -> EnvironmentRef {
-        EnvironmentRef {
-            env_ref: Rc::new(RefCell::new(environment)),
-            mutable,
-        }
-    }
-
-    pub fn get(&self) -> Ref<Environment> {
-        (*self.env_ref).borrow()
-    }
-
-    pub fn get_mut(&mut self) -> RefMut<Environment> {
-        (*self.env_ref).borrow_mut()
-    }
+    environment: Environment,
 }
 
 pub struct Environment {
-    enclosing: Option<EnvironmentRef>,
-    values: HashMap<String, Value>,
+    scopes: Vec<HashMap<String, Value>>,
 }
 
 #[derive(Debug, Clone)]
 pub enum InterpreterError {
     VariableAlreadyDefined(String),
     VariableNotDefined(String),
-    VariableNotMutable(String),
     FieldNotExists(String),
     TooManyArguments,
     NotEnoughArguments,
@@ -69,11 +29,6 @@ impl Display for InterpreterError {
         match self {
             VariableAlreadyDefined(name) => write!(f, "Variable {} is already defined", name),
             VariableNotDefined(name) => write!(f, "Variable {} is not defined", name),
-            VariableNotMutable(name) => write!(
-                f,
-                "Variable {} was captured from another scope, so it can't be modified here",
-                name
-            ),
             FieldNotExists(name) => write!(f, "Field {} doesn't exist", name),
             TooManyArguments => write!(f, "Too many arguments"),
             NotEnoughArguments => write!(f, "Not enough arguments"),
@@ -92,9 +47,24 @@ pub struct LambdaFunction {
     self_name: Option<String>,
 }
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug)]
 pub struct DictInstance {
     values: HashMap<String, Value>,
+}
+
+impl Clone for DictInstance {
+    fn clone(&self) -> Self {
+        println!("Cloning dict: {:?}", self);
+        DictInstance {
+            values: self.values.clone(),
+        }
+    }
+}
+
+impl Drop for DictInstance {
+    fn drop(&mut self) {
+        println!("Dropping dict: {:?}", self);
+    }
 }
 
 #[derive(PartialEq, Debug, Clone)]
@@ -116,9 +86,9 @@ impl Value {
         }
     }
 
-    pub fn as_dict(&self) -> Result<Rc<DictInstance>, InterpreterError> {
+    pub fn to_dict(self) -> Result<Rc<DictInstance>, InterpreterError> {
         match self {
-            Value::Dict(d) => Ok(d.clone()),
+            Value::Dict(d) => Ok(d),
             _ => Err(WrongType),
         }
     }
@@ -163,13 +133,12 @@ impl Display for Value {
 impl Environment {
     pub fn new() -> Environment {
         Environment {
-            enclosing: None,
-            values: HashMap::new(),
+            scopes: vec![HashMap::new()],
         }
     }
 
     pub fn declare(&mut self, name: String, value: Value) -> Result<(), InterpreterError> {
-        match self.values.entry(name.clone()) {
+        match self.scopes.last_mut().unwrap().entry(name.clone()) {
             Entry::Occupied(_) => Err(VariableAlreadyDefined(name)),
             Entry::Vacant(e) => {
                 e.insert(value);
@@ -178,26 +147,26 @@ impl Environment {
         }
     }
 
-    pub fn assign_part(
-        &self,
-        old: &Value,
+    fn assign_part(
+        old: Value,
         rhs: Value,
         field: &String,
         path: &[String],
     ) -> Result<Value, InterpreterError> {
         match path {
             [] => {
-                let mut dict = old.as_dict()?;
+                let mut dict = old.to_dict()?;
                 let mut_dict = Rc::make_mut(&mut dict);
                 mut_dict.values.insert(field.clone(), rhs);
                 Ok(Value::Dict(dict))
             }
             [next_field, rest @ ..] => {
-                let mut dict = old.as_dict()?;
+                let mut dict = old.to_dict()?;
                 let mut_dict = Rc::make_mut(&mut dict);
                 match mut_dict.values.entry(field.clone()) {
                     Entry::Occupied(mut entry) => {
-                        let new_value = self.assign_part(entry.get(), rhs, next_field, rest)?;
+                        let old_value = entry.insert(Value::Nil);
+                        let new_value = Self::assign_part(old_value, rhs, next_field, rest)?;
                         entry.insert(new_value);
                         return Ok(Value::Dict(dict));
                     }
@@ -210,16 +179,11 @@ impl Environment {
     }
 
     pub fn rebind(&mut self, name: &String, value: Value) -> Result<(), InterpreterError> {
-        if let Some(v) = self.values.get_mut(name) {
-            *v = value;
-            return Ok(());
-        }
-        if let Some(enclosing) = &mut self.enclosing {
-            if !enclosing.mutable {
-                return Err(VariableNotMutable(name.clone()));
+        for scope in self.scopes.iter_mut().rev() {
+            if let Some(v) = scope.get_mut(name) {
+                *v = value;
+                return Ok(());
             }
-            let mut e = (*enclosing.env_ref).borrow_mut();
-            return e.rebind(name, value);
         }
         return Err(VariableNotDefined(name.clone()));
     }
@@ -232,23 +196,30 @@ impl Environment {
         match &target.path[..] {
             [] => return self.rebind(&target.var, value),
             [field, rest @ ..] => {
-                let current = match self.get(&target.var) {
+                let current = match self.replace(&target.var, Value::Nil) {
                     Some(x) => x,
                     None => return Err(VariableNotDefined(target.var.clone())),
                 };
-                let new_value = self.assign_part(&current, value, field, rest)?;
+                let new_value = Self::assign_part(current, value, field, rest)?;
                 return self.rebind(&target.var, new_value);
             }
         }
     }
 
-    pub fn get(&self, name: &String) -> Option<Value> {
-        if let Some(v) = self.values.get(name) {
-            return Some(v.clone());
+    pub fn get(&self, name: &String) -> Option<&Value> {
+        for scope in self.scopes.iter().rev() {
+            if let Some(v) = scope.get(name) {
+                return Some(v);
+            }
         }
-        if let Some(enclosing) = &self.enclosing {
-            let e = (*enclosing.env_ref).borrow();
-            return e.get(name);
+        return None;
+    }
+
+    pub fn replace(&mut self, name: &String, new_val: Value) -> Option<Value> {
+        for scope in self.scopes.iter_mut().rev() {
+            if let Entry::Occupied(mut v) = scope.entry(name.clone()) {
+                return Some(v.insert(new_val));
+            }
         }
         return None;
     }
@@ -257,7 +228,7 @@ impl Environment {
 impl Interpreter {
     pub fn new() -> Interpreter {
         Interpreter {
-            environment: EnvironmentRef::new(Environment::new(), true),
+            environment: Environment::new(),
         }
     }
 
@@ -277,15 +248,13 @@ impl Interpreter {
                     ref e => self.eval(&e)?,
                 };
 
-                self.environment
-                    .get_mut()
-                    .declare(name.to_string(), value)?;
+                self.environment.declare(name.to_string(), value)?;
 
                 Ok(())
             }
             Statement::Assignment(target, expr) => {
                 let value = self.eval(&expr)?;
-                self.environment.get_mut().assign(target, value)?;
+                self.environment.assign(target, value)?;
                 Ok(())
             }
             Statement::Expression(expr) => {
@@ -317,8 +286,8 @@ impl Interpreter {
             Expr::Nil => Ok(Nil),
             Expr::Variable(name) => self
                 .environment
-                .get()
                 .get(name)
+                .cloned()
                 .ok_or(VariableNotDefined(name.clone())),
             Expr::If {
                 condition,
@@ -368,7 +337,7 @@ impl Interpreter {
         get_identifiers_in_block(body, &mut potential_captures);
         let mut captures = HashMap::new();
         for pc in potential_captures {
-            if let Some(v) = self.environment.get().get(&pc) {
+            if let Some(v) = self.environment.get(&pc) {
                 captures.insert(pc, v.clone());
             }
         }
@@ -448,36 +417,26 @@ impl Interpreter {
         for (name, value) in function.closure.iter() {
             lambda_interpreter
                 .environment
-                .get_mut()
                 .declare(name.clone(), value.clone())?;
         }
         if let Some(self_name) = &function.self_name {
             lambda_interpreter
                 .environment
-                .get_mut()
                 .declare(self_name.clone(), Value::Lambda(function.clone()))?;
         }
 
         for (name, value) in function.params.iter().zip(arg_values.iter()) {
             lambda_interpreter
                 .environment
-                .get_mut()
                 .declare(name.clone(), value.clone())?;
         }
         lambda_interpreter.eval_block(&function.body)
     }
 
     fn run_in_scope<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> T {
-        let mut new_env = Environment::new();
-        new_env.enclosing = Some(EnvironmentRef {
-            env_ref: self.environment.env_ref.clone(),
-            mutable: true,
-        });
-        // TODO: we shouldn't need to make a new interpreter for this
-        let mut new_interpreter = Interpreter {
-            environment: EnvironmentRef::new(new_env, true),
-        };
-        let result = f(&mut new_interpreter);
+        self.environment.scopes.push(HashMap::new());
+        let result = f(self);
+        self.environment.scopes.pop();
         return result;
     }
 }
