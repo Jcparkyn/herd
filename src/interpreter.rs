@@ -67,6 +67,11 @@ impl Drop for DictInstance {
     }
 }
 
+#[derive(PartialEq, Debug)]
+pub struct ArrayInstance {
+    values: Vec<Value>,
+}
+
 #[derive(PartialEq, Debug, Clone)]
 pub enum Value {
     Number(f64),
@@ -75,6 +80,7 @@ pub enum Value {
     Builtin(BuiltInFunction),
     Lambda(Rc<LambdaFunction>),
     Dict(Rc<DictInstance>),
+    Array(Rc<ArrayInstance>),
     Nil,
 }
 
@@ -102,6 +108,7 @@ impl Value {
             Value::Builtin(_) => true,
             Value::Lambda { .. } => true,
             Value::Dict(_) => true,
+            Value::Array(arr) => !arr.values.is_empty(),
         }
     }
 }
@@ -123,7 +130,11 @@ impl Display for Value {
                     .iter()
                     .map(|(name, v)| name.clone() + ": " + &v.to_string())
                     .collect();
-                write!(f, "[ {} ]", values.join(", "))
+                write!(f, "[{}]", values.join(", "))
+            }
+            Value::Array(a) => {
+                let values: Vec<_> = a.values.iter().map(|v| v.to_string()).collect();
+                write!(f, "[{}]", values.join(", "))
             }
             Value::Nil => write!(f, "nil"),
         }
@@ -329,6 +340,13 @@ impl Interpreter {
                 }
                 Ok(Value::Dict(Rc::new(DictInstance { values })))
             }
+            Expr::Array(elements) => {
+                let mut values = Vec::new();
+                for e in elements.iter() {
+                    values.push(self.eval(e)?);
+                }
+                Ok(Value::Array(Rc::new(ArrayInstance { values })))
+            }
         }
     }
 
@@ -501,6 +519,11 @@ fn get_identifiers_in_expr(expr: &Expr, out: &mut HashSet<String>) {
         Expr::Dict(entries) => {
             for (_, v) in entries {
                 get_identifiers_in_expr(v, out);
+            }
+        }
+        Expr::Array(elements) => {
+            for e in elements {
+                get_identifiers_in_expr(e, out);
             }
         }
     }

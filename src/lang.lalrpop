@@ -67,9 +67,13 @@ DictEntry: (String, Box<Expr>) = {
     <key:Identifier> ":" <val:Expr> => (key, val),
 }
 
-DictExpression: Box<Expr> = {
+DictLiteral: Box<Expr> = {
     "[" <entries:CommaPlus<DictEntry>> "]" => Box::new(Expr::Dict(entries)),
     "[:]" => Box::new(Expr::Dict(vec![])),
+}
+
+ArrayLiteral: Box<Expr> = {
+    "[" <elements:Comma<Expr>> "]" => Box::new(Expr::Array(elements)),
 }
 
 Identifier: String = {
@@ -85,7 +89,8 @@ Term: Box<Expr> = {
     Identifier => Box::new(Expr::Variable(<>)),
     "(" <Expr> ")",
     LambdaExpression,
-    DictExpression,
+    DictLiteral,
+    ArrayLiteral,
 };
 
 Tier<Op,NextTier>: Box<Expr> = {

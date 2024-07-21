@@ -77,6 +77,7 @@ pub enum Expr {
         body: Rc<Block>,
     },
     Dict(Vec<(String, Box<Expr>)>),
+    Array(Vec<Box<Expr>>),
 }
 
 #[derive(PartialEq, Eq, Hash)]
@@ -121,6 +122,7 @@ impl Debug for Expr {
                 f.debug_tuple("Lambda").field(params).field(body).finish()
             }
             Expr::Dict(entries) => write!(f, "Dict{:?}", entries),
+            Expr::Array(elements) => write!(f, "Array{:?}", elements),
         }
     }
 }
