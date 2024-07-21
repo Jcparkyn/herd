@@ -12,6 +12,7 @@ pub enum BuiltInFunction {
     Push,
     Pop,
     Len,
+    Sort,
 }
 
 impl BuiltInFunction {
@@ -22,6 +23,7 @@ impl BuiltInFunction {
             BuiltInFunction::Push => "push",
             BuiltInFunction::Pop => "pop",
             BuiltInFunction::Len => "len",
+            BuiltInFunction::Sort => "sort",
         }
     }
 }

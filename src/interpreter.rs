@@ -79,9 +79,24 @@ impl Drop for DictInstance {
     }
 }
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug)]
 pub struct ArrayInstance {
     values: Vec<Value>,
+}
+
+impl Clone for ArrayInstance {
+    fn clone(&self) -> Self {
+        println!("Cloning array: {:?}", self);
+        ArrayInstance {
+            values: self.values.clone(),
+        }
+    }
+}
+
+impl Drop for ArrayInstance {
+    fn drop(&mut self) {
+        println!("Dropping array: {:?}", self);
+    }
 }
 
 #[derive(PartialEq, Debug, Clone)]
@@ -102,6 +117,21 @@ impl Value {
             Value::Number(n) => Ok(*n),
             _ => Err(WrongType),
         }
+    }
+
+    pub fn is_number(&self) -> bool {
+        matches!(self, Value::Number(_))
+    }
+
+    pub fn as_string(&self) -> Result<&str, InterpreterError> {
+        match self {
+            Value::String(s) => Ok(s),
+            _ => Err(WrongType),
+        }
+    }
+
+    pub fn is_string(&self) -> bool {
+        matches!(self, Value::String(_))
     }
 
     pub fn to_dict(self) -> Result<Rc<DictInstance>, InterpreterError> {
@@ -305,6 +335,7 @@ static BUILTIN_FUNCTIONS: phf::Map<&'static str, BuiltInFunction> = phf::phf_map
     "len" => BuiltInFunction::Len,
     "push" => BuiltInFunction::Push,
     "pop" => BuiltInFunction::Pop,
+    "sort" => BuiltInFunction::Sort,
 };
 
 fn destructure_args<const N: usize>(args: Vec<Value>) -> Result<[Value; N], InterpreterError> {
@@ -551,6 +582,32 @@ impl Interpreter {
                 mut_array.values.pop();
                 // TODO this should really return the value as well.
                 return Ok(Value::Array(array));
+            }
+            BuiltInFunction::Sort => {
+                let [array_val] = destructure_args(args)?;
+                let mut array = array_val.to_array()?;
+                match (*array).values.as_slice() {
+                    [] => Ok(Value::Array(array)),
+                    [Value::Number(_), rest @ ..] => {
+                        if rest.iter().any(|v| !v.is_number()) {
+                            return Err(WrongType);
+                        }
+                        Rc::make_mut(&mut array).values.sort_by(|a, b| {
+                            a.as_number().unwrap().total_cmp(&b.as_number().unwrap())
+                        });
+                        return Ok(Value::Array(array));
+                    }
+                    [Value::String(_), rest @ ..] => {
+                        if rest.iter().any(|v| !v.is_string()) {
+                            return Err(WrongType);
+                        }
+                        Rc::make_mut(&mut array)
+                            .values
+                            .sort_by(|a, b| a.as_string().unwrap().cmp(&b.as_string().unwrap()));
+                        return Ok(Value::Array(array));
+                    }
+                    _ => return Err(WrongType),
+                }
             }
         }
     }
