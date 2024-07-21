@@ -9,14 +9,24 @@ use std::rc::Rc;
 pub enum BuiltInFunction {
     Print,
     Not,
+    Push,
+    Len,
+}
+
+impl BuiltInFunction {
+    pub fn name(&self) -> &'static str {
+        match self {
+            BuiltInFunction::Print => "print",
+            BuiltInFunction::Not => "not",
+            BuiltInFunction::Push => "push",
+            BuiltInFunction::Len => "len",
+        }
+    }
 }
 
 impl Display for BuiltInFunction {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        match self {
-            BuiltInFunction::Print => write!(f, "print"),
-            BuiltInFunction::Not => write!(f, "not"),
-        }
+        write!(f, "{}", self.name())
     }
 }
 

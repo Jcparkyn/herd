@@ -299,6 +299,18 @@ impl Environment {
 static BUILTIN_FUNCTIONS: phf::Map<&'static str, BuiltInFunction> = phf::phf_map! {
     "print" => BuiltInFunction::Print,
     "not" => BuiltInFunction::Not,
+    "len" => BuiltInFunction::Len,
+    "push" => BuiltInFunction::Push,
+    // "pop" => BuiltInFunction::Pop,
+    // "keys" => BuiltInFunction::Keys,
+    // "values" => BuiltInFunction::Values,
+    // "items" => BuiltInFunction::Items,
+    // "clear" => BuiltInFunction::Clear,
+    // "update" => BuiltInFunction::Update,
+    // "remove" => BuiltInFunction::Remove,
+    // "get" => BuiltInFunction::Get,
+    // "setdefault" => BuiltInFunction::Setdefault,
+    // "copy" => BuiltInFunction::Copy,
 };
 
 impl Interpreter {
@@ -496,7 +508,7 @@ impl Interpreter {
     fn call_builtin(
         &self,
         builtin: BuiltInFunction,
-        args: Vec<Value>,
+        mut args: Vec<Value>,
     ) -> Result<Value, InterpreterError> {
         match builtin {
             BuiltInFunction::Print => {
@@ -511,6 +523,24 @@ impl Interpreter {
                 [a] => Ok(Value::Bool(!a.truthy())),
                 _ => Err(TooManyArguments),
             },
+            BuiltInFunction::Len => match args.as_slice() {
+                [Value::Array(a)] => Ok(Value::Number(a.values.len() as f64)),
+                [Value::Dict(d)] => Ok(Value::Number(d.values.len() as f64)),
+                _ => Err(WrongType),
+            },
+            BuiltInFunction::Push => {
+                if args.len() != 2 {
+                    return Err(TooManyArguments);
+                }
+                let new_value = args.pop().unwrap();
+                let mut array = match args.pop().unwrap() {
+                    Value::Array(array) => array,
+                    _ => return Err(WrongType),
+                };
+                let mut_array = Rc::make_mut(&mut array);
+                mut_array.values.push(new_value);
+                return Ok(Value::Array(array));
+            }
         }
     }
 
