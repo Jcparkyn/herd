@@ -296,6 +296,11 @@ impl Environment {
     }
 }
 
+static BUILTIN_FUNCTIONS: phf::Map<&'static str, BuiltInFunction> = phf::phf_map! {
+    "print" => BuiltInFunction::Print,
+    "not" => BuiltInFunction::Not,
+};
+
 impl Interpreter {
     pub fn new() -> Interpreter {
         Interpreter {
@@ -359,11 +364,13 @@ impl Interpreter {
             Expr::Bool(b) => Ok(Bool(*b)),
             Expr::String(s) => Ok(String(s.clone())),
             Expr::Nil => Ok(Nil),
-            Expr::Variable(name) => self
-                .environment
-                .get(name)
-                .cloned()
-                .ok_or(VariableNotDefined(name.clone())),
+            Expr::Variable(name) => match BUILTIN_FUNCTIONS.get(&name) {
+                Some(f) => Ok(Builtin(*f)),
+                None => match self.environment.get(name) {
+                    Some(v) => Ok(v.clone()),
+                    None => Err(VariableNotDefined(name.clone())),
+                },
+            },
             Expr::If {
                 condition,
                 then_branch,

@@ -1,5 +1,5 @@
 use std::{str::FromStr,rc::Rc};
-use crate::ast::{Expr, Opcode, Statement, Block, BuiltInFunction, AssignmentTarget};
+use crate::ast::{Expr, Opcode, Statement, Block, AssignmentTarget};
 use crate::parse_helpers::parse_string_literal;
 
 grammar;
@@ -57,11 +57,6 @@ BoolLiteral: bool = {
     "false" => false,
 };
 
-BuiltInFunction: BuiltInFunction = {
-    "print" => BuiltInFunction::Print,
-    "not" => BuiltInFunction::Not,
-}
-
 LambdaExpression: Box<Expr> = {
     "{" <params:Comma<Identifier>> "->" <body:BlockBody> "}" => Box::new(Expr::Lambda { params, body: Rc::new(body) })
 }
@@ -87,7 +82,6 @@ Term: Box<Expr> = {
     NumLiteral => Box::new(Expr::Number(<>)),
     BoolLiteral => Box::new(Expr::Bool(<>)),
     "nil" => Box::new(Expr::Nil),
-    BuiltInFunction => Box::new(Expr::BuiltInFunction(<>)),
     r"'[^']*'" => Box::new(Expr::String(parse_string_literal(<>))),
     Identifier => Box::new(Expr::Variable(<>)),
     "(" <Expr> ")",
