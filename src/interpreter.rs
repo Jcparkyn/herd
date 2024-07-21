@@ -4,7 +4,7 @@ use std::{
     rc::Rc,
 };
 
-use crate::ast::{AssignmentTarget, Block, BuiltInFunction, Expr, Opcode, Statement};
+use crate::ast::{AssignmentTarget, Block, BuiltInFunction, Expr, Opcode, Statement, ValueIndex};
 
 pub struct Interpreter {
     environment: Environment,
@@ -19,6 +19,7 @@ pub enum InterpreterError {
     VariableAlreadyDefined(String),
     VariableNotDefined(String),
     FieldNotExists(String),
+    IndexOutOfRange { array_len: usize, accessed: usize },
     TooManyArguments,
     NotEnoughArguments,
     WrongType,
@@ -30,6 +31,14 @@ impl Display for InterpreterError {
             VariableAlreadyDefined(name) => write!(f, "Variable {} is already defined", name),
             VariableNotDefined(name) => write!(f, "Variable {} is not defined", name),
             FieldNotExists(name) => write!(f, "Field {} doesn't exist", name),
+            IndexOutOfRange {
+                array_len,
+                accessed,
+            } => write!(
+                f,
+                "Cant access index {} of an array with {} elements",
+                accessed, array_len
+            ),
             TooManyArguments => write!(f, "Too many arguments"),
             NotEnoughArguments => write!(f, "Not enough arguments"),
             WrongType => write!(f, "Wrong type"),
@@ -67,7 +76,7 @@ impl Drop for DictInstance {
     }
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub struct ArrayInstance {
     values: Vec<Value>,
 }
@@ -95,6 +104,13 @@ impl Value {
     pub fn to_dict(self) -> Result<Rc<DictInstance>, InterpreterError> {
         match self {
             Value::Dict(d) => Ok(d),
+            _ => Err(WrongType),
+        }
+    }
+
+    pub fn to_array(self) -> Result<Rc<ArrayInstance>, InterpreterError> {
+        match self {
+            Value::Array(a) => Ok(a),
             _ => Err(WrongType),
         }
     }
@@ -161,19 +177,28 @@ impl Environment {
     fn assign_part(
         old: Value,
         rhs: Value,
-        field: &String,
-        path: &[String],
+        field: &ValueIndex,
+        path: &[ValueIndex],
     ) -> Result<Value, InterpreterError> {
+        match field {
+            ValueIndex::Dict(name) => Self::assign_dict_field(old.to_dict()?, rhs, name, path),
+            ValueIndex::Array(idx) => Self::assign_array_index(old.to_array()?, rhs, *idx, path),
+        }
+    }
+
+    fn assign_dict_field(
+        mut dict: Rc<DictInstance>,
+        rhs: Value,
+        field: &String,
+        path: &[ValueIndex],
+    ) -> Result<Value, InterpreterError> {
+        let mut_dict = Rc::make_mut(&mut dict);
         match path {
             [] => {
-                let mut dict = old.to_dict()?;
-                let mut_dict = Rc::make_mut(&mut dict);
                 mut_dict.values.insert(field.clone(), rhs);
                 Ok(Value::Dict(dict))
             }
             [next_field, rest @ ..] => {
-                let mut dict = old.to_dict()?;
-                let mut_dict = Rc::make_mut(&mut dict);
                 match mut_dict.values.entry(field.clone()) {
                     Entry::Occupied(mut entry) => {
                         let old_value = entry.insert(Value::Nil);
@@ -186,6 +211,28 @@ impl Environment {
                     }
                 };
             }
+        }
+    }
+
+    fn assign_array_index(
+        mut array: Rc<ArrayInstance>,
+        rhs: Value,
+        index: usize,
+        path: &[ValueIndex],
+    ) -> Result<Value, InterpreterError> {
+        let mut_array = Rc::make_mut(&mut array);
+        match path {
+            [] => {
+                if index >= mut_array.values.len() {
+                    return Err(InterpreterError::IndexOutOfRange {
+                        array_len: mut_array.values.len(),
+                        accessed: index,
+                    });
+                }
+                mut_array.values[index] = rhs;
+                Ok(Value::Array(array))
+            }
+            _ => Err(InterpreterError::FieldNotExists(format!("{}", index))),
         }
     }
 
@@ -463,11 +510,13 @@ impl Interpreter {
 fn get_identifiers_in_block(block: &Block, out: &mut HashSet<String>) {
     for stmt in &block.statements {
         match stmt {
-            Statement::Declaration(name, _) => {
+            Statement::Declaration(name, rhs) => {
                 out.insert(name.to_string());
+                get_identifiers_in_expr(rhs, out);
             }
-            Statement::Assignment(target, _) => {
-                out.insert(target.path[0].clone());
+            Statement::Assignment(target, rhs) => {
+                out.insert(target.var.clone());
+                get_identifiers_in_expr(rhs, out);
             }
             Statement::Expression(expr) => {
                 get_identifiers_in_expr(expr, out);

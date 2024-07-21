@@ -35,10 +35,16 @@ impl Debug for Block {
     }
 }
 
+#[derive(PartialEq, Debug, Clone)]
+pub enum ValueIndex {
+    Array(usize),
+    Dict(String),
+}
+
 #[derive(PartialEq, Debug)]
 pub struct AssignmentTarget {
     pub var: String,
-    pub path: Vec<String>,
+    pub path: Vec<ValueIndex>,
 }
 
 #[derive(PartialEq, Debug)]
