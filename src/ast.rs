@@ -10,6 +10,7 @@ pub enum BuiltInFunction {
     Print,
     Not,
     Push,
+    Pop,
     Len,
 }
 
@@ -19,6 +20,7 @@ impl BuiltInFunction {
             BuiltInFunction::Print => "print",
             BuiltInFunction::Not => "not",
             BuiltInFunction::Push => "push",
+            BuiltInFunction::Pop => "pop",
             BuiltInFunction::Len => "len",
         }
     }

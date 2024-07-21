@@ -301,17 +301,15 @@ static BUILTIN_FUNCTIONS: phf::Map<&'static str, BuiltInFunction> = phf::phf_map
     "not" => BuiltInFunction::Not,
     "len" => BuiltInFunction::Len,
     "push" => BuiltInFunction::Push,
-    // "pop" => BuiltInFunction::Pop,
-    // "keys" => BuiltInFunction::Keys,
-    // "values" => BuiltInFunction::Values,
-    // "items" => BuiltInFunction::Items,
-    // "clear" => BuiltInFunction::Clear,
-    // "update" => BuiltInFunction::Update,
-    // "remove" => BuiltInFunction::Remove,
-    // "get" => BuiltInFunction::Get,
-    // "setdefault" => BuiltInFunction::Setdefault,
-    // "copy" => BuiltInFunction::Copy,
+    "pop" => BuiltInFunction::Pop,
 };
+
+fn destructure_args<const N: usize>(args: Vec<Value>) -> Result<[Value; N], InterpreterError> {
+    match args.try_into() {
+        Ok(arr) => Ok(arr),
+        Err(_) => Err(TooManyArguments),
+    }
+}
 
 impl Interpreter {
     pub fn new() -> Interpreter {
@@ -508,7 +506,7 @@ impl Interpreter {
     fn call_builtin(
         &self,
         builtin: BuiltInFunction,
-        mut args: Vec<Value>,
+        args: Vec<Value>,
     ) -> Result<Value, InterpreterError> {
         match builtin {
             BuiltInFunction::Print => {
@@ -529,16 +527,18 @@ impl Interpreter {
                 _ => Err(WrongType),
             },
             BuiltInFunction::Push => {
-                if args.len() != 2 {
-                    return Err(TooManyArguments);
-                }
-                let new_value = args.pop().unwrap();
-                let mut array = match args.pop().unwrap() {
-                    Value::Array(array) => array,
-                    _ => return Err(WrongType),
-                };
+                let [array_val, new_value] = destructure_args(args)?;
+                let mut array = array_val.to_array()?;
                 let mut_array = Rc::make_mut(&mut array);
                 mut_array.values.push(new_value);
+                return Ok(Value::Array(array));
+            }
+            BuiltInFunction::Pop => {
+                let [array_val] = destructure_args(args)?;
+                let mut array = array_val.to_array()?;
+                let mut_array = Rc::make_mut(&mut array);
+                mut_array.values.pop();
+                // TODO this should really return the value as well.
                 return Ok(Value::Array(array));
             }
         }
