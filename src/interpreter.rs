@@ -20,8 +20,7 @@ pub enum InterpreterError {
     VariableNotDefined(String),
     FieldNotExists(String),
     IndexOutOfRange { array_len: usize, accessed: usize },
-    TooManyArguments,
-    NotEnoughArguments,
+    WrongArgumentCount { expected: usize, supplied: usize },
     WrongType,
 }
 
@@ -39,8 +38,12 @@ impl Display for InterpreterError {
                 "Cant access index {} of an array with {} elements",
                 accessed, array_len
             ),
-            TooManyArguments => write!(f, "Too many arguments"),
-            NotEnoughArguments => write!(f, "Not enough arguments"),
+            WrongArgumentCount { expected, supplied } => {
+                write!(
+                    f,
+                    "Wrong number of arguments for function. Expected {expected}, got {supplied}"
+                )
+            }
             WrongType => write!(f, "Wrong type"),
         }
     }
@@ -307,7 +310,10 @@ static BUILTIN_FUNCTIONS: phf::Map<&'static str, BuiltInFunction> = phf::phf_map
 fn destructure_args<const N: usize>(args: Vec<Value>) -> Result<[Value; N], InterpreterError> {
     match args.try_into() {
         Ok(arr) => Ok(arr),
-        Err(_) => Err(TooManyArguments),
+        Err(vec) => Err(WrongArgumentCount {
+            expected: N,
+            supplied: vec.len(),
+        }),
     }
 }
 
@@ -512,19 +518,24 @@ impl Interpreter {
             BuiltInFunction::Print => {
                 match args.as_slice() {
                     [a] => println!("{}", a),
-                    _ => println!("{:?}", args),
+                    _ => println!(
+                        "{}",
+                        args.iter()
+                            .map(|v| v.to_string())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ),
                 }
                 return Ok(Value::Nil);
             }
-            BuiltInFunction::Not => match args.as_slice() {
-                [] => Err(NotEnoughArguments),
-                [a] => Ok(Value::Bool(!a.truthy())),
-                _ => Err(TooManyArguments),
-            },
-            BuiltInFunction::Len => match args.as_slice() {
+            BuiltInFunction::Not => {
+                let [arg] = destructure_args(args)?;
+                return Ok(Value::Bool(!arg.truthy()));
+            }
+            BuiltInFunction::Len => match destructure_args::<1>(args)? {
                 [Value::Array(a)] => Ok(Value::Number(a.values.len() as f64)),
                 [Value::Dict(d)] => Ok(Value::Number(d.values.len() as f64)),
-                _ => Err(WrongType),
+                [_] => Err(WrongType),
             },
             BuiltInFunction::Push => {
                 let [array_val, new_value] = destructure_args(args)?;
@@ -550,7 +561,10 @@ impl Interpreter {
         arg_values: Vec<Value>,
     ) -> Result<Value, InterpreterError> {
         if function.params.len() != arg_values.len() {
-            return Err(TooManyArguments); // TODO
+            return Err(WrongArgumentCount {
+                expected: function.params.len(),
+                supplied: arg_values.len(),
+            });
         }
         let mut lambda_interpreter = Interpreter::new();
         for (name, value) in function.closure.iter() {
