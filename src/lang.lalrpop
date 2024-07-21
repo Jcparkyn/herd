@@ -1,5 +1,5 @@
 use std::{str::FromStr,rc::Rc};
-use crate::ast::{Expr, Opcode, Statement, Block, BuiltInFunction, AssignmentTarget, ValueIndex};
+use crate::ast::{Expr, Opcode, Statement, Block, BuiltInFunction, AssignmentTarget};
 use crate::parse_helpers::parse_string_literal;
 
 grammar;
@@ -19,9 +19,9 @@ StatementWithSemicolon: Statement = {
     <target:AssignmentTarget> "=" <e:Expr> ";" => Statement::Assignment(target, e),
 }
 
-ValueIndex: ValueIndex = {
-    "." <field:Identifier> => ValueIndex::Dict(field),
-    ".[" <index:r"-?[0-9]+"> "]" => ValueIndex::Array(usize::from_str(index).unwrap()),
+ValueIndex: Box<Expr> = {
+    "." <field:Identifier> => Box::new(Expr::String(field)),
+    ".[" <index:Expr> "]" => index,
 } 
 
 AssignmentTarget: AssignmentTarget = {

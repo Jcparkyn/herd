@@ -4,7 +4,7 @@ use std::{
     rc::Rc,
 };
 
-use crate::ast::{AssignmentTarget, Block, BuiltInFunction, Expr, Opcode, Statement, ValueIndex};
+use crate::ast::{Block, BuiltInFunction, Expr, Opcode, Statement};
 
 pub struct Interpreter {
     environment: Environment,
@@ -177,12 +177,19 @@ impl Environment {
     fn assign_part(
         old: Value,
         rhs: Value,
-        field: &ValueIndex,
-        path: &[ValueIndex],
+        index: &Value,
+        path: &[Value],
     ) -> Result<Value, InterpreterError> {
-        match field {
-            ValueIndex::Dict(name) => Self::assign_dict_field(old.to_dict()?, rhs, name, path),
-            ValueIndex::Array(idx) => Self::assign_array_index(old.to_array()?, rhs, *idx, path),
+        match index {
+            Value::String(name) => Self::assign_dict_field(old.to_dict()?, rhs, name, path),
+            Value::Number(idx) => {
+                let idx_int = *idx as usize;
+                if idx_int as f64 != *idx {
+                    return Err(WrongType);
+                }
+                return Self::assign_array_index(old.to_array()?, rhs, idx_int, path);
+            }
+            _ => Err(WrongType),
         }
     }
 
@@ -190,7 +197,7 @@ impl Environment {
         mut dict: Rc<DictInstance>,
         rhs: Value,
         field: &String,
-        path: &[ValueIndex],
+        path: &[Value],
     ) -> Result<Value, InterpreterError> {
         let mut_dict = Rc::make_mut(&mut dict);
         match path {
@@ -218,12 +225,12 @@ impl Environment {
         mut array: Rc<ArrayInstance>,
         rhs: Value,
         index: usize,
-        path: &[ValueIndex],
+        path: &[Value],
     ) -> Result<Value, InterpreterError> {
         let mut_array = Rc::make_mut(&mut array);
         match path {
             [] => {
-                if index >= mut_array.values.len() {
+                if index as usize >= mut_array.values.len() {
                     return Err(InterpreterError::IndexOutOfRange {
                         array_len: mut_array.values.len(),
                         accessed: index,
@@ -248,18 +255,19 @@ impl Environment {
 
     pub fn assign(
         &mut self,
-        target: &AssignmentTarget,
+        var: &String,
+        path: &[Value],
         value: Value,
     ) -> Result<(), InterpreterError> {
-        match &target.path[..] {
-            [] => return self.rebind(&target.var, value),
+        match &path[..] {
+            [] => return self.rebind(&var, value),
             [field, rest @ ..] => {
-                let current = match self.replace(&target.var, Value::Nil) {
+                let current = match self.replace(&var, Value::Nil) {
                     Some(x) => x,
-                    None => return Err(VariableNotDefined(target.var.clone())),
+                    None => return Err(VariableNotDefined(var.clone())),
                 };
                 let new_value = Self::assign_part(current, value, field, rest)?;
-                return self.rebind(&target.var, new_value);
+                return self.rebind(&var, new_value);
             }
         }
     }
@@ -312,7 +320,11 @@ impl Interpreter {
             }
             Statement::Assignment(target, expr) => {
                 let value = self.eval(&expr)?;
-                self.environment.assign(target, value)?;
+                let mut path_values = vec![];
+                for index in &target.path {
+                    path_values.push(self.eval(index)?);
+                }
+                self.environment.assign(&target.var, &path_values, value)?;
                 Ok(())
             }
             Statement::Expression(expr) => {

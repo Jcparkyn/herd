@@ -35,16 +35,10 @@ impl Debug for Block {
     }
 }
 
-#[derive(PartialEq, Debug, Clone)]
-pub enum ValueIndex {
-    Array(usize),
-    Dict(String),
-}
-
 #[derive(PartialEq, Debug)]
 pub struct AssignmentTarget {
     pub var: String,
-    pub path: Vec<ValueIndex>,
+    pub path: Vec<Box<Expr>>,
 }
 
 #[derive(PartialEq, Debug)]
@@ -52,7 +46,6 @@ pub enum Statement {
     Declaration(String, Box<Expr>),
     Assignment(AssignmentTarget, Box<Expr>),
     Expression(Box<Expr>),
-    // Return(Option<Box<Expr>>),
 }
 
 #[derive(PartialEq)]
