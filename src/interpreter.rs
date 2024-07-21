@@ -157,6 +157,14 @@ impl Display for Value {
     }
 }
 
+fn try_into_int(value: f64) -> Result<usize, InterpreterError> {
+    let int = value as usize;
+    if int as f64 != value {
+        return Err(WrongType);
+    }
+    Ok(int)
+}
+
 impl Environment {
     pub fn new() -> Environment {
         Environment {
@@ -183,10 +191,7 @@ impl Environment {
         match index {
             Value::String(name) => Self::assign_dict_field(old.to_dict()?, rhs, name, path),
             Value::Number(idx) => {
-                let idx_int = *idx as usize;
-                if idx_int as f64 != *idx {
-                    return Err(WrongType);
-                }
+                let idx_int = try_into_int(*idx)?;
                 return Self::assign_array_index(old.to_array()?, rhs, idx_int, path);
             }
             _ => Err(WrongType),
@@ -406,6 +411,26 @@ impl Interpreter {
                 }
                 Ok(Value::Array(Rc::new(ArrayInstance { values })))
             }
+            Expr::GetIndex(lhs_expr, index_expr) => {
+                let index = self.eval(&index_expr)?;
+                let lhs = self.eval(&lhs_expr)?;
+                match (lhs, index) {
+                    (Value::Dict(d), Value::String(name)) => {
+                        return Ok(d.values.get(&name).cloned().unwrap_or(Value::Nil));
+                    }
+                    (Value::Array(a), Value::Number(idx)) => {
+                        let idx_int = try_into_int(idx)?;
+                        return match a.values.get(idx_int) {
+                            Some(v) => Ok(v.clone()),
+                            None => Err(InterpreterError::IndexOutOfRange {
+                                array_len: a.values.len(),
+                                accessed: idx_int,
+                            }),
+                        };
+                    }
+                    _ => Err(WrongType),
+                }
+            }
         }
     }
 
@@ -586,6 +611,10 @@ fn get_identifiers_in_expr(expr: &Expr, out: &mut HashSet<String>) {
             for e in elements {
                 get_identifiers_in_expr(e, out);
             }
+        }
+        Expr::GetIndex(lhs_expr, index_expr) => {
+            get_identifiers_in_expr(lhs_expr, out);
+            get_identifiers_in_expr(index_expr, out);
         }
     }
 }

@@ -77,6 +77,7 @@ pub enum Expr {
     },
     Dict(Vec<(String, Box<Expr>)>),
     Array(Vec<Box<Expr>>),
+    GetIndex(Box<Expr>, Box<Expr>),
 }
 
 #[derive(PartialEq, Eq, Hash)]
@@ -122,6 +123,7 @@ impl Debug for Expr {
             }
             Expr::Dict(entries) => write!(f, "Dict{:?}", entries),
             Expr::Array(elements) => write!(f, "Array{:?}", elements),
+            Expr::GetIndex(lhs, index) => write!(f, "GetIndex({:?}, {:?})", lhs, index),
         }
     }
 }

@@ -15,8 +15,8 @@ pub Statement: Statement = {
 
 StatementWithSemicolon: Statement = {
     <ExpressionWithoutBlock> ";" => Statement::Expression(<>),
-    <name:Identifier> ":=" <e:Expr> ";" => Statement::Declaration(name, e),
-    <target:AssignmentTarget> "=" <e:Expr> ";" => Statement::Assignment(target, e),
+    <name:Identifier> "=" <e:Expr> ";" => Statement::Declaration(name, e),
+    "set" <target:AssignmentTarget> "=" <e:Expr> ";" => Statement::Assignment(target, e),
 }
 
 ValueIndex: Box<Expr> = {
@@ -94,6 +94,7 @@ Term: Box<Expr> = {
     LambdaExpression,
     DictLiteral,
     ArrayLiteral,
+    <lhs:Term> <index:ValueIndex> => Box::new(Expr::GetIndex(lhs, index)),
 };
 
 Tier<Op,NextTier>: Box<Expr> = {

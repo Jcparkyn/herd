@@ -1,22 +1,22 @@
 {
-  x := [:];
-  y := x;
-  y.a = 'a';
+  x = [:];
+  y = x;
+  set y.a = 'a';
   print x;
   print y;
 }
 
 {
-  order1 := [ status: [ dispatched: false ]];
-  order2 := order1;
-  order2.status.dispatched = true;
+  order1 = [ status: [ dispatched: false ]];
+  order2 = order1;
+  set order2.status.dispatched = true;
 
-  dispatch := { order ->
-    order.status.dispatched = true;
-    order.status.dispatched_at = '2024-07-20';
+  dispatch = { order ->
+    set order.status.dispatched = true;
+    set order.status.dispatched_at = '2024-07-20';
     order
   };
-  order3 := dispatch order1;
+  order3 = dispatch order1;
 
   print order1;
   print order2;

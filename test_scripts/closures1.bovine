@@ -1,6 +1,6 @@
-a := 'global';
+a = 'global';
 {
-  showA := { x -> print a; };
+  showA = { x -> print a };
   showA 0;
   a = 'block';
   showA 0;
