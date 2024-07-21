@@ -362,9 +362,11 @@ impl Interpreter {
                     Expr::Lambda {
                         ref params,
                         ref body,
+                        ref potential_captures,
                     } => {
                         // Workaround to allow simple recursive functions without Rc cycles
-                        let mut l = self.eval_lambda_definition(&body, &params);
+                        let mut l =
+                            self.eval_lambda_definition(&body, &params, &potential_captures);
                         l.self_name = Some(name.clone());
                         Value::Lambda(Rc::new(l))
                     }
@@ -447,8 +449,12 @@ impl Interpreter {
                     _ => Err(WrongType),
                 }
             }
-            Expr::Lambda { params, body } => {
-                let f = self.eval_lambda_definition(body, params);
+            Expr::Lambda {
+                params,
+                body,
+                potential_captures,
+            } => {
+                let f = self.eval_lambda_definition(body, params, potential_captures);
                 Ok(Value::Lambda(Rc::new(f)))
             }
             Expr::Dict(entries) => {
@@ -488,13 +494,16 @@ impl Interpreter {
         }
     }
 
-    fn eval_lambda_definition(&mut self, body: &Rc<Block>, params: &Vec<String>) -> LambdaFunction {
-        let mut potential_captures = HashSet::new();
-        get_identifiers_in_block(body, &mut potential_captures);
+    fn eval_lambda_definition(
+        &mut self,
+        body: &Rc<Block>,
+        params: &Vec<String>,
+        potential_captures: &Vec<String>,
+    ) -> LambdaFunction {
         let mut captures = HashMap::new();
         for pc in potential_captures {
             if let Some(v) = self.environment.get(&pc) {
-                captures.insert(pc, v.clone());
+                captures.insert(pc.clone(), v.clone());
             }
         }
         LambdaFunction {
@@ -707,7 +716,7 @@ fn get_identifiers_in_expr(expr: &Expr, out: &mut HashSet<String>) {
                 get_identifiers_in_expr(arg, out);
             }
         }
-        Expr::Lambda { params: _, body } => {
+        Expr::Lambda { body, .. } => {
             get_identifiers_in_block(body, out);
         }
         Expr::Dict(entries) => {
@@ -723,6 +732,118 @@ fn get_identifiers_in_expr(expr: &Expr, out: &mut HashSet<String>) {
         Expr::GetIndex(lhs_expr, index_expr) => {
             get_identifiers_in_expr(lhs_expr, out);
             get_identifiers_in_expr(index_expr, out);
+        }
+    }
+}
+
+pub fn analyze_statements(stmts: &mut [Statement], deps: &mut HashSet<String>) {
+    for stmt in stmts.iter_mut().rev() {
+        analyze_statement(stmt, deps);
+    }
+}
+
+pub fn analyze_statement(stmt: &mut Statement, deps: &mut HashSet<String>) {
+    match stmt {
+        Statement::Declaration(name, rhs) => {
+            deps.remove(name);
+            analyze_expr(rhs, deps);
+        }
+        Statement::Assignment(target, rhs) => {
+            if target.path.is_empty() {
+                deps.remove(&target.var);
+            }
+            analyze_expr(rhs, deps);
+        }
+        Statement::Expression(expr) => {
+            analyze_expr(expr, deps);
+        }
+    }
+}
+
+fn analyze_block(block: &mut Block, deps: &mut HashSet<String>) {
+    // deps: Variables that may be depended on at the current execution point.
+    // Code is processed in reverse order, starting with the final expression.
+    if let Some(expr) = &mut block.expression {
+        analyze_expr(expr, deps);
+    }
+    analyze_statements(&mut block.statements, deps);
+}
+
+fn analyze_expr(expr: &mut Expr, deps: &mut HashSet<String>) {
+    // deps: Variables that may be depended on at the current execution point.
+    // Code is processed in reverse order.
+    match expr {
+        Expr::Number(_) => {}
+        Expr::Bool(_) => {}
+        Expr::String(_) => {}
+        Expr::Nil => {}
+        Expr::Variable(name) => {
+            deps.insert(name.to_string());
+        }
+        Expr::If {
+            condition,
+            then_branch,
+            else_branch,
+        } => {
+            // TODO proper union
+            let mut deps_else = HashSet::new();
+            if let Some(else_branch) = else_branch {
+                deps_else = deps.clone();
+                analyze_block(else_branch, &mut deps_else);
+            }
+            analyze_block(then_branch, deps);
+            // Deps at start of expression are union of both blocks (because we don't know which branch will be taken).
+            for dep in deps_else {
+                deps.insert(dep.clone());
+            }
+            analyze_expr(condition, deps);
+        }
+        Expr::Op { op: _, lhs, rhs } => {
+            analyze_expr(rhs, deps);
+            analyze_expr(lhs, deps);
+        }
+        Expr::Block(block) => {
+            analyze_block(block, deps);
+        }
+        Expr::BuiltInFunction(_) => {}
+        Expr::Call { callee, args } => {
+            for arg in args.iter_mut().rev() {
+                analyze_expr(arg, deps);
+            }
+            analyze_expr(callee, deps);
+        }
+        Expr::Lambda {
+            body,
+            potential_captures,
+            params,
+        } => {
+            // TODO proper analysis
+            let mut lambda_deps = HashSet::new();
+            get_identifiers_in_block(&body, &mut lambda_deps);
+            for p in params {
+                lambda_deps.remove(p);
+            }
+            for dep in lambda_deps {
+                (*potential_captures).push(dep);
+            }
+            // analyze lambda body, in a separate scope.
+            // TODO assuming no shared references to body yet.
+            let mut_body = Rc::get_mut(body).unwrap();
+            analyze_block(mut_body, &mut HashSet::new());
+        }
+        Expr::Dict(entries) => {
+            for (_, v) in entries.iter_mut().rev() {
+                analyze_expr(v, deps);
+            }
+        }
+        Expr::Array(elements) => {
+            for e in elements.iter_mut().rev() {
+                analyze_expr(e, deps);
+            }
+        }
+        Expr::GetIndex(lhs_expr, index_expr) => {
+            analyze_expr(lhs_expr, deps);
+            analyze_expr(index_expr, deps);
         }
     }
 }

@@ -88,6 +88,7 @@ pub enum Expr {
     Lambda {
         params: Vec<String>,
         body: Rc<Block>,
+        potential_captures: Vec<String>,
     },
     Dict(Vec<(String, Box<Expr>)>),
     Array(Vec<Box<Expr>>),
@@ -132,9 +133,16 @@ impl Debug for Expr {
                 Ok(())
             }
             Expr::Call { callee, args } => f.debug_tuple("Call").field(callee).field(args).finish(),
-            Expr::Lambda { params, body } => {
-                f.debug_tuple("Lambda").field(params).field(body).finish()
-            }
+            Expr::Lambda {
+                params,
+                body,
+                potential_captures,
+            } => f
+                .debug_tuple("Lambda")
+                .field(params)
+                .field(body)
+                .field(potential_captures)
+                .finish(),
             Expr::Dict(entries) => write!(f, "Dict{:?}", entries),
             Expr::Array(elements) => write!(f, "Array{:?}", elements),
             Expr::GetIndex(lhs, index) => write!(f, "GetIndex({:?}, {:?})", lhs, index),

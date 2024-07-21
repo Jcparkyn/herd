@@ -58,7 +58,7 @@ BoolLiteral: bool = {
 };
 
 LambdaExpression: Box<Expr> = {
-    "{" <params:Comma<Identifier>> "->" <body:BlockBody> "}" => Box::new(Expr::Lambda { params, body: Rc::new(body) })
+    "{" <params:Comma<Identifier>> "->" <body:BlockBody> "}" => Box::new(Expr::Lambda { params, body: Rc::new(body), potential_captures: vec![] })
 }
 
 DictEntry: (String, Box<Expr>) = {
