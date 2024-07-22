@@ -45,7 +45,14 @@ BlockExpression: Block = {
 }
 
 BlockBody: Block = {
-    <s:StatementWithSemicolon*> <e:Expr?> => Block { statements: s, expression: e },
+    => Block { statements: vec![], expression: None },
+    // separate patterns to remove ambiguity.
+    // If there's no trailing semicolon it should always be an Expr.
+    <s:Statement*> <e:Expr> => Block { statements: s, expression: Some(e) },
+    <mut s1:Statement*> <s2:StatementWithSemicolon> => Block {
+        statements: { s1.push(s2); s1 },
+        expression: None,
+    },
 }
 
 NumLiteral: f64 = {
