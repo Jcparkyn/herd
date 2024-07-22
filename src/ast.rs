@@ -73,7 +73,10 @@ pub enum Expr {
         lhs: Box<Expr>,
         rhs: Box<Expr>,
     },
-    Variable(String),
+    Variable {
+        name: String,
+        is_final: bool,
+    },
     Block(Block),
     If {
         condition: Box<Expr>,
@@ -117,7 +120,9 @@ impl Debug for Expr {
             Expr::String(s) => write!(f, "'{}'", s),
             Expr::BuiltInFunction(b) => write!(f, "{:?}", b),
             Expr::Op { op, lhs, rhs } => write!(f, "({:?} {:?} {:?})", lhs, op, rhs),
-            Expr::Variable(v) => write!(f, "{:?}", v),
+            Expr::Variable { name, is_final } => {
+                write!(f, "{:?}{}", name, if *is_final { "❌" } else { "" })
+            }
             Expr::Block(b) => b.fmt(f),
             Expr::Nil => f.write_str("nil"),
             Expr::If {

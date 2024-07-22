@@ -83,7 +83,7 @@ Term: Box<Expr> = {
     BoolLiteral => Box::new(Expr::Bool(<>)),
     "nil" => Box::new(Expr::Nil),
     r"'[^']*'" => Box::new(Expr::String(parse_string_literal(<>))),
-    Identifier => Box::new(Expr::Variable(<>)),
+    Identifier => Box::new(Expr::Variable { name: <>, is_final: false }),
     "(" <Expr> ")",
     LambdaExpression,
     DictLiteral,

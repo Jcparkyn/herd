@@ -78,7 +78,8 @@ fn run_repl() {
                     break;
                 }
                 Ok(mut statement) => {
-                    analyze_statement(&mut statement, &mut HashSet::new());
+                    let mut deps = HashSet::from_iter(interpreter.list_globals().cloned());
+                    analyze_statement(&mut statement, &mut deps);
                     println!("ast: {:?}", statement);
                     match interpreter.execute(&statement) {
                         Ok(()) => {}

@@ -355,6 +355,10 @@ impl Interpreter {
         }
     }
 
+    pub fn list_globals(&self) -> impl Iterator<Item = &String> + '_ {
+        self.environment.scopes.iter().flat_map(|s| s.keys())
+    }
+
     pub fn execute(&mut self, statement: &Statement) -> Result<(), InterpreterError> {
         match statement {
             Statement::Declaration(name, expr) => {
@@ -413,12 +417,21 @@ impl Interpreter {
             Expr::Bool(b) => Ok(Bool(*b)),
             Expr::String(s) => Ok(String(s.clone())),
             Expr::Nil => Ok(Nil),
-            Expr::Variable(name) => match BUILTIN_FUNCTIONS.get(&name) {
+            Expr::Variable { name, is_final } => match BUILTIN_FUNCTIONS.get(&name) {
                 Some(f) => Ok(Builtin(*f)),
-                None => match self.environment.get(name) {
-                    Some(v) => Ok(v.clone()),
-                    None => Err(VariableNotDefined(name.clone())),
-                },
+                None => {
+                    if *is_final {
+                        match self.environment.replace(name, Value::Nil) {
+                            Some(v) => Ok(v),
+                            None => Err(VariableNotDefined(name.clone())),
+                        }
+                    } else {
+                        match self.environment.get(name) {
+                            Some(v) => Ok(v.clone()),
+                            None => Err(VariableNotDefined(name.clone())),
+                        }
+                    }
+                }
             },
             Expr::If {
                 condition,
@@ -660,82 +673,6 @@ impl Interpreter {
     }
 }
 
-// TODO Ideally this should only return captured variables (excluding ones that are assigned in the block)
-fn get_identifiers_in_block(block: &Block, out: &mut HashSet<String>) {
-    for stmt in &block.statements {
-        match stmt {
-            Statement::Declaration(name, rhs) => {
-                out.insert(name.to_string());
-                get_identifiers_in_expr(rhs, out);
-            }
-            Statement::Assignment(target, rhs) => {
-                out.insert(target.var.clone());
-                get_identifiers_in_expr(rhs, out);
-            }
-            Statement::Expression(expr) => {
-                get_identifiers_in_expr(expr, out);
-            }
-        }
-    }
-    if let Some(expr) = &block.expression {
-        get_identifiers_in_expr(expr, out);
-    }
-}
-
-fn get_identifiers_in_expr(expr: &Expr, out: &mut HashSet<String>) {
-    match expr {
-        Expr::Number(_) => {}
-        Expr::Bool(_) => {}
-        Expr::String(_) => {}
-        Expr::Nil => {}
-        Expr::Variable(name) => {
-            out.insert(name.to_string());
-        }
-        Expr::If {
-            condition,
-            then_branch,
-            else_branch,
-        } => {
-            get_identifiers_in_expr(condition, out);
-            get_identifiers_in_block(then_branch, out);
-            if let Some(else_branch2) = else_branch {
-                get_identifiers_in_block(&else_branch2, out);
-            }
-        }
-        Expr::Op { op: _, lhs, rhs } => {
-            get_identifiers_in_expr(lhs, out);
-            get_identifiers_in_expr(rhs, out);
-        }
-        Expr::Block(block) => {
-            get_identifiers_in_block(block, out);
-        }
-        Expr::BuiltInFunction(_) => {}
-        Expr::Call { callee, args } => {
-            get_identifiers_in_expr(callee, out);
-            for arg in args {
-                get_identifiers_in_expr(arg, out);
-            }
-        }
-        Expr::Lambda { body, .. } => {
-            get_identifiers_in_block(body, out);
-        }
-        Expr::Dict(entries) => {
-            for (_, v) in entries {
-                get_identifiers_in_expr(v, out);
-            }
-        }
-        Expr::Array(elements) => {
-            for e in elements {
-                get_identifiers_in_expr(e, out);
-            }
-        }
-        Expr::GetIndex(lhs_expr, index_expr) => {
-            get_identifiers_in_expr(lhs_expr, out);
-            get_identifiers_in_expr(index_expr, out);
-        }
-    }
-}
-
 pub fn analyze_statements(stmts: &mut [Statement], deps: &mut HashSet<String>) {
     for stmt in stmts.iter_mut().rev() {
         analyze_statement(stmt, deps);
@@ -777,15 +714,14 @@ fn analyze_expr(expr: &mut Expr, deps: &mut HashSet<String>) {
         Expr::Bool(_) => {}
         Expr::String(_) => {}
         Expr::Nil => {}
-        Expr::Variable(name) => {
-            deps.insert(name.to_string());
+        Expr::Variable { name, is_final } => {
+            *is_final = deps.insert(name.to_string());
         }
         Expr::If {
             condition,
             then_branch,
             else_branch,
         } => {
-            // TODO proper union
             let mut deps_else = HashSet::new();
             if let Some(else_branch) = else_branch {
                 deps_else = deps.clone();
@@ -817,19 +753,17 @@ fn analyze_expr(expr: &mut Expr, deps: &mut HashSet<String>) {
             potential_captures,
             params,
         } => {
-            // TODO proper analysis
+            // TODO assuming no shared references to body at this point.
+            let mut_body = Rc::get_mut(body).unwrap();
+            // analyze lambda body, in a separate scope.
             let mut lambda_deps = HashSet::new();
-            get_identifiers_in_block(&body, &mut lambda_deps);
+            analyze_block(mut_body, &mut lambda_deps);
             for p in params {
                 lambda_deps.remove(p);
             }
             for dep in lambda_deps {
                 (*potential_captures).push(dep);
             }
-            // analyze lambda body, in a separate scope.
-            // TODO assuming no shared references to body yet.
-            let mut_body = Rc::get_mut(body).unwrap();
-            analyze_block(mut_body, &mut HashSet::new());
         }
         Expr::Dict(entries) => {
             for (_, v) in entries.iter_mut().rev() {
