@@ -16,6 +16,7 @@ pub struct Environment {
 
 #[derive(Debug, Clone)]
 pub enum InterpreterError {
+    Return(Value), // Implemented as an error to simplifiy implementation.
     VariableAlreadyDefined(String),
     VariableNotDefined(String),
     FieldNotExists(String),
@@ -45,6 +46,7 @@ impl Display for InterpreterError {
                 )
             }
             WrongType => write!(f, "Wrong type"),
+            Return(val) => write!(f, "Returning {val}"),
         }
     }
 }
@@ -394,6 +396,10 @@ impl Interpreter {
                 self.eval(&expr)?;
                 Ok(())
             }
+            Statement::Return(expr) => {
+                let value = self.eval(&expr)?;
+                Err(Return(value))
+            }
         }
     }
 
@@ -515,6 +521,7 @@ impl Interpreter {
     ) -> LambdaFunction {
         let mut captures = HashMap::new();
         for pc in potential_captures {
+            // TODO these should check liveness as well
             if let Some(v) = self.environment.get(&pc) {
                 captures.insert(pc.clone(), v.clone());
             }
@@ -662,7 +669,11 @@ impl Interpreter {
                 .environment
                 .declare(name.clone(), value.clone())?;
         }
-        lambda_interpreter.eval_block(&function.body)
+        return match lambda_interpreter.eval_block(&function.body) {
+            Ok(val) => Ok(val),
+            Err(InterpreterError::Return(v)) => Ok(v),
+            Err(e) => Err(e),
+        };
     }
 
     fn run_in_scope<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> T {
@@ -694,6 +705,7 @@ pub fn analyze_statement(stmt: &mut Statement, deps: &mut HashSet<String>) {
         Statement::Expression(expr) => {
             analyze_expr(expr, deps);
         }
+        Statement::Return(expr) => analyze_expr(expr, deps),
     }
 }
 

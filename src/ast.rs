@@ -60,6 +60,7 @@ pub enum Statement {
     Declaration(String, Box<Expr>),
     Assignment(AssignmentTarget, Box<Expr>),
     Expression(Box<Expr>),
+    Return(Box<Expr>),
 }
 
 #[derive(PartialEq)]

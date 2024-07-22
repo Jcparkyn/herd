@@ -1,4 +1,4 @@
-use interpreter::{analyze_statement, analyze_statements, Interpreter};
+use interpreter::{analyze_statement, analyze_statements, Interpreter, InterpreterError};
 use lalrpop_util::{lalrpop_mod, ParseError};
 use std::{
     collections::HashSet,
@@ -39,10 +39,12 @@ fn main() {
                 for statement in program {
                     match interpreter.execute(&statement) {
                         Ok(()) => {}
-                        Err(err) => {
-                            println!("Error while evaluating: {}", err);
-                            return;
+                        Err(InterpreterError::Return(_)) => {
+                            return println!(
+                                "Error: You can only use return statements inside a function."
+                            )
                         }
+                        Err(err) => return println!("Error while evaluating: {}", err),
                     }
                 }
             }
@@ -83,6 +85,9 @@ fn run_repl() {
                     println!("ast: {:?}", statement);
                     match interpreter.execute(&statement) {
                         Ok(()) => {}
+                        Err(InterpreterError::Return(value)) => {
+                            return println!("Return value: {value}")
+                        }
                         Err(err) => println!("Error while evaluating: {}", err),
                     }
                     break;

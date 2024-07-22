@@ -1,0 +1,10 @@
+
+fn1 = { x ->
+  y = [1, 3, 2];
+  if x > 10 then { return y; }
+  print x;
+  return 'small';
+};
+
+print (fn1 17);
+print (fn1 2);

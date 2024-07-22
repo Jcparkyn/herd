@@ -17,6 +17,7 @@ StatementWithSemicolon: Statement = {
     <ExpressionWithoutBlock> ";" => Statement::Expression(<>),
     <name:Identifier> "=" <e:Expr> ";" => Statement::Declaration(name, e),
     "set" <target:AssignmentTarget> "=" <e:Expr> ";" => Statement::Assignment(target, e),
+    "return" <e:Expr> ";" => Statement::Return(e),
 }
 
 ValueIndex: Box<Expr> = {
