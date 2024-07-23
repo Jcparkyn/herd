@@ -9,6 +9,7 @@ use std::rc::Rc;
 pub enum BuiltInFunction {
     Print,
     Not,
+    Range,
     Push,
     Pop,
     Len,
@@ -20,6 +21,7 @@ impl BuiltInFunction {
         match self {
             BuiltInFunction::Print => "print",
             BuiltInFunction::Not => "not",
+            BuiltInFunction::Range => "range",
             BuiltInFunction::Push => "push",
             BuiltInFunction::Pop => "pop",
             BuiltInFunction::Len => "len",
@@ -76,6 +78,9 @@ pub enum Expr {
     },
     Variable {
         name: String,
+        /// True if this is guaranteed to be the final usage of this binding, so it can be dropped.
+        /// This starts out true for all variables, and the analysis passes will clear it if there
+        /// is a chance of this variable being used later.
         is_final: bool,
     },
     Block(Block),
@@ -97,6 +102,11 @@ pub enum Expr {
     Dict(Vec<(String, Box<Expr>)>),
     Array(Vec<Box<Expr>>),
     GetIndex(Box<Expr>, Box<Expr>),
+    ForIn {
+        iter: Box<Expr>,
+        var: String,
+        body: Block,
+    },
 }
 
 #[derive(PartialEq, Eq, Hash)]
@@ -152,6 +162,9 @@ impl Debug for Expr {
             Expr::Dict(entries) => write!(f, "Dict{:?}", entries),
             Expr::Array(elements) => write!(f, "Array{:?}", elements),
             Expr::GetIndex(lhs, index) => write!(f, "GetIndex({:?}, {:?})", lhs, index),
+            Expr::ForIn { iter, var, body } => {
+                write!(f, "ForIn({var}, {iter:?}, {body:?})")
+            }
         }
     }
 }

@@ -334,6 +334,7 @@ impl Environment {
 static BUILTIN_FUNCTIONS: phf::Map<&'static str, BuiltInFunction> = phf::phf_map! {
     "print" => BuiltInFunction::Print,
     "not" => BuiltInFunction::Not,
+    "range" => BuiltInFunction::Range,
     "len" => BuiltInFunction::Len,
     "push" => BuiltInFunction::Push,
     "pop" => BuiltInFunction::Pop,
@@ -404,16 +405,18 @@ impl Interpreter {
     }
 
     pub fn eval_block(&mut self, block: &Block) -> Result<Value, InterpreterError> {
-        self.run_in_scope(|s| {
-            for stmt in block.statements.iter() {
-                s.execute(stmt)?;
-            }
-            if let Some(expr) = &block.expression {
-                s.eval(expr)
-            } else {
-                Ok(Value::Nil)
-            }
-        })
+        self.run_in_scope(|s| s.eval_block_without_scope(block))
+    }
+
+    pub fn eval_block_without_scope(&mut self, block: &Block) -> Result<Value, InterpreterError> {
+        for stmt in block.statements.iter() {
+            self.execute(stmt)?;
+        }
+        if let Some(expr) = &block.expression {
+            self.eval(expr)
+        } else {
+            Ok(Value::Nil)
+        }
     }
 
     pub fn eval(&mut self, expr: &Expr) -> Result<Value, InterpreterError> {
@@ -510,6 +513,22 @@ impl Interpreter {
                     _ => Err(WrongType),
                 }
             }
+            Expr::ForIn { iter, var, body } => {
+                let iter_value = self.eval(&iter)?;
+                match iter_value {
+                    Value::Array(a) => {
+                        for v in a.values.iter() {
+                            self.run_in_scope(|s| {
+                                s.environment.declare(var.clone(), v.clone())?;
+                                s.eval_block(&body)?;
+                                Ok(())
+                            })?;
+                        }
+                        Ok(Value::Nil)
+                    }
+                    _ => Err(WrongType),
+                }
+            }
         }
     }
 
@@ -591,6 +610,16 @@ impl Interpreter {
             BuiltInFunction::Not => {
                 let [arg] = destructure_args(args)?;
                 return Ok(Value::Bool(!arg.truthy()));
+            }
+            BuiltInFunction::Range => {
+                let [start, stop] = destructure_args(args)?;
+                let start_int = try_into_int(start.as_number()?)?;
+                let stop_int = try_into_int(stop.as_number()?)?;
+                let mut values = Vec::new();
+                for i in start_int..stop_int {
+                    values.push(Value::Number(i as f64));
+                }
+                return Ok(Value::Array(Rc::new(ArrayInstance { values })));
             }
             BuiltInFunction::Len => match destructure_args::<1>(args)? {
                 [Value::Array(a)] => Ok(Value::Number(a.values.len() as f64)),
@@ -727,22 +756,23 @@ fn analyze_expr(expr: &mut Expr, deps: &mut HashSet<String>) {
         Expr::String(_) => {}
         Expr::Nil => {}
         Expr::Variable { name, is_final } => {
-            *is_final = deps.insert(name.to_string());
+            // If is_final was already cleared, don't set it.
+            // This is required for loops, which are analyzed twice.
+            *is_final = *is_final && deps.insert(name.to_string());
         }
         Expr::If {
             condition,
             then_branch,
             else_branch,
         } => {
-            let mut deps_else = HashSet::new();
+            let mut deps_else = deps.clone(); // need to clone even if else is empty, in case deps got removed in if branch.
             if let Some(else_branch) = else_branch {
-                deps_else = deps.clone();
                 analyze_block(else_branch, &mut deps_else);
             }
             analyze_block(then_branch, deps);
             // Deps at start of expression are union of both blocks (because we don't know which branch will be taken).
             for dep in deps_else {
-                deps.insert(dep.clone());
+                deps.insert(dep);
             }
             analyze_expr(condition, deps);
         }
@@ -790,6 +820,24 @@ fn analyze_expr(expr: &mut Expr, deps: &mut HashSet<String>) {
         Expr::GetIndex(lhs_expr, index_expr) => {
             analyze_expr(lhs_expr, deps);
             analyze_expr(index_expr, deps);
+        }
+        Expr::ForIn { var, iter, body } => {
+            // TODO (I think) this doesn't account for the fact that variables declared in the loop (including the loop variable)
+            // are cleared each loop. We could be a bit more aggressive here.
+            let mut deps_last_loop = deps.clone();
+            analyze_block(body, &mut deps_last_loop);
+            let mut deps_other_loops = deps_last_loop.clone();
+            deps_other_loops.remove(var); // var can't persist between loops.
+            analyze_block(body, &mut deps_other_loops);
+            // final dependency set is union of 0 loops, 1 loop, and >1 loops.
+            for dep in deps_last_loop {
+                deps.insert(dep);
+            }
+            for dep in deps_other_loops {
+                deps.insert(dep);
+            }
+            analyze_expr(iter, deps);
+            deps.remove(var);
         }
     }
 }

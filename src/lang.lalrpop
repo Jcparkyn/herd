@@ -30,8 +30,9 @@ AssignmentTarget: AssignmentTarget = {
 }   
 
 ExpressionWithoutBlock = LogicExpr;
-ExpressionWithBlock = {
+ExpressionWithBlock: Box<Expr> = {
     IfExpression,
+    "for" <var:Identifier> "in" <iter:Expr> "do" <body:BlockExpression> => Box::new(Expr::ForIn { var, iter, body }),
     <BlockExpression> => Box::new(Expr::Block(<>)),
 }
 
@@ -91,7 +92,7 @@ Term: Box<Expr> = {
     BoolLiteral => Box::new(Expr::Bool(<>)),
     "nil" => Box::new(Expr::Nil),
     r"'[^']*'" => Box::new(Expr::String(parse_string_literal(<>))),
-    Identifier => Box::new(Expr::Variable { name: <>, is_final: false }),
+    Identifier => Box::new(Expr::Variable { name: <>, is_final: true }),
     "(" <Expr> ")",
     LambdaExpression,
     DictLiteral,
