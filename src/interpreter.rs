@@ -97,7 +97,7 @@ impl Clone for ArrayInstance {
 
 impl Drop for ArrayInstance {
     fn drop(&mut self) {
-        println!("Dropping array: {:?}", self);
+        // println!("Dropping array: {:?}", self);
     }
 }
 
@@ -339,6 +339,7 @@ static BUILTIN_FUNCTIONS: phf::Map<&'static str, BuiltInFunction> = phf::phf_map
     "push" => BuiltInFunction::Push,
     "pop" => BuiltInFunction::Pop,
     "sort" => BuiltInFunction::Sort,
+    "shiftLeft" => BuiltInFunction::ShiftLeft,
 };
 
 fn destructure_args<const N: usize>(args: Vec<Value>) -> Result<[Value; N], InterpreterError> {
@@ -666,6 +667,12 @@ impl Interpreter {
                     }
                     _ => return Err(WrongType),
                 }
+            }
+            BuiltInFunction::ShiftLeft => {
+                let [val, shift_by] = destructure_args(args)?;
+                let val_int = try_into_int(val.as_number()?)?;
+                let shift_by_int = try_into_int(shift_by.as_number()?)?;
+                return Ok(Value::Number((val_int << shift_by_int) as f64));
             }
         }
     }
