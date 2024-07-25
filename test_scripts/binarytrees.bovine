@@ -10,9 +10,7 @@ makeTree = { d ->
 
 checkTree = { node ->
   if node == nil then { 1 } else {
-    l = node.[0];
-    r = node.[1];
-    1 + (checkTree l) + (checkTree r)
+    1 + (checkTree node.[0]) + (checkTree node.[1])
   }
 };
 
@@ -36,4 +34,4 @@ main = { n ->
   print 'long lived tree of depth' maxDepth 'check:' (checkTree longLivedTree);
 };
 
-main 10;
+main 14;

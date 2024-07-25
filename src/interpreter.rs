@@ -726,7 +726,7 @@ pub fn analyze_statements(stmts: &mut [Statement], deps: &mut HashSet<String>) {
     }
 }
 
-pub fn analyze_statement(stmt: &mut Statement, deps: &mut HashSet<String>) {
+fn analyze_statement(stmt: &mut Statement, deps: &mut HashSet<String>) {
     match stmt {
         Statement::Declaration(name, rhs) => {
             deps.remove(name);

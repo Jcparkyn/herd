@@ -8,7 +8,7 @@ pub Program: Vec<Statement> = {
     Statement+
 }
 
-pub Statement: Statement = {
+Statement: Statement = {
     StatementWithSemicolon,
     <ExprWithBlock> => Statement::Expression(<>),
 }
@@ -20,6 +20,47 @@ StatementWithSemicolon: Statement = {
     "return" <e:Expr> ";" => Statement::Return(e),
 }
 
+Expr = {
+    ExprWithoutBlock,
+    ExprWithBlock,
+}
+
+ExprWithoutBlock = {
+    LogicExpr,
+    <callee:Term> <args:Term+> => Box::new(Expr::Call { callee, args }),
+}
+
+// Expressions that don't need a trailing semicolon
+ExprWithBlock: Box<Expr> = {
+    IfExpression,
+    "for" <var:Identifier> "in" <iter:Expr> "do" <body:BlockExpr> => Box::new(Expr::ForIn { var, iter, body }),
+    <BlockExpr> => Box::new(Expr::Block(<>)),
+}
+
+LogicExpr = Tier<LogicOp, ComparisonExpr>;
+
+ComparisonExpr = Tier<ComparisonOp, AddSubExpr>;
+
+AddSubExpr: Box<Expr> = {
+    <lhs:AddSubExpr> <op:AddSubOp> <rhs:Factor> => Box::new(Expr::Op { op, lhs, rhs }),
+    Factor,
+}
+
+Factor = Tier<FactorOp, Term>;
+
+Term: Box<Expr> = {
+    NumLiteral => Box::new(Expr::Number(<>)),
+    BoolLiteral => Box::new(Expr::Bool(<>)),
+    "nil" => Box::new(Expr::Nil),
+    r"'[^']*'" => Box::new(Expr::String(parse_string_literal(<>))),
+    Identifier => Box::new(Expr::Variable { name: <>, is_final: true }),
+    "(" <Expr> ")",
+    LambdaExpr,
+    DictLiteral,
+    ArrayLiteral,
+    <lhs:Term> <index:ValueIndex> => Box::new(Expr::GetIndex(lhs, index)),
+};
+
 ValueIndex: Box<Expr> = {
     "." <field:Identifier> => Box::new(Expr::String(field)),
     ".[" <index:Expr> "]" => index,
@@ -28,13 +69,6 @@ ValueIndex: Box<Expr> = {
 AssignmentTarget: AssignmentTarget = {
     <var:Identifier> <path:ValueIndex*> => AssignmentTarget { var, path },
 }   
-
-ExprWithoutBlock = LogicExpr;
-ExprWithBlock: Box<Expr> = {
-    IfExpression,
-    "for" <var:Identifier> "in" <iter:Expr> "do" <body:BlockExpr> => Box::new(Expr::ForIn { var, iter, body }),
-    <BlockExpr> => Box::new(Expr::Block(<>)),
-}
 
 IfExpression: Box<Expr> = {
     "if " <cond:Expr> "then" <b1:BlockExpr> <b2:("else" <BlockExpr>)?> => Box::new(
@@ -87,42 +121,6 @@ Identifier: String = {
     <r"[a-zA-Z]\w*"> => <>.to_string(),
 }
 
-Term: Box<Expr> = {
-    NumLiteral => Box::new(Expr::Number(<>)),
-    BoolLiteral => Box::new(Expr::Bool(<>)),
-    "nil" => Box::new(Expr::Nil),
-    r"'[^']*'" => Box::new(Expr::String(parse_string_literal(<>))),
-    Identifier => Box::new(Expr::Variable { name: <>, is_final: true }),
-    "(" <Expr> ")",
-    LambdaExpr,
-    DictLiteral,
-    ArrayLiteral,
-    <lhs:Term> <index:ValueIndex> => Box::new(Expr::GetIndex(lhs, index)),
-};
-
-Tier<Op,NextTier>: Box<Expr> = {
-    <lhs:Tier<Op,NextTier>> <op:Op> <rhs:NextTier> => Box::new(Expr::Op { op, lhs, rhs }),
-    NextTier
-};
-
-CallExpr: Box<Expr> = {
-    <callee:Term> <args:Term+> => Box::new(Expr::Call { callee, args }),
-}
-
-pub Expr = {
-    ExprWithoutBlock,
-    ExprWithBlock,
-}
-
-LogicExpr = Tier<LogicOp, ComparisonExpr>;
-ComparisonExpr = Tier<ComparisonOp, AddSubCallExpr>;
-AddSubCallExpr: Box<Expr> = {
-    <lhs:AddSubCallExpr> <op:AddSubOp> <rhs:Factor> => Box::new(Expr::Op { op, lhs, rhs }),
-    Factor,
-    CallExpr,
-}
-Factor = Tier<FactorOp, Term>;
-
 LogicOp: Opcode = {
     "and" => Opcode::And,
     "or" => Opcode::Or,
@@ -143,6 +141,11 @@ AddSubOp: Opcode = {
 FactorOp: Opcode = {
     "*" => Opcode::Mul,
     "/" => Opcode::Div,
+};
+
+Tier<Op,NextTier>: Box<Expr> = {
+    <lhs:Tier<Op,NextTier>> <op:Op> <rhs:NextTier> => Box::new(Expr::Op { op, lhs, rhs }),
+    NextTier
 };
 
 CommaPlus<T>: Vec<T> = {
