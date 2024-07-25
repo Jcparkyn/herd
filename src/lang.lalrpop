@@ -10,11 +10,11 @@ pub Program: Vec<Statement> = {
 
 pub Statement: Statement = {
     StatementWithSemicolon,
-    <ExpressionWithBlock> => Statement::Expression(<>),
+    <ExprWithBlock> => Statement::Expression(<>),
 }
 
 StatementWithSemicolon: Statement = {
-    <ExpressionWithoutBlock> ";" => Statement::Expression(<>),
+    <ExprWithoutBlock> ";" => Statement::Expression(<>),
     <name:Identifier> "=" <e:Expr> ";" => Statement::Declaration(name, e),
     "set" <target:AssignmentTarget> "=" <e:Expr> ";" => Statement::Assignment(target, e),
     "return" <e:Expr> ";" => Statement::Return(e),
@@ -29,20 +29,20 @@ AssignmentTarget: AssignmentTarget = {
     <var:Identifier> <path:ValueIndex*> => AssignmentTarget { var, path },
 }   
 
-ExpressionWithoutBlock = LogicExpr;
-ExpressionWithBlock: Box<Expr> = {
+ExprWithoutBlock = LogicExpr;
+ExprWithBlock: Box<Expr> = {
     IfExpression,
-    "for" <var:Identifier> "in" <iter:Expr> "do" <body:BlockExpression> => Box::new(Expr::ForIn { var, iter, body }),
-    <BlockExpression> => Box::new(Expr::Block(<>)),
+    "for" <var:Identifier> "in" <iter:Expr> "do" <body:BlockExpr> => Box::new(Expr::ForIn { var, iter, body }),
+    <BlockExpr> => Box::new(Expr::Block(<>)),
 }
 
 IfExpression: Box<Expr> = {
-    "if " <cond:Expr> "then" <b1:BlockExpression> <b2:("else" <BlockExpression>)?> => Box::new(
+    "if " <cond:Expr> "then" <b1:BlockExpr> <b2:("else" <BlockExpr>)?> => Box::new(
         Expr::If { condition: cond, then_branch: b1, else_branch: b2 }
     )
 }
 
-BlockExpression: Block = {
+BlockExpr: Block = {
     "{" <b:BlockBody> "}" => b
 }
 
@@ -66,7 +66,7 @@ BoolLiteral: bool = {
     "false" => false,
 };
 
-LambdaExpression: Box<Expr> = {
+LambdaExpr: Box<Expr> = {
     "{" <params:Comma<Identifier>> "->" <body:BlockBody> "}" => Box::new(Expr::Lambda { params, body: Rc::new(body), potential_captures: vec![] })
 }
 
@@ -94,7 +94,7 @@ Term: Box<Expr> = {
     r"'[^']*'" => Box::new(Expr::String(parse_string_literal(<>))),
     Identifier => Box::new(Expr::Variable { name: <>, is_final: true }),
     "(" <Expr> ")",
-    LambdaExpression,
+    LambdaExpr,
     DictLiteral,
     ArrayLiteral,
     <lhs:Term> <index:ValueIndex> => Box::new(Expr::GetIndex(lhs, index)),
@@ -110,8 +110,8 @@ CallExpr: Box<Expr> = {
 }
 
 pub Expr = {
-    ExpressionWithoutBlock,
-    ExpressionWithBlock,
+    ExprWithoutBlock,
+    ExprWithBlock,
 }
 
 LogicExpr = Tier<LogicOp, ComparisonExpr>;
