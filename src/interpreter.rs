@@ -748,10 +748,10 @@ impl Interpreter {
             }
         }
 
-        for (name, value) in function.params.iter().zip(arg_values.iter()) {
+        for (name, value) in function.params.iter().zip(arg_values.into_iter()) {
             lambda_interpreter
                 .environment
-                .declare(name.clone(), value.clone())?;
+                .declare(name.clone(), value)?;
         }
         return match lambda_interpreter.eval_block(&function.body) {
             Ok(val) => Ok(val),
