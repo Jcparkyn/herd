@@ -2,7 +2,7 @@ source = 'https://github.com/hanabi1224/Programming-Language-Benchmarks/blob/mai
 
 makeTree = { d ->
   if d > 0 then {
-    [makeTree (d - 1), makeTree (d - 1)];
+    [makeTree (d - 1), makeTree (d - 1)]
   } else {
     nil
   }
@@ -34,4 +34,4 @@ main = { n ->
   print 'long lived tree of depth' maxDepth 'check:' (checkTree longLivedTree);
 };
 
-main 14;
+main 15;
