@@ -28,6 +28,10 @@ Expr = {
 ExprWithoutBlock = {
     LogicExpr,
     <callee:Term> <args:Term+> => Box::new(Expr::Call { callee, args }),
+    <lhs:Expr> "|" <callee:Term> <mut args:Term*> =>{
+        args.insert(0, lhs);
+        Box::new(Expr::Call { callee, args })
+    },
 }
 
 // Expressions that don't need a trailing semicolon
