@@ -22,7 +22,7 @@ pub enum InterpreterError {
     FieldNotExists(String),
     IndexOutOfRange { array_len: usize, accessed: usize },
     WrongArgumentCount { expected: usize, supplied: usize },
-    WrongType,
+    WrongType { message: String },
 }
 
 impl Display for InterpreterError {
@@ -45,7 +45,7 @@ impl Display for InterpreterError {
                     "Wrong number of arguments for function. Expected {expected}, got {supplied}"
                 )
             }
-            WrongType => write!(f, "Wrong type"),
+            WrongType { message } => f.write_str(&message),
             Return(val) => write!(f, "Returning {val}"),
         }
     }
@@ -118,7 +118,9 @@ impl Value {
     pub fn as_number(&self) -> Result<f64, InterpreterError> {
         match self {
             Value::Number(n) => Ok(*n),
-            _ => Err(WrongType),
+            v => Err(WrongType {
+                message: format!("Expected a number, found {v}"),
+            }),
         }
     }
 
@@ -129,7 +131,9 @@ impl Value {
     pub fn as_string(&self) -> Result<&str, InterpreterError> {
         match self {
             Value::String(s) => Ok(s),
-            _ => Err(WrongType),
+            v => Err(WrongType {
+                message: format!("Expected a string, found {v}"),
+            }),
         }
     }
 
@@ -140,14 +144,18 @@ impl Value {
     pub fn to_dict(self) -> Result<Rc<DictInstance>, InterpreterError> {
         match self {
             Value::Dict(d) => Ok(d),
-            _ => Err(WrongType),
+            v => Err(WrongType {
+                message: format!("Expected a dict, found {v}"),
+            }),
         }
     }
 
     pub fn to_array(self) -> Result<Rc<ArrayInstance>, InterpreterError> {
         match self {
             Value::Array(a) => Ok(a),
-            _ => Err(WrongType),
+            v => Err(WrongType {
+                message: format!("Expected an array, found {v}"),
+            }),
         }
     }
 
@@ -196,7 +204,9 @@ impl Display for Value {
 fn try_into_int(value: f64) -> Result<usize, InterpreterError> {
     let int = value as usize;
     if int as f64 != value {
-        return Err(WrongType);
+        return Err(WrongType {
+            message: format!("Expected a non-negative integer, found {value}"),
+        });
     }
     Ok(int)
 }
@@ -230,7 +240,9 @@ impl Environment {
                 let idx_int = try_into_int(*idx)?;
                 return Self::assign_array_index(old.to_array()?, rhs, idx_int, path);
             }
-            _ => Err(WrongType),
+            _ => Err(WrongType {
+                message: format!("Expected a string or non-negative integer, found {index}"),
+            }),
         }
     }
 
@@ -471,7 +483,9 @@ impl Interpreter {
                 match self.eval(&callee)? {
                     Value::Builtin(c) => self.call_builtin(c, arg_values),
                     Value::Lambda(f) => self.call_lambda(f, arg_values),
-                    _ => Err(WrongType),
+                    v => Err(WrongType {
+                        message: format!("Expected a function, found {v}"),
+                    }),
                 }
             }
             Expr::Lambda {
@@ -513,7 +527,15 @@ impl Interpreter {
                             }),
                         };
                     }
-                    _ => Err(WrongType),
+                    (Value::Dict(_), v) => Err(WrongType {
+                        message: format!("Dicts can only be indexed with strings, found {v}"),
+                    }),
+                    (Value::Array(_), v) => Err(WrongType {
+                        message: format!("Arrays can only be indexed with numbers, found {v}"),
+                    }),
+                    (v, _) => Err(WrongType {
+                        message: format!("Can't index {v}"),
+                    }),
                 }
             }
             Expr::ForIn { iter, var, body } => {
@@ -529,7 +551,9 @@ impl Interpreter {
                         }
                         Ok(Value::Nil)
                     }
-                    _ => Err(WrongType),
+                    _ => Err(WrongType {
+                        message: format!("Expected an array, found {iter_value}"),
+                    }),
                 }
             }
         }
@@ -568,7 +592,9 @@ impl Interpreter {
             Opcode::Add => match (self.eval(&lhs)?, self.eval(&rhs)?) {
                 (Number(n1), Number(n2)) => Ok(Number(n1 + n2)),
                 (String(s1), String(s2)) => Ok(String(s1 + &s2)),
-                _ => Err(WrongType),
+                (x1, x2) => Err(WrongType {
+                    message: format!("Can't add {x1} to {x2}"),
+                }),
             },
             Opcode::Sub => Ok(Number(
                 self.eval(&lhs)?.as_number()? - self.eval(&rhs)?.as_number()?,
@@ -628,7 +654,9 @@ impl Interpreter {
             BuiltInFunction::Len => match destructure_args::<1>(args)? {
                 [Value::Array(a)] => Ok(Value::Number(a.values.len() as f64)),
                 [Value::Dict(d)] => Ok(Value::Number(d.values.len() as f64)),
-                [_] => Err(WrongType),
+                [v] => Err(WrongType {
+                    message: format!("Expected an array or dict, found {v}"),
+                }),
             },
             BuiltInFunction::Push => {
                 let [array_val, new_value] = destructure_args(args)?;
@@ -651,8 +679,12 @@ impl Interpreter {
                 match (*array).values.as_slice() {
                     [] => Ok(Value::Array(array)),
                     [Value::Number(_), rest @ ..] => {
-                        if rest.iter().any(|v| !v.is_number()) {
-                            return Err(WrongType);
+                        if let Some(bad_val) = rest.iter().find(|v| !v.is_number()) {
+                            return Err(WrongType {
+                                message: format!(
+                                    "Expected all values in array to be numbers, found {bad_val}"
+                                ),
+                            });
                         }
                         Rc::make_mut(&mut array).values.sort_by(|a, b| {
                             a.as_number().unwrap().total_cmp(&b.as_number().unwrap())
@@ -660,15 +692,25 @@ impl Interpreter {
                         return Ok(Value::Array(array));
                     }
                     [Value::String(_), rest @ ..] => {
-                        if rest.iter().any(|v| !v.is_string()) {
-                            return Err(WrongType);
+                        if let Some(bad_val) = rest.iter().find(|v| !v.is_string()) {
+                            return Err(WrongType {
+                                message: format!(
+                                    "Expected all values in array to be strings, found {bad_val}"
+                                ),
+                            });
                         }
                         Rc::make_mut(&mut array)
                             .values
                             .sort_by(|a, b| a.as_string().unwrap().cmp(&b.as_string().unwrap()));
                         return Ok(Value::Array(array));
                     }
-                    _ => return Err(WrongType),
+                    [first, _rest @ ..] => {
+                        return Err(WrongType {
+                            message: format!(
+                                "Can only sort arrays of numbers or strings, found {first}"
+                            ),
+                        })
+                    }
                 }
             }
             BuiltInFunction::ShiftLeft => {
