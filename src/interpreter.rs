@@ -353,6 +353,7 @@ static BUILTIN_FUNCTIONS: phf::Map<&'static str, BuiltInFunction> = phf::phf_map
     "pop" => BuiltInFunction::Pop,
     "sort" => BuiltInFunction::Sort,
     "shiftLeft" => BuiltInFunction::ShiftLeft,
+    "floor" => BuiltInFunction::Floor,
 };
 
 fn destructure_args<const N: usize>(args: Vec<Value>) -> Result<[Value; N], InterpreterError> {
@@ -718,6 +719,11 @@ impl Interpreter {
                 let val_int = try_into_int(val.as_number()?)?;
                 let shift_by_int = try_into_int(shift_by.as_number()?)?;
                 return Ok(Value::Number((val_int << shift_by_int) as f64));
+            }
+            BuiltInFunction::Floor => {
+                let [val] = destructure_args(args)?;
+                let val_num = val.as_number()?;
+                return Ok(Value::Number(val_num.floor()));
             }
         }
     }

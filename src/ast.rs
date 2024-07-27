@@ -15,6 +15,7 @@ pub enum BuiltInFunction {
     Len,
     Sort,
     ShiftLeft,
+    Floor,
 }
 
 impl BuiltInFunction {
@@ -28,6 +29,7 @@ impl BuiltInFunction {
             BuiltInFunction::Len => "len",
             BuiltInFunction::Sort => "sort",
             BuiltInFunction::ShiftLeft => "shiftLeft",
+            BuiltInFunction::Floor => "floor",
         }
     }
 }
