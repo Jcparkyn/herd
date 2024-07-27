@@ -741,6 +741,10 @@ fn analyze_statement(stmt: &mut Statement, deps: &mut HashSet<String>) {
         Statement::Assignment(target, rhs) => {
             if target.path.is_empty() {
                 deps.remove(&target.var);
+            } else {
+                for index in target.path.iter_mut().rev() {
+                    analyze_expr(index, deps);
+                }
             }
             analyze_expr(rhs, deps);
         }
