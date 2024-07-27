@@ -59,6 +59,7 @@ pub struct LambdaFunction {
     body: Rc<Block>,
     closure: HashMap<String, Value>,
     self_name: Option<String>,
+    recursive: bool,
 }
 
 #[derive(PartialEq, Debug)]
@@ -323,8 +324,8 @@ impl Environment {
 
     pub fn replace(&mut self, name: &String, new_val: Value) -> Option<Value> {
         for scope in self.scopes.iter_mut().rev() {
-            if let Entry::Occupied(mut v) = scope.entry(name.clone()) {
-                return Some(v.insert(new_val));
+            if let Some(v) = scope.get_mut(name) {
+                return Some(std::mem::replace(v, new_val));
             }
         }
         return None;
@@ -376,6 +377,7 @@ impl Interpreter {
                         let mut l =
                             self.eval_lambda_definition(&body, &params, &potential_captures);
                         l.self_name = Some(name.clone());
+                        l.recursive = potential_captures.contains(name);
                         Value::Lambda(Rc::new(l))
                     }
                     ref e => self.eval(&e)?,
@@ -551,6 +553,7 @@ impl Interpreter {
             body: body.clone(),
             closure: captures.into(),
             self_name: None,
+            recursive: false,
         }
     }
 
@@ -695,9 +698,12 @@ impl Interpreter {
                 .declare(name.clone(), value.clone())?;
         }
         if let Some(self_name) = &function.self_name {
-            lambda_interpreter
-                .environment
-                .declare(self_name.clone(), Value::Lambda(function.clone()))?;
+            // Optimization: don't add self unless we need to.
+            if function.recursive {
+                lambda_interpreter
+                    .environment
+                    .declare(self_name.clone(), Value::Lambda(function.clone()))?;
+            }
         }
 
         for (name, value) in function.params.iter().zip(arg_values.iter()) {
