@@ -1,0 +1,16 @@
+reverse = { arr ->
+  l = len arr;
+  imax = floor (l / 2);
+  for i in range 0 imax do {
+    i2 = l - 1 - i;
+    tmp = arr.[i];
+    set arr.[i] = arr.[i2];
+    set arr.[i2] = tmp;
+  }
+  arr
+};
+
+x = [5, 6, 1];
+set x = x | sort | push -5 | reverse;
+
+print x;
