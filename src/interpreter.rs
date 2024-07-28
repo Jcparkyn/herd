@@ -4,7 +4,7 @@ use std::{
     rc::Rc,
 };
 
-use crate::ast::{Block, BuiltInFunction, Expr, Opcode, Statement};
+use crate::ast::{Block, BuiltInFunction, Expr, Opcode, Statement, VarRef};
 
 pub struct Interpreter {
     environment: Environment,
@@ -344,7 +344,7 @@ impl Environment {
     }
 }
 
-static BUILTIN_FUNCTIONS: phf::Map<&'static str, BuiltInFunction> = phf::phf_map! {
+pub static BUILTIN_FUNCTIONS: phf::Map<&'static str, BuiltInFunction> = phf::phf_map! {
     "print" => BuiltInFunction::Print,
     "not" => BuiltInFunction::Not,
     "range" => BuiltInFunction::Range,
@@ -390,7 +390,7 @@ impl Interpreter {
                         let mut l =
                             self.eval_lambda_definition(&body, &params, &potential_captures);
                         l.self_name = Some(name.clone());
-                        l.recursive = potential_captures.contains(name);
+                        l.recursive = potential_captures.iter().any(|pc| pc.name == *name);
                         Value::Lambda(Rc::new(l))
                     }
                     ref e => self.eval(&e)?,
@@ -442,26 +442,19 @@ impl Interpreter {
             Expr::Bool(b) => Ok(Bool(*b)),
             Expr::String(s) => Ok(String(s.clone())),
             Expr::Nil => Ok(Nil),
-            Expr::Variable {
-                name,
-                is_final,
-                slot: _,
-            } => match BUILTIN_FUNCTIONS.get(&name) {
-                Some(f) => Ok(Builtin(*f)),
-                None => {
-                    if *is_final {
-                        match self.environment.replace(name, Value::Nil) {
-                            Some(v) => Ok(v),
-                            None => Err(VariableNotDefined(name.clone())),
-                        }
-                    } else {
-                        match self.environment.get(name) {
-                            Some(v) => Ok(v.clone()),
-                            None => Err(VariableNotDefined(name.clone())),
-                        }
+            Expr::Variable(v) => {
+                if v.is_final {
+                    match self.environment.replace(&v.name, Value::Nil) {
+                        Some(v) => Ok(v),
+                        None => Err(VariableNotDefined(v.name.clone())),
+                    }
+                } else {
+                    match self.environment.get(&v.name) {
+                        Some(v) => Ok(v.clone()),
+                        None => Err(VariableNotDefined(v.name.clone())),
                     }
                 }
-            },
+            }
             Expr::If {
                 condition,
                 then_branch,
@@ -568,13 +561,13 @@ impl Interpreter {
         &mut self,
         body: &Rc<Block>,
         params: &Vec<String>,
-        potential_captures: &Vec<String>,
+        potential_captures: &Vec<VarRef>,
     ) -> LambdaFunction {
         let mut captures = HashMap::new();
         for pc in potential_captures {
             // TODO these should check liveness as well
-            if let Some(v) = self.environment.get(&pc) {
-                captures.insert(pc.clone(), v.clone());
+            if let Some(v) = self.environment.get(&pc.name) {
+                captures.insert(pc.name.clone(), v.clone());
             }
         }
         LambdaFunction {

@@ -1,5 +1,5 @@
 use std::{str::FromStr,rc::Rc};
-use crate::ast::{Expr, Opcode, Statement, Block, AssignmentTarget};
+use crate::ast::{Expr, Opcode, Statement, Block, AssignmentTarget, VarRef};
 use crate::parse_helpers::parse_string_literal;
 
 grammar;
@@ -57,7 +57,7 @@ Term: Box<Expr> = {
     BoolLiteral => Box::new(Expr::Bool(<>)),
     "nil" => Box::new(Expr::Nil),
     r"'[^']*'" => Box::new(Expr::String(parse_string_literal(<>))),
-    Identifier => Box::new(Expr::Variable { name: <>, is_final: true }),
+    Identifier => Box::new(Expr::Variable(VarRef::new(<>))),
     "(" <Expr> ")",
     LambdaExpr,
     DictLiteral,
@@ -71,7 +71,7 @@ ValueIndex: Box<Expr> = {
 } 
 
 AssignmentTarget: AssignmentTarget = {
-    <var:Identifier> <path:ValueIndex*> => AssignmentTarget { var, path },
+    <var:Identifier> <path:ValueIndex*> => AssignmentTarget { var, path, slot: 0 },
 }   
 
 IfExpression: Box<Expr> = {

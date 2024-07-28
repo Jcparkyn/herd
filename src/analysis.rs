@@ -1,9 +1,169 @@
 use std::{collections::HashSet, rc::Rc};
 
-use crate::ast::{Block, Expr, Statement};
+use crate::{
+    ast::{Block, Expr, Statement, VarRef},
+    interpreter::BUILTIN_FUNCTIONS,
+};
 
 pub fn analyze_statements(stmts: &mut [Statement], deps: &mut HashSet<String>) {
     analyze_statements_liveness(stmts, deps);
+    // println!("ast: {:#?}", stmts);
+    let mut var_analyzer = VariableAnalyzer::new();
+    for stmt in stmts {
+        var_analyzer.analyze_statement(stmt);
+    }
+}
+
+struct LocalVar {
+    name: String,
+    depth: usize,
+}
+
+struct VariableAnalyzer {
+    vars: Vec<LocalVar>,
+    depth: usize,
+}
+
+impl VariableAnalyzer {
+    fn new() -> VariableAnalyzer {
+        VariableAnalyzer {
+            vars: Vec::new(),
+            depth: 0,
+        }
+    }
+
+    fn analyze_statement(&mut self, stmt: &mut Statement) {
+        match stmt {
+            Statement::Declaration(name, rhs) => {
+                self.analyze_expr(rhs);
+                self.vars.push(LocalVar {
+                    name: name.to_string(),
+                    depth: self.depth,
+                });
+            }
+            Statement::Assignment(target, rhs) => {
+                self.analyze_expr(rhs);
+                if let Some(slot) = self.get_slot(&target.var) {
+                    target.slot = slot;
+                } else {
+                    panic!("Variable {} not found", target.var);
+                }
+                for index in target.path.iter_mut() {
+                    self.analyze_expr(index);
+                }
+            }
+            Statement::Expression(expr) => self.analyze_expr(expr),
+            Statement::Return(expr) => self.analyze_expr(expr),
+        }
+    }
+
+    fn analyze_expr(&mut self, expr: &mut Expr) {
+        match expr {
+            Expr::Number(_) => {}
+            Expr::Bool(_) => {}
+            Expr::String(_) => {}
+            Expr::Nil => {}
+            Expr::Variable(v) => {
+                if let Some(var_slot) = self.get_slot(&v.name) {
+                    v.slot = var_slot;
+                } else {
+                    panic!("Variable {} not found", v.name);
+                }
+            }
+            Expr::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                self.analyze_expr(condition);
+                self.analyze_block(then_branch);
+                if let Some(else_branch) = else_branch {
+                    self.analyze_block(else_branch);
+                }
+            }
+            Expr::Op { op: _, lhs, rhs } => {
+                self.analyze_expr(lhs);
+                self.analyze_expr(rhs);
+            }
+            Expr::Block(b) => self.analyze_block(b),
+            Expr::Call { callee, args } => {
+                for arg in args {
+                    self.analyze_expr(arg);
+                }
+                self.analyze_expr(callee);
+            }
+            Expr::BuiltInFunction(_) => {}
+            Expr::Lambda {
+                params,
+                body,
+                potential_captures,
+            } => {
+                let mut lambda_analyzer = VariableAnalyzer::new();
+                for param in params {
+                    lambda_analyzer.vars.push(LocalVar {
+                        name: param.to_string(),
+                        depth: 0,
+                    });
+                }
+                for capture in potential_captures {
+                    if let Some(slot) = self.get_slot(&capture.name) {
+                        capture.slot = slot;
+                    } else {
+                        panic!("Capture variable {} not found", capture.name);
+                    }
+                    lambda_analyzer.vars.push(LocalVar {
+                        name: capture.name.to_string(),
+                        depth: 0,
+                    });
+                }
+                lambda_analyzer.analyze_block(Rc::get_mut(body).unwrap());
+            }
+            Expr::Dict(entries) => {
+                for (_, value) in entries {
+                    self.analyze_expr(value);
+                }
+            }
+            Expr::Array(entries) => {
+                for entry in entries {
+                    self.analyze_expr(entry);
+                }
+            }
+            Expr::GetIndex(lhs, index) => {
+                self.analyze_expr(index);
+                self.analyze_expr(lhs);
+            }
+            Expr::ForIn { iter, var, body } => {
+                self.analyze_expr(iter);
+                self.vars.push(LocalVar {
+                    name: var.to_string(),
+                    depth: self.depth,
+                });
+                self.analyze_block(body);
+                self.vars.pop();
+            }
+        }
+    }
+
+    fn analyze_block(&mut self, block: &mut Block) {
+        self.depth += 1;
+        for stmt in block.statements.iter_mut() {
+            self.analyze_statement(stmt);
+        }
+        if let Some(expr) = &mut block.expression {
+            self.analyze_expr(expr);
+        }
+        self.depth -= 1;
+        self.vars.retain(|var| var.depth <= self.depth);
+    }
+
+    fn get_slot(&self, name: &str) -> Option<u32> {
+        for (i, var) in self.vars.iter().enumerate().rev() {
+            if var.name == name {
+                return Some(i as u32);
+            }
+        }
+        None
+    }
 }
 
 fn analyze_statements_liveness(stmts: &mut [Statement], deps: &mut HashSet<String>) {
@@ -52,14 +212,14 @@ fn analyze_expr_liveness(expr: &mut Expr, deps: &mut HashSet<String>) {
         Expr::Bool(_) => {}
         Expr::String(_) => {}
         Expr::Nil => {}
-        Expr::Variable {
-            name,
-            is_final,
-            slot: _,
-        } => {
+        Expr::Variable(v) => {
+            if let Some(builtin) = BUILTIN_FUNCTIONS.get(&v.name) {
+                *expr = Expr::BuiltInFunction(*builtin);
+                return;
+            }
             // If is_final was already cleared, don't set it.
             // This is required for loops, which are analyzed twice.
-            *is_final = *is_final && deps.insert(name.to_string());
+            v.is_final = v.is_final && deps.insert(v.name.to_string());
         }
         Expr::If {
             condition,
@@ -105,7 +265,7 @@ fn analyze_expr_liveness(expr: &mut Expr, deps: &mut HashSet<String>) {
                 lambda_deps.remove(p);
             }
             for dep in lambda_deps {
-                (*potential_captures).push(dep);
+                (*potential_captures).push(VarRef::new(dep));
             }
         }
         Expr::Dict(entries) => {

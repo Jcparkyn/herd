@@ -38,6 +38,7 @@ fn main() {
             }
             Ok(mut program) => {
                 analyze_statements(&mut program, &mut HashSet::new());
+                println!("ast: {:#?}", program);
                 for statement in program {
                     match interpreter.execute(&statement) {
                         Ok(()) => {}

@@ -58,6 +58,7 @@ impl Debug for Block {
 #[derive(PartialEq, Debug)]
 pub struct AssignmentTarget {
     pub var: String,
+    pub slot: u32,
     pub path: Vec<Box<Expr>>,
 }
 
@@ -67,6 +68,26 @@ pub enum Statement {
     Assignment(AssignmentTarget, Box<Expr>),
     Expression(Box<Expr>),
     Return(Box<Expr>),
+}
+
+#[derive(PartialEq, Debug, Clone)]
+pub struct VarRef {
+    pub name: String,
+    pub slot: u32,
+    /// True if this is guaranteed to be the final usage of this binding, so it can be dropped.
+    /// This starts out true for all variables, and the analysis passes will clear it if there
+    /// is a chance of this variable being used later.
+    pub is_final: bool,
+}
+
+impl VarRef {
+    pub fn new(name: String) -> VarRef {
+        VarRef {
+            name,
+            slot: 0,
+            is_final: true,
+        }
+    }
 }
 
 #[derive(PartialEq)]
@@ -80,14 +101,7 @@ pub enum Expr {
         lhs: Box<Expr>,
         rhs: Box<Expr>,
     },
-    Variable {
-        name: String,
-        slot: u32,
-        /// True if this is guaranteed to be the final usage of this binding, so it can be dropped.
-        /// This starts out true for all variables, and the analysis passes will clear it if there
-        /// is a chance of this variable being used later.
-        is_final: bool,
-    },
+    Variable(VarRef),
     Block(Block),
     If {
         condition: Box<Expr>,
@@ -102,7 +116,7 @@ pub enum Expr {
     Lambda {
         params: Vec<String>,
         body: Rc<Block>,
-        potential_captures: Vec<String>,
+        potential_captures: Vec<VarRef>,
     },
     Dict(Vec<(String, Box<Expr>)>),
     Array(Vec<Box<Expr>>),
@@ -136,17 +150,13 @@ impl Debug for Expr {
             Expr::String(s) => write!(f, "'{}'", s),
             Expr::BuiltInFunction(b) => write!(f, "{:?}", b),
             Expr::Op { op, lhs, rhs } => write!(f, "({:?} {:?} {:?})", lhs, op, rhs),
-            Expr::Variable {
-                name,
-                slot,
-                is_final,
-            } => {
+            Expr::Variable(v) => {
                 write!(
                     f,
                     "{:?}[{}]{}",
-                    name,
-                    slot,
-                    if *is_final { "❌" } else { "" }
+                    v.name,
+                    v.slot,
+                    if (*v).is_final { "❌" } else { "" }
                 )
             }
             Expr::Block(b) => b.fmt(f),
