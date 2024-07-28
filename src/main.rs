@@ -1,4 +1,5 @@
-use interpreter::{analyze_statements, Interpreter, InterpreterError};
+use analysis::analyze_statements;
+use interpreter::{Interpreter, InterpreterError};
 use lalrpop_util::{lalrpop_mod, ParseError};
 use std::{
     collections::HashSet,
@@ -6,6 +7,7 @@ use std::{
     io::{stdin, stdout, Write},
 };
 
+mod analysis;
 mod ast;
 mod interpreter;
 mod parse_helpers;

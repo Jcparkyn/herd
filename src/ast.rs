@@ -82,6 +82,7 @@ pub enum Expr {
     },
     Variable {
         name: String,
+        slot: u32,
         /// True if this is guaranteed to be the final usage of this binding, so it can be dropped.
         /// This starts out true for all variables, and the analysis passes will clear it if there
         /// is a chance of this variable being used later.
@@ -135,8 +136,18 @@ impl Debug for Expr {
             Expr::String(s) => write!(f, "'{}'", s),
             Expr::BuiltInFunction(b) => write!(f, "{:?}", b),
             Expr::Op { op, lhs, rhs } => write!(f, "({:?} {:?} {:?})", lhs, op, rhs),
-            Expr::Variable { name, is_final } => {
-                write!(f, "{:?}{}", name, if *is_final { "❌" } else { "" })
+            Expr::Variable {
+                name,
+                slot,
+                is_final,
+            } => {
+                write!(
+                    f,
+                    "{:?}[{}]{}",
+                    name,
+                    slot,
+                    if *is_final { "❌" } else { "" }
+                )
             }
             Expr::Block(b) => b.fmt(f),
             Expr::Nil => f.write_str("nil"),
