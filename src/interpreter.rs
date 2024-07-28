@@ -850,10 +850,10 @@ fn analyze_expr(expr: &mut Expr, deps: &mut HashSet<String>) {
         }
         Expr::BuiltInFunction(_) => {}
         Expr::Call { callee, args } => {
+            analyze_expr(callee, deps);
             for arg in args.iter_mut().rev() {
                 analyze_expr(arg, deps);
             }
-            analyze_expr(callee, deps);
         }
         Expr::Lambda {
             body,
