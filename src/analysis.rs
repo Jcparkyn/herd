@@ -32,21 +32,26 @@ impl VariableAnalyzer {
         }
     }
 
+    fn push_var(&mut self, var: &mut VarRef) {
+        var.slot = self.vars.len() as u32;
+        self.vars.push(LocalVar {
+            name: var.name.clone(),
+            depth: self.depth,
+        });
+    }
+
     fn analyze_statement(&mut self, stmt: &mut Statement) {
         match stmt {
-            Statement::Declaration(name, rhs) => {
+            Statement::Declaration(var, rhs) => {
                 self.analyze_expr(rhs);
-                self.vars.push(LocalVar {
-                    name: name.to_string(),
-                    depth: self.depth,
-                });
+                self.push_var(var);
             }
             Statement::Assignment(target, rhs) => {
                 self.analyze_expr(rhs);
-                if let Some(slot) = self.get_slot(&target.var) {
-                    target.slot = slot;
+                if let Some(slot) = self.get_slot(&target.var.name) {
+                    target.var.slot = slot;
                 } else {
-                    panic!("Variable {} not found", target.var);
+                    panic!("Variable {} not found", target.var.name);
                 }
                 for index in target.path.iter_mut() {
                     self.analyze_expr(index);
@@ -97,6 +102,7 @@ impl VariableAnalyzer {
                 params,
                 body,
                 potential_captures,
+                name,
             } => {
                 let mut lambda_analyzer = VariableAnalyzer::new();
                 for param in params {
@@ -113,6 +119,12 @@ impl VariableAnalyzer {
                     }
                     lambda_analyzer.vars.push(LocalVar {
                         name: capture.name.to_string(),
+                        depth: 0,
+                    });
+                }
+                if let Some(name) = name {
+                    lambda_analyzer.vars.push(LocalVar {
+                        name: name.to_string(),
                         depth: 0,
                     });
                 }
@@ -134,10 +146,7 @@ impl VariableAnalyzer {
             }
             Expr::ForIn { iter, var, body } => {
                 self.analyze_expr(iter);
-                self.vars.push(LocalVar {
-                    name: var.to_string(),
-                    depth: self.depth,
-                });
+                self.push_var(var);
                 self.analyze_block(body);
                 self.vars.pop();
             }
@@ -174,13 +183,16 @@ fn analyze_statements_liveness(stmts: &mut [Statement], deps: &mut HashSet<Strin
 
 fn analyze_statement_liveness(stmt: &mut Statement, deps: &mut HashSet<String>) {
     match stmt {
-        Statement::Declaration(name, rhs) => {
-            deps.remove(name);
+        Statement::Declaration(var, rhs) => {
+            if let Expr::Lambda { name, .. } = rhs.as_mut() {
+                *name = Some(var.name.clone());
+            }
+            deps.remove(&var.name);
             analyze_expr_liveness(rhs, deps);
         }
         Statement::Assignment(target, rhs) => {
             if target.path.is_empty() {
-                deps.remove(&target.var);
+                deps.remove(&target.var.name);
             } else {
                 for index in target.path.iter_mut().rev() {
                     analyze_expr_liveness(index, deps);
@@ -255,6 +267,7 @@ fn analyze_expr_liveness(expr: &mut Expr, deps: &mut HashSet<String>) {
             body,
             potential_captures,
             params,
+            name,
         } => {
             // TODO assuming no shared references to body at this point.
             let mut_body = Rc::get_mut(body).unwrap();
@@ -263,6 +276,9 @@ fn analyze_expr_liveness(expr: &mut Expr, deps: &mut HashSet<String>) {
             analyze_block_liveness(mut_body, &mut lambda_deps);
             for p in params {
                 lambda_deps.remove(p);
+            }
+            if let Some(name) = name {
+                lambda_deps.remove(name);
             }
             for dep in lambda_deps {
                 (*potential_captures).push(VarRef::new(dep));
@@ -288,7 +304,7 @@ fn analyze_expr_liveness(expr: &mut Expr, deps: &mut HashSet<String>) {
             let mut deps_last_loop = deps.clone();
             analyze_block_liveness(body, &mut deps_last_loop);
             let mut deps_other_loops = deps_last_loop.clone();
-            deps_other_loops.remove(var); // var can't persist between loops.
+            deps_other_loops.remove(&var.name); // var can't persist between loops.
             analyze_block_liveness(body, &mut deps_other_loops);
             // final dependency set is union of 0 loops, 1 loop, and >1 loops.
             for dep in deps_last_loop {
@@ -298,7 +314,7 @@ fn analyze_expr_liveness(expr: &mut Expr, deps: &mut HashSet<String>) {
                 deps.insert(dep);
             }
             analyze_expr_liveness(iter, deps);
-            deps.remove(var);
+            deps.remove(&var.name);
         }
     }
 }

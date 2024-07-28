@@ -57,14 +57,13 @@ impl Debug for Block {
 
 #[derive(PartialEq, Debug)]
 pub struct AssignmentTarget {
-    pub var: String,
-    pub slot: u32,
+    pub var: VarRef,
     pub path: Vec<Box<Expr>>,
 }
 
 #[derive(PartialEq, Debug)]
 pub enum Statement {
-    Declaration(String, Box<Expr>),
+    Declaration(VarRef, Box<Expr>),
     Assignment(AssignmentTarget, Box<Expr>),
     Expression(Box<Expr>),
     Return(Box<Expr>),
@@ -117,13 +116,14 @@ pub enum Expr {
         params: Vec<String>,
         body: Rc<Block>,
         potential_captures: Vec<VarRef>,
+        name: Option<String>,
     },
     Dict(Vec<(String, Box<Expr>)>),
     Array(Vec<Box<Expr>>),
     GetIndex(Box<Expr>, Box<Expr>),
     ForIn {
         iter: Box<Expr>,
-        var: String,
+        var: VarRef,
         body: Block,
     },
 }
@@ -178,8 +178,10 @@ impl Debug for Expr {
                 params,
                 body,
                 potential_captures,
+                name,
             } => f
                 .debug_tuple("Lambda")
+                .field(name)
                 .field(params)
                 .field(body)
                 .field(potential_captures)
@@ -188,7 +190,7 @@ impl Debug for Expr {
             Expr::Array(elements) => write!(f, "Array{:?}", elements),
             Expr::GetIndex(lhs, index) => write!(f, "GetIndex({:?}, {:?})", lhs, index),
             Expr::ForIn { iter, var, body } => {
-                write!(f, "ForIn({var}, {iter:?}, {body:?})")
+                write!(f, "ForIn({var:?}, {iter:?}, {body:?})")
             }
         }
     }

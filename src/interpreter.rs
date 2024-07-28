@@ -2,6 +2,7 @@ use std::{
     collections::{hash_map::Entry, HashMap},
     fmt::{Debug, Display},
     rc::Rc,
+    vec,
 };
 
 use crate::ast::{Block, BuiltInFunction, Expr, Opcode, Statement, VarRef};
@@ -11,14 +12,15 @@ pub struct Interpreter {
 }
 
 pub struct Environment {
-    scopes: Vec<HashMap<String, Value>>,
+    // scopes: Vec<Vec<Value>>,
+    slots: Vec<Value>,
 }
 
 #[derive(Debug, Clone)]
 pub enum InterpreterError {
     Return(Value), // Implemented as an error to simplifiy implementation.
-    VariableAlreadyDefined(String),
-    VariableNotDefined(String),
+    // VariableAlreadyDefined(String),
+    // VariableNotDefined(String),
     FieldNotExists(String),
     IndexOutOfRange { array_len: usize, accessed: usize },
     WrongArgumentCount { expected: usize, supplied: usize },
@@ -28,8 +30,8 @@ pub enum InterpreterError {
 impl Display for InterpreterError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            VariableAlreadyDefined(name) => write!(f, "Variable {} is already defined", name),
-            VariableNotDefined(name) => write!(f, "Variable {} is not defined", name),
+            // VariableAlreadyDefined(name) => write!(f, "Variable {} is already defined", name),
+            // VariableNotDefined(name) => write!(f, "Variable {} is not defined", name),
             FieldNotExists(name) => write!(f, "Field {} doesn't exist", name),
             IndexOutOfRange {
                 array_len,
@@ -57,7 +59,7 @@ use InterpreterError::*;
 pub struct LambdaFunction {
     params: Vec<String>,
     body: Rc<Block>,
-    closure: HashMap<String, Value>,
+    closure: Vec<Value>,
     self_name: Option<String>,
     recursive: bool,
 }
@@ -213,20 +215,18 @@ fn try_into_int(value: f64) -> Result<usize, InterpreterError> {
 
 impl Environment {
     pub fn new() -> Environment {
-        Environment {
-            scopes: vec![HashMap::new()],
-        }
+        Environment { slots: vec![] }
     }
 
-    pub fn declare(&mut self, name: String, value: Value) -> Result<(), InterpreterError> {
-        match self.scopes.last_mut().unwrap().entry(name.clone()) {
-            Entry::Occupied(_) => Err(VariableAlreadyDefined(name)),
-            Entry::Vacant(e) => {
-                e.insert(value);
-                Ok(())
-            }
-        }
-    }
+    // pub fn declare(&mut self, name: String, value: Value) -> Result<(), InterpreterError> {
+    //     match self.scopes.last_mut().unwrap().entry(name.clone()) {
+    //         Entry::Occupied(_) => Err(VariableAlreadyDefined(name)),
+    //         Entry::Vacant(e) => {
+    //             e.insert(value);
+    //             Ok(())
+    //         }
+    //     }
+    // }
 
     fn assign_part(
         old: Value,
@@ -296,51 +296,70 @@ impl Environment {
         }
     }
 
-    pub fn rebind(&mut self, name: &String, value: Value) -> Result<(), InterpreterError> {
-        for scope in self.scopes.iter_mut().rev() {
-            if let Some(v) = scope.get_mut(name) {
-                *v = value;
-                return Ok(());
-            }
-        }
-        return Err(VariableNotDefined(name.clone()));
-    }
+    // pub fn rebind(&mut self, name: &String, value: Value) -> Result<(), InterpreterError> {
+    //     for scope in self.scopes.iter_mut().rev() {
+    //         if let Some(v) = scope.get_mut(name) {
+    //             *v = value;
+    //             return Ok(());
+    //         }
+    //     }
+    //     return Err(VariableNotDefined(name.clone()));
+    // }
 
     pub fn assign(
         &mut self,
-        var: &String,
+        slot: u32,
         path: &[Value],
         value: Value,
     ) -> Result<(), InterpreterError> {
         match &path[..] {
-            [] => return self.rebind(&var, value),
+            [] => {
+                self.replace(slot, value);
+                Ok(())
+            }
             [field, rest @ ..] => {
-                let current = match self.replace(&var, Value::Nil) {
-                    Some(x) => x,
-                    None => return Err(VariableNotDefined(var.clone())),
-                };
+                let current = self.replace(slot, Value::Nil);
                 let new_value = Self::assign_part(current, value, field, rest)?;
-                return self.rebind(&var, new_value);
+                self.replace(slot, new_value);
+                Ok(())
             }
         }
     }
 
-    pub fn get(&self, name: &String) -> Option<&Value> {
-        for scope in self.scopes.iter().rev() {
-            if let Some(v) = scope.get(name) {
-                return Some(v);
-            }
-        }
-        return None;
+    // pub fn get(&self, name: &String) -> Option<&Value> {
+    //     for scope in self.scopes.iter().rev() {
+    //         if let Some(v) = scope.get(name) {
+    //             return Some(v);
+    //         }
+    //     }
+    //     return None;
+    // }
+
+    pub fn set(&mut self, slot: u32, new_val: Value) {
+        *self.slot(slot) = new_val;
     }
 
-    pub fn replace(&mut self, name: &String, new_val: Value) -> Option<Value> {
-        for scope in self.scopes.iter_mut().rev() {
-            if let Some(v) = scope.get_mut(name) {
-                return Some(std::mem::replace(v, new_val));
-            }
+    pub fn get(&self, slot: u32) -> &Value {
+        &self.slots[slot as usize]
+    }
+
+    pub fn replace(&mut self, slot: u32, new_val: Value) -> Value {
+        std::mem::replace(self.slot(slot), new_val)
+    }
+
+    fn slot(&mut self, slot: u32) -> &mut Value {
+        self.expand_slots(slot);
+        &mut self.slots[slot as usize]
+    }
+
+    pub fn expand_slots(&mut self, new_slot: u32) {
+        let new_len = (new_slot as usize) + 1;
+        if new_len <= self.slots.len() {
+            return;
         }
-        return None;
+        for _ in 0..(new_len - self.slots.len()) {
+            self.slots.push(Value::Nil);
+        }
     }
 }
 
@@ -374,29 +393,32 @@ impl Interpreter {
     }
 
     pub fn list_globals(&self) -> impl Iterator<Item = &String> + '_ {
-        self.environment.scopes.iter().flat_map(|s| s.keys())
+        // self.environment.scopes.iter().flat_map(|s| s.keys())
+        // todo!();
+        vec![].into_iter()
     }
 
     pub fn execute(&mut self, statement: &Statement) -> Result<(), InterpreterError> {
         match statement {
-            Statement::Declaration(name, expr) => {
+            Statement::Declaration(var, expr) => {
                 let value = match **expr {
-                    Expr::Lambda {
-                        ref params,
-                        ref body,
-                        ref potential_captures,
-                    } => {
-                        // Workaround to allow simple recursive functions without Rc cycles
-                        let mut l =
-                            self.eval_lambda_definition(&body, &params, &potential_captures);
-                        l.self_name = Some(name.clone());
-                        l.recursive = potential_captures.iter().any(|pc| pc.name == *name);
-                        Value::Lambda(Rc::new(l))
-                    }
+                    // Expr::Lambda {
+                    //     ref params,
+                    //     ref body,
+                    //     ref potential_captures,
+                    //     name: _,
+                    // } => {
+                    //     // Workaround to allow simple recursive functions without Rc cycles
+                    //     let mut l =
+                    //         self.eval_lambda_definition(&body, &params, &potential_captures);
+                    //     l.self_name = Some(var.name.clone());
+                    //     l.recursive = potential_captures.iter().any(|pc| pc.name == *var.name);
+                    //     Value::Lambda(Rc::new(l))
+                    // }
                     ref e => self.eval(&e)?,
                 };
 
-                self.environment.declare(name.to_string(), value)?;
+                self.environment.set(var.slot, value);
 
                 Ok(())
             }
@@ -406,7 +428,8 @@ impl Interpreter {
                 for index in &target.path {
                     path_values.push(self.eval(index)?);
                 }
-                self.environment.assign(&target.var, &path_values, value)?;
+                self.environment
+                    .assign(target.var.slot, &path_values, value)?;
                 Ok(())
             }
             Statement::Expression(expr) => {
@@ -421,10 +444,6 @@ impl Interpreter {
     }
 
     pub fn eval_block(&mut self, block: &Block) -> Result<Value, InterpreterError> {
-        self.run_in_scope(|s| s.eval_block_without_scope(block))
-    }
-
-    pub fn eval_block_without_scope(&mut self, block: &Block) -> Result<Value, InterpreterError> {
         for stmt in block.statements.iter() {
             self.execute(stmt)?;
         }
@@ -444,15 +463,9 @@ impl Interpreter {
             Expr::Nil => Ok(Nil),
             Expr::Variable(v) => {
                 if v.is_final {
-                    match self.environment.replace(&v.name, Value::Nil) {
-                        Some(v) => Ok(v),
-                        None => Err(VariableNotDefined(v.name.clone())),
-                    }
+                    Ok(self.environment.replace(v.slot, Value::Nil))
                 } else {
-                    match self.environment.get(&v.name) {
-                        Some(v) => Ok(v.clone()),
-                        None => Err(VariableNotDefined(v.name.clone())),
-                    }
+                    Ok(self.environment.get(v.slot).clone())
                 }
             }
             Expr::If {
@@ -490,8 +503,9 @@ impl Interpreter {
                 params,
                 body,
                 potential_captures,
+                name,
             } => {
-                let f = self.eval_lambda_definition(body, params, potential_captures);
+                let f = self.eval_lambda_definition(body, params, potential_captures, name.clone());
                 Ok(Value::Lambda(Rc::new(f)))
             }
             Expr::Dict(entries) => {
@@ -541,11 +555,8 @@ impl Interpreter {
                 match iter_value {
                     Value::Array(a) => {
                         for v in a.values.iter() {
-                            self.run_in_scope(|s| {
-                                s.environment.declare(var.clone(), v.clone())?;
-                                s.eval_block(&body)?;
-                                Ok(())
-                            })?;
+                            self.environment.set(var.slot, v.clone());
+                            self.eval_block(body)?;
                         }
                         Ok(Value::Nil)
                     }
@@ -562,19 +573,19 @@ impl Interpreter {
         body: &Rc<Block>,
         params: &Vec<String>,
         potential_captures: &Vec<VarRef>,
+        name: Option<String>,
     ) -> LambdaFunction {
-        let mut captures = HashMap::new();
+        let mut captures: Vec<Value> = vec![];
         for pc in potential_captures {
             // TODO these should check liveness as well
-            if let Some(v) = self.environment.get(&pc.name) {
-                captures.insert(pc.name.clone(), v.clone());
-            }
+            let v = self.environment.get(pc.slot);
+            captures.push(v.clone());
         }
         LambdaFunction {
             params: params.to_vec(),
             body: body.clone(),
-            closure: captures.into(),
-            self_name: None,
+            closure: captures,
+            self_name: name,
             recursive: false,
         }
     }
@@ -737,25 +748,22 @@ impl Interpreter {
             });
         }
         let mut lambda_interpreter = Interpreter::new();
-        for (name, value) in function.closure.iter() {
+        for val in arg_values {
+            lambda_interpreter.environment.slots.push(val);
+        }
+        for val in &function.closure {
+            lambda_interpreter.environment.slots.push(val.clone());
+        }
+        if let Some(_) = &function.self_name {
             lambda_interpreter
                 .environment
-                .declare(name.clone(), value.clone())?;
-        }
-        if let Some(self_name) = &function.self_name {
-            // Optimization: don't add self unless we need to.
-            if function.recursive {
-                lambda_interpreter
-                    .environment
-                    .declare(self_name.clone(), Value::Lambda(function.clone()))?;
-            }
+                .slots
+                .push(Value::Lambda(function.clone()));
+            // // Optimization: don't add self unless we need to.
+            // if function.recursive {
+            // }
         }
 
-        for (name, value) in function.params.iter().zip(arg_values.into_iter()) {
-            lambda_interpreter
-                .environment
-                .declare(name.clone(), value)?;
-        }
         return match lambda_interpreter.eval_block(&function.body) {
             Ok(val) => Ok(val),
             Err(InterpreterError::Return(v)) => Ok(v),
@@ -763,10 +771,10 @@ impl Interpreter {
         };
     }
 
-    fn run_in_scope<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> T {
-        self.environment.scopes.push(HashMap::new());
-        let result = f(self);
-        self.environment.scopes.pop();
-        return result;
-    }
+    // fn run_in_scope<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> T {
+    //     self.environment.scopes.push(HashMap::new());
+    //     let result = f(self);
+    //     self.environment.scopes.pop();
+    //     return result;
+    // }
 }

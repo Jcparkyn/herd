@@ -15,7 +15,7 @@ Statement: Statement = {
 
 StatementWithSemicolon: Statement = {
     <ExprWithoutBlock> ";" => Statement::Expression(<>),
-    <name:Identifier> "=" <e:Expr> ";" => Statement::Declaration(name, e),
+    <name:Identifier> "=" <e:Expr> ";" => Statement::Declaration(VarRef::new(name), e),
     "set" <target:AssignmentTarget> "=" <e:Expr> ";" => Statement::Assignment(target, e),
     "return" <e:Expr> ";" => Statement::Return(e),
 }
@@ -37,7 +37,7 @@ ExprWithoutBlock = {
 // Expressions that don't need a trailing semicolon
 ExprWithBlock: Box<Expr> = {
     IfExpression,
-    "for" <var:Identifier> "in" <iter:Expr> "do" <body:BlockExpr> => Box::new(Expr::ForIn { var, iter, body }),
+    "for" <var:Identifier> "in" <iter:Expr> "do" <body:BlockExpr> => Box::new(Expr::ForIn { var: VarRef::new(var), iter, body }),
     <BlockExpr> => Box::new(Expr::Block(<>)),
 }
 
@@ -71,7 +71,7 @@ ValueIndex: Box<Expr> = {
 } 
 
 AssignmentTarget: AssignmentTarget = {
-    <var:Identifier> <path:ValueIndex*> => AssignmentTarget { var, path, slot: 0 },
+    <var:Identifier> <path:ValueIndex*> => AssignmentTarget { var: VarRef::new(var), path },
 }   
 
 IfExpression: Box<Expr> = {
@@ -105,7 +105,7 @@ BoolLiteral: bool = {
 };
 
 LambdaExpr: Box<Expr> = {
-    "{" <params:Comma<Identifier>> "->" <body:BlockBody> "}" => Box::new(Expr::Lambda { params, body: Rc::new(body), potential_captures: vec![] })
+    "{" <params:Comma<Identifier>> "->" <body:BlockBody> "}" => Box::new(Expr::Lambda { params, body: Rc::new(body), potential_captures: vec![], name: None })
 }
 
 DictEntry: (String, Box<Expr>) = {
