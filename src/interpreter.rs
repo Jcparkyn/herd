@@ -5,20 +5,19 @@ use std::{
     vec,
 };
 
-use crate::ast::{Block, BuiltInFunction, Expr, Opcode, Statement, VarRef};
+use crate::ast::{Block, BuiltInFunction, Expr, LambdaExpr, Opcode, Statement};
 
 pub struct Interpreter {
     environment: Environment,
 }
 
 pub struct Environment {
-    // scopes: Vec<Vec<Value>>,
     slots: Vec<Value>,
 }
 
 #[derive(Debug, Clone)]
 pub enum InterpreterError {
-    Return(Value), // Implemented as an error to simplifiy implementation.
+    Return(Value), // Implemented as an error to simplify implementation.
     // VariableAlreadyDefined(String),
     // VariableNotDefined(String),
     FieldNotExists(String),
@@ -499,13 +498,8 @@ impl Interpreter {
                     }),
                 }
             }
-            Expr::Lambda {
-                params,
-                body,
-                potential_captures,
-                name,
-            } => {
-                let f = self.eval_lambda_definition(body, params, potential_captures, name.clone());
+            Expr::Lambda(l) => {
+                let f = self.eval_lambda_definition(l);
                 Ok(Value::Lambda(Rc::new(f)))
             }
             Expr::Dict(entries) => {
@@ -568,24 +562,18 @@ impl Interpreter {
         }
     }
 
-    fn eval_lambda_definition(
-        &mut self,
-        body: &Rc<Block>,
-        params: &Vec<String>,
-        potential_captures: &Vec<VarRef>,
-        name: Option<String>,
-    ) -> LambdaFunction {
+    fn eval_lambda_definition(&mut self, lambda: &LambdaExpr) -> LambdaFunction {
         let mut captures: Vec<Value> = vec![];
-        for pc in potential_captures {
+        for pc in &lambda.potential_captures {
             // TODO these should check liveness as well
             let v = self.environment.get(pc.slot);
             captures.push(v.clone());
         }
         LambdaFunction {
-            params: params.to_vec(),
-            body: body.clone(),
+            params: lambda.params.to_vec(),
+            body: lambda.body.clone(),
             closure: captures,
-            self_name: name,
+            self_name: lambda.name.clone(),
             recursive: false,
         }
     }

@@ -89,6 +89,25 @@ impl VarRef {
     }
 }
 
+#[derive(PartialEq, Debug)]
+pub struct LambdaExpr {
+    pub params: Vec<String>,
+    pub body: Rc<Block>,
+    pub potential_captures: Vec<VarRef>,
+    pub name: Option<String>,
+}
+
+impl LambdaExpr {
+    pub fn new(params: Vec<String>, body: Rc<Block>) -> LambdaExpr {
+        LambdaExpr {
+            params,
+            body,
+            potential_captures: vec![],
+            name: None,
+        }
+    }
+}
+
 #[derive(PartialEq)]
 pub enum Expr {
     Number(f64),
@@ -112,12 +131,7 @@ pub enum Expr {
         args: Vec<Box<Expr>>,
     },
     BuiltInFunction(BuiltInFunction),
-    Lambda {
-        params: Vec<String>,
-        body: Rc<Block>,
-        potential_captures: Vec<VarRef>,
-        name: Option<String>,
-    },
+    Lambda(LambdaExpr),
     Dict(Vec<(String, Box<Expr>)>),
     Array(Vec<Box<Expr>>),
     GetIndex(Box<Expr>, Box<Expr>),
@@ -174,17 +188,12 @@ impl Debug for Expr {
                 Ok(())
             }
             Expr::Call { callee, args } => f.debug_tuple("Call").field(callee).field(args).finish(),
-            Expr::Lambda {
-                params,
-                body,
-                potential_captures,
-                name,
-            } => f
-                .debug_tuple("Lambda")
-                .field(name)
-                .field(params)
-                .field(body)
-                .field(potential_captures)
+            Expr::Lambda(l) => f
+                .debug_struct("Lambda")
+                .field("name", &l.name)
+                .field("params", &l.params)
+                .field("body", &l.body)
+                .field("captures", &l.potential_captures)
                 .finish(),
             Expr::Dict(entries) => write!(f, "Dict{:?}", entries),
             Expr::Array(elements) => write!(f, "Array{:?}", elements),

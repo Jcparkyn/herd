@@ -1,5 +1,5 @@
 use std::{str::FromStr,rc::Rc};
-use crate::ast::{Expr, Opcode, Statement, Block, AssignmentTarget, VarRef};
+use crate::ast::{Expr, Opcode, Statement, Block, AssignmentTarget, VarRef, LambdaExpr};
 use crate::parse_helpers::parse_string_literal;
 
 grammar;
@@ -105,7 +105,9 @@ BoolLiteral: bool = {
 };
 
 LambdaExpr: Box<Expr> = {
-    "{" <params:Comma<Identifier>> "->" <body:BlockBody> "}" => Box::new(Expr::Lambda { params, body: Rc::new(body), potential_captures: vec![], name: None })
+    "{" <params:Comma<Identifier>> "->" <body:BlockBody> "}" => Box::new(Expr::Lambda(
+        LambdaExpr::new(params, Rc::new(body))
+    ))
 }
 
 DictEntry: (String, Box<Expr>) = {
