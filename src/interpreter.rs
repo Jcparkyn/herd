@@ -13,6 +13,7 @@ pub struct Interpreter {
 
 pub struct Environment {
     slots: Vec<Value>,
+    cur_frame: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -214,18 +215,11 @@ fn try_into_int(value: f64) -> Result<usize, InterpreterError> {
 
 impl Environment {
     pub fn new() -> Environment {
-        Environment { slots: vec![] }
+        Environment {
+            slots: Vec::with_capacity(100),
+            cur_frame: 0,
+        }
     }
-
-    // pub fn declare(&mut self, name: String, value: Value) -> Result<(), InterpreterError> {
-    //     match self.scopes.last_mut().unwrap().entry(name.clone()) {
-    //         Entry::Occupied(_) => Err(VariableAlreadyDefined(name)),
-    //         Entry::Vacant(e) => {
-    //             e.insert(value);
-    //             Ok(())
-    //         }
-    //     }
-    // }
 
     fn assign_part(
         old: Value,
@@ -295,16 +289,6 @@ impl Environment {
         }
     }
 
-    // pub fn rebind(&mut self, name: &String, value: Value) -> Result<(), InterpreterError> {
-    //     for scope in self.scopes.iter_mut().rev() {
-    //         if let Some(v) = scope.get_mut(name) {
-    //             *v = value;
-    //             return Ok(());
-    //         }
-    //     }
-    //     return Err(VariableNotDefined(name.clone()));
-    // }
-
     pub fn assign(
         &mut self,
         slot: u32,
@@ -325,21 +309,12 @@ impl Environment {
         }
     }
 
-    // pub fn get(&self, name: &String) -> Option<&Value> {
-    //     for scope in self.scopes.iter().rev() {
-    //         if let Some(v) = scope.get(name) {
-    //             return Some(v);
-    //         }
-    //     }
-    //     return None;
-    // }
-
     pub fn set(&mut self, slot: u32, new_val: Value) {
         *self.slot(slot) = new_val;
     }
 
     pub fn get(&self, slot: u32) -> &Value {
-        &self.slots[slot as usize]
+        &self.slots[slot as usize + self.cur_frame]
     }
 
     pub fn replace(&mut self, slot: u32, new_val: Value) -> Value {
@@ -348,11 +323,11 @@ impl Environment {
 
     fn slot(&mut self, slot: u32) -> &mut Value {
         self.expand_slots(slot);
-        &mut self.slots[slot as usize]
+        &mut self.slots[slot as usize + self.cur_frame]
     }
 
     pub fn expand_slots(&mut self, new_slot: u32) {
-        let new_len = (new_slot as usize) + 1;
+        let new_len = (new_slot as usize + self.cur_frame) + 1;
         if new_len <= self.slots.len() {
             return;
         }
@@ -400,25 +375,8 @@ impl Interpreter {
     pub fn execute(&mut self, statement: &Statement) -> Result<(), InterpreterError> {
         match statement {
             Statement::Declaration(var, expr) => {
-                let value = match **expr {
-                    // Expr::Lambda {
-                    //     ref params,
-                    //     ref body,
-                    //     ref potential_captures,
-                    //     name: _,
-                    // } => {
-                    //     // Workaround to allow simple recursive functions without Rc cycles
-                    //     let mut l =
-                    //         self.eval_lambda_definition(&body, &params, &potential_captures);
-                    //     l.self_name = Some(var.name.clone());
-                    //     l.recursive = potential_captures.iter().any(|pc| pc.name == *var.name);
-                    //     Value::Lambda(Rc::new(l))
-                    // }
-                    ref e => self.eval(&e)?,
-                };
-
+                let value = self.eval(expr)?;
                 self.environment.set(var.slot, value);
-
                 Ok(())
             }
             Statement::Assignment(target, expr) => {
@@ -735,34 +693,28 @@ impl Interpreter {
                 supplied: arg_values.len(),
             });
         }
-        let mut lambda_interpreter = Interpreter::new();
+        let old_frame = self.environment.cur_frame;
+        self.environment.cur_frame = self.environment.slots.len();
         for val in arg_values {
-            lambda_interpreter.environment.slots.push(val);
+            self.environment.slots.push(val);
         }
         for val in &function.closure {
-            lambda_interpreter.environment.slots.push(val.clone());
+            self.environment.slots.push(val.clone());
         }
         if let Some(_) = &function.self_name {
-            lambda_interpreter
-                .environment
-                .slots
-                .push(Value::Lambda(function.clone()));
+            self.environment.slots.push(Value::Lambda(function.clone()));
             // // Optimization: don't add self unless we need to.
             // if function.recursive {
             // }
         }
 
-        return match lambda_interpreter.eval_block(&function.body) {
+        let result = match self.eval_block(&function.body) {
             Ok(val) => Ok(val),
             Err(InterpreterError::Return(v)) => Ok(v),
             Err(e) => Err(e),
         };
+        self.environment.slots.truncate(self.environment.cur_frame);
+        self.environment.cur_frame = old_frame;
+        return result;
     }
-
-    // fn run_in_scope<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> T {
-    //     self.environment.scopes.push(HashMap::new());
-    //     let result = f(self);
-    //     self.environment.scopes.pop();
-    //     return result;
-    // }
 }
