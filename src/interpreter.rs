@@ -362,6 +362,7 @@ pub static BUILTIN_FUNCTIONS: phf::Map<&'static str, BuiltInFunction> = phf::phf
     "push" => BuiltInFunction::Push,
     "pop" => BuiltInFunction::Pop,
     "sort" => BuiltInFunction::Sort,
+    "removeKey" => BuiltInFunction::RemoveKey,
     "shiftLeft" => BuiltInFunction::ShiftLeft,
     "floor" => BuiltInFunction::Floor,
 };
@@ -678,6 +679,13 @@ impl Interpreter {
                         })
                     }
                 }
+            }
+            BuiltInFunction::RemoveKey => {
+                let [dict_val, key] = destructure_args(args)?;
+                let mut dict = dict_val.to_dict()?;
+                let mut_dict = Rc::make_mut(&mut dict);
+                mut_dict.values.remove(key.as_string()?);
+                return Ok(Value::Dict(dict));
             }
             BuiltInFunction::ShiftLeft => {
                 let [val, shift_by] = destructure_args(args)?;

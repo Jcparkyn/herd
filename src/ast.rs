@@ -7,13 +7,18 @@ use std::rc::Rc;
 
 #[derive(PartialEq, Debug, Clone, Copy)]
 pub enum BuiltInFunction {
+    // general
     Print,
     Not,
+    // arrays
     Range,
     Push,
     Pop,
     Len,
     Sort,
+    // dicts
+    RemoveKey,
+    // numbers
     ShiftLeft,
     Floor,
 }
@@ -30,6 +35,7 @@ impl BuiltInFunction {
             BuiltInFunction::Sort => "sort",
             BuiltInFunction::ShiftLeft => "shiftLeft",
             BuiltInFunction::Floor => "floor",
+            BuiltInFunction::RemoveKey => "removeKey",
         }
     }
 }
