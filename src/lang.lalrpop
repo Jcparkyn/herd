@@ -34,7 +34,6 @@ Expr = {
 
 ExprWithoutBlock = {
     LogicExpr,
-    <callee:Term> <args:Term+> => Box::new(Expr::Call { callee, args }),
     <lhs:Expr> "|" <callee:Term> <mut args:Term*> =>{
         args.insert(0, lhs);
         Box::new(Expr::Call { callee, args })
@@ -50,7 +49,12 @@ ExprWithBlock: Box<Expr> = {
 
 LogicExpr = Tier<LogicOp, ComparisonExpr>;
 
-ComparisonExpr = Tier<ComparisonOp, AddSubExpr>;
+ComparisonExpr = Tier<ComparisonOp, AddSubCallExpr>;
+
+AddSubCallExpr: Box<Expr> = {
+    <callee:Term> <args:Term+> => Box::new(Expr::Call { callee, args }),
+    AddSubExpr,
+}
 
 AddSubExpr: Box<Expr> = {
     <lhs:AddSubExpr> <op:AddSubOp> <rhs:Factor> => Box::new(Expr::Op { op, lhs, rhs }),
