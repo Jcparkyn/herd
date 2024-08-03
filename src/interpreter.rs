@@ -89,6 +89,12 @@ pub struct ArrayInstance {
     values: Vec<Value>,
 }
 
+impl ArrayInstance {
+    pub fn new(values: Vec<Value>) -> Self {
+        ArrayInstance { values }
+    }
+}
+
 impl Clone for ArrayInstance {
     fn clone(&self) -> Self {
         println!("Cloning array: {:?}", self);
@@ -171,6 +177,17 @@ impl Value {
             Value::Lambda { .. } => true,
             Value::Dict(_) => true,
             Value::Array(arr) => !arr.values.is_empty(),
+        }
+    }
+
+    pub fn add(lhs: Value, rhs: Value) -> Result<Value, InterpreterError> {
+        use Value::*;
+        match (lhs, rhs) {
+            (Number(n1), Number(n2)) => Ok(Number(n1 + n2)),
+            (String(s1), String(s2)) => Ok(String(s1 + &s2)),
+            (x1, x2) => Err(WrongType {
+                message: format!("Can't add {x1} to {x2}"),
+            }),
         }
     }
 }
@@ -472,7 +489,7 @@ impl Interpreter {
                 for e in elements.iter() {
                     values.push(self.eval(e)?);
                 }
-                Ok(Value::Array(Rc::new(ArrayInstance { values })))
+                Ok(Value::Array(Rc::new(ArrayInstance::new(values))))
             }
             Expr::GetIndex(lhs_expr, index_expr) => {
                 let index = self.eval(&index_expr)?;
@@ -544,13 +561,7 @@ impl Interpreter {
     ) -> Result<Value, InterpreterError> {
         use Value::*;
         match op {
-            Opcode::Add => match (self.eval(&lhs)?, self.eval(&rhs)?) {
-                (Number(n1), Number(n2)) => Ok(Number(n1 + n2)),
-                (String(s1), String(s2)) => Ok(String(s1 + &s2)),
-                (x1, x2) => Err(WrongType {
-                    message: format!("Can't add {x1} to {x2}"),
-                }),
-            },
+            Opcode::Add => Value::add(self.eval(lhs)?, self.eval(rhs)?),
             Opcode::Sub => Ok(Number(
                 self.eval(&lhs)?.as_number()? - self.eval(&rhs)?.as_number()?,
             )),
@@ -604,7 +615,7 @@ impl Interpreter {
                 for i in start_int..stop_int {
                     values.push(Value::Number(i as f64));
                 }
-                return Ok(Value::Array(Rc::new(ArrayInstance { values })));
+                return Ok(Value::Array(Rc::new(ArrayInstance::new(values))));
             }
             BuiltInFunction::Len => match destructure_args::<1>(args)? {
                 [Value::Array(a)] => Ok(Value::Number(a.values.len() as f64)),
