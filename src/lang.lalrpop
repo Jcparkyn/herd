@@ -122,7 +122,7 @@ DictEntry: (String, Box<Expr>) = {
 }
 
 DictLiteral: Box<Expr> = {
-    "[" <entries:CommaPlus<DictEntry>> "]" => Box::new(Expr::Dict(entries)),
+    "[" <entries:CommaNonEmpty<DictEntry>> "]" => Box::new(Expr::Dict(entries)),
     "[:]" => Box::new(Expr::Dict(vec![])),
 }
 
@@ -161,14 +161,21 @@ Tier<Op,NextTier>: Box<Expr> = {
     NextTier
 };
 
-CommaPlus<T>: Vec<T> = {
-    <mut v:(<T> ",")*> <e:T> => {
+#[inline]
+CommaNonEmpty<T>: Vec<T> = {
+    <mut v:(<T> ",")*> <e:(<T> ","?)> => {
         v.push(e);
         v
     }
 };
 
+#[inline]
 Comma<T>: Vec<T> = {
-    CommaPlus<T>,
-    => vec![],
+    <mut v:(<T> ",")*> <e:T?> => match e {
+        None => v,
+        Some(e) => {
+            v.push(e);
+            v
+        }
+    }
 }
