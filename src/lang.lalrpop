@@ -4,6 +4,13 @@ use crate::parse_helpers::parse_string_literal;
 
 grammar;
 
+match {
+    r"\s*" => { }, // The default whitespace skipping is disabled if an `ignore pattern` is specified
+    r"//[^\n\r]*[\n\r]*" => { }, // Skip `// comments`
+    r"/\*[^*]*\*+(?:[^/*][^*]*\*+)*/" => { },  // Skip `/* comments */`
+    _
+}
+
 pub Program: Vec<Statement> = {
     Statement+
 }
