@@ -1,8 +1,7 @@
-use analysis::analyze_statements;
+use analysis::Analyzer;
 use interpreter::{Interpreter, InterpreterError};
 use lalrpop_util::{lalrpop_mod, ParseError};
 use std::{
-    collections::HashSet,
     env,
     io::{stdin, stdout, Write},
 };
@@ -37,7 +36,8 @@ fn main() {
                 println!("Error while parsing: {}", err);
             }
             Ok(mut program) => {
-                analyze_statements(&mut program, &mut HashSet::new());
+                let mut analyzer = Analyzer::new();
+                analyzer.analyze_statements(&mut program);
                 #[cfg(debug_assertions)]
                 println!("ast: {:#?}", program);
                 for statement in program {
@@ -61,6 +61,7 @@ fn main() {
 fn run_repl() {
     let parser = lang::ProgramParser::new();
     let mut interpreter = Interpreter::new();
+    let mut analyzer = Analyzer::new();
     loop {
         print!("> ");
         match stdout().flush() {
@@ -84,8 +85,7 @@ fn run_repl() {
                     break;
                 }
                 Ok(mut statements) => {
-                    let mut deps = HashSet::from_iter(interpreter.list_globals().cloned());
-                    analyze_statements(&mut statements, &mut deps);
+                    analyzer.analyze_statements(&mut statements);
                     println!("ast: {:?}", statements);
                     for statement in statements {
                         match interpreter.execute(&statement) {

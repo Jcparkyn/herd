@@ -5,12 +5,22 @@ use crate::{
     interpreter::BUILTIN_FUNCTIONS,
 };
 
-pub fn analyze_statements(stmts: &mut [Statement], deps: &mut HashSet<String>) {
-    analyze_statements_liveness(stmts, deps);
-    // println!("ast: {:#?}", stmts);
-    let mut var_analyzer = VariableAnalyzer::new();
-    for stmt in stmts {
-        var_analyzer.analyze_statement(stmt);
+pub struct Analyzer {
+    var_analyzer: VariableAnalyzer,
+}
+
+impl Analyzer {
+    pub fn new() -> Analyzer {
+        Analyzer {
+            var_analyzer: VariableAnalyzer::new(),
+        }
+    }
+
+    pub fn analyze_statements(&mut self, stmts: &mut [Statement]) {
+        // Make sure we don't drop any current globals
+        let mut deps = HashSet::from_iter(self.var_analyzer.list_vars().cloned());
+        analyze_statements_liveness(stmts, &mut deps);
+        self.var_analyzer.analyze_stamements(stmts);
     }
 }
 
@@ -32,12 +42,22 @@ impl VariableAnalyzer {
         }
     }
 
+    fn list_vars(&self) -> impl Iterator<Item = &String> + '_ {
+        self.vars.iter().map(|v| &v.name)
+    }
+
     fn push_var(&mut self, var: &mut VarRef) {
         var.slot = self.vars.len() as u32;
         self.vars.push(LocalVar {
             name: var.name.clone(),
             depth: self.depth,
         });
+    }
+
+    fn analyze_stamements(&mut self, stmts: &mut [Statement]) {
+        for stmt in stmts {
+            self.analyze_statement(stmt);
+        }
     }
 
     fn analyze_statement(&mut self, stmt: &mut Statement) {

@@ -388,12 +388,6 @@ impl Interpreter {
         }
     }
 
-    pub fn list_globals(&self) -> impl Iterator<Item = &String> + '_ {
-        // self.environment.scopes.iter().flat_map(|s| s.keys())
-        // todo!();
-        vec![].into_iter()
-    }
-
     pub fn execute(&mut self, statement: &Statement) -> Result<(), InterpreterError> {
         match statement {
             Statement::Declaration(var, expr) => {
