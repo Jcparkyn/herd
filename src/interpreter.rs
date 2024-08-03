@@ -71,16 +71,25 @@ pub struct DictInstance {
 
 impl Clone for DictInstance {
     fn clone(&self) -> Self {
-        println!("Cloning dict: {:?}", self);
+        #[cfg(debug_assertions)]
+        println!("Cloning dict: {}", self);
         DictInstance {
             values: self.values.clone(),
         }
     }
 }
 
-impl Drop for DictInstance {
-    fn drop(&mut self) {
-        println!("Dropping dict: {:?}", self);
+impl Display for DictInstance {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.values.is_empty() {
+            return write!(f, "[:]");
+        }
+        let values: Vec<_> = self
+            .values
+            .iter()
+            .map(|(name, v)| name.clone() + ": " + &v.to_string())
+            .collect();
+        write!(f, "[{}]", values.join(", "))
     }
 }
 
@@ -97,7 +106,8 @@ impl ArrayInstance {
 
 impl Clone for ArrayInstance {
     fn clone(&self) -> Self {
-        println!("Cloning array: {:?}", self);
+        #[cfg(debug_assertions)]
+        println!("Cloning array: {}", self);
         ArrayInstance {
             values: self.values.clone(),
         }
@@ -107,6 +117,13 @@ impl Clone for ArrayInstance {
 impl Drop for ArrayInstance {
     fn drop(&mut self) {
         // println!("Dropping array: {:?}", self);
+    }
+}
+
+impl Display for ArrayInstance {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let values: Vec<_> = self.values.iter().map(|v| v.to_string()).collect();
+        write!(f, "[{}]", values.join(", "))
     }
 }
 
@@ -200,21 +217,8 @@ impl Display for Value {
             Value::String(s) => write!(f, "'{}'", s),
             Value::Builtin(b) => write!(f, "{}", b.to_string()),
             Value::Lambda(l) => write!(f, "<lambda: {}>", l.params.join(", ")),
-            Value::Dict(d) => {
-                if d.values.is_empty() {
-                    return write!(f, "[:]");
-                }
-                let values: Vec<_> = d
-                    .values
-                    .iter()
-                    .map(|(name, v)| name.clone() + ": " + &v.to_string())
-                    .collect();
-                write!(f, "[{}]", values.join(", "))
-            }
-            Value::Array(a) => {
-                let values: Vec<_> = a.values.iter().map(|v| v.to_string()).collect();
-                write!(f, "[{}]", values.join(", "))
-            }
+            Value::Dict(d) => write!(f, "{}", d),
+            Value::Array(a) => write!(f, "{}", a),
             Value::Nil => write!(f, "nil"),
         }
     }
