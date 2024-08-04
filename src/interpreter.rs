@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    fmt::{format, Debug, Display},
+    fmt::{Debug, Display},
     hash::Hash,
     rc::Rc,
     vec,
@@ -20,8 +20,6 @@ pub struct Environment {
 #[derive(Debug, Clone)]
 pub enum InterpreterError {
     Return(Value), // Implemented as an error to simplify implementation.
-    // VariableAlreadyDefined(String),
-    // VariableNotDefined(String),
     KeyNotExists(Value),
     IndexOutOfRange { array_len: usize, accessed: usize },
     WrongArgumentCount { expected: usize, supplied: usize },
@@ -31,8 +29,6 @@ pub enum InterpreterError {
 impl Display for InterpreterError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            // VariableAlreadyDefined(name) => write!(f, "Variable {} is already defined", name),
-            // VariableNotDefined(name) => write!(f, "Variable {} is not defined", name),
             KeyNotExists(name) => write!(f, "Field {} doesn't exist", name),
             IndexOutOfRange {
                 array_len,

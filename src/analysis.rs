@@ -1,9 +1,29 @@
-use std::{collections::HashSet, rc::Rc};
+use std::{collections::HashSet, fmt::Display, rc::Rc};
 
 use crate::{
     ast::{Block, Expr, Statement, VarRef},
     interpreter::BUILTIN_FUNCTIONS,
 };
+
+pub enum AnalysisError {
+    VariableAlreadyDefined(String),
+    VariableNotDefined(String),
+}
+
+use AnalysisError::*;
+
+impl Display for AnalysisError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            VariableAlreadyDefined(name) => {
+                write!(f, "Variable {} is already defined", name)
+            }
+            VariableNotDefined(name) => {
+                write!(f, "Variable {} is not defined", name)
+            }
+        }
+    }
+}
 
 pub struct Analyzer {
     var_analyzer: VariableAnalyzer,
@@ -16,11 +36,23 @@ impl Analyzer {
         }
     }
 
-    pub fn analyze_statements(&mut self, stmts: &mut [Statement]) {
+    pub fn analyze_statements(
+        &mut self,
+        stmts: &mut [Statement],
+    ) -> Result<(), Vec<AnalysisError>> {
+        let initial_var_count = self.var_analyzer.vars.len();
         // Make sure we don't drop any current globals
         let mut deps = HashSet::from_iter(self.var_analyzer.list_vars().cloned());
         analyze_statements_liveness(stmts, &mut deps);
         self.var_analyzer.analyze_stamements(stmts);
+
+        if self.var_analyzer.errors.is_empty() {
+            return Ok(());
+        } else {
+            // Remove any globals that were added
+            self.var_analyzer.vars.truncate(initial_var_count);
+            Err(std::mem::replace(&mut self.var_analyzer.errors, vec![]))
+        }
     }
 }
 
@@ -32,13 +64,15 @@ struct LocalVar {
 struct VariableAnalyzer {
     vars: Vec<LocalVar>,
     depth: usize,
+    errors: Vec<AnalysisError>,
 }
 
 impl VariableAnalyzer {
     fn new() -> VariableAnalyzer {
         VariableAnalyzer {
-            vars: Vec::new(),
+            vars: vec![],
             depth: 0,
+            errors: vec![],
         }
     }
 
@@ -63,6 +97,9 @@ impl VariableAnalyzer {
     fn analyze_statement(&mut self, stmt: &mut Statement) {
         match stmt {
             Statement::Declaration(var, rhs) => {
+                if let Some(_) = self.get_slot(&var.name) {
+                    self.errors.push(VariableAlreadyDefined(var.name.clone()));
+                }
                 self.analyze_expr(rhs);
                 self.push_var(var);
             }
@@ -71,7 +108,8 @@ impl VariableAnalyzer {
                 if let Some(slot) = self.get_slot(&target.var.name) {
                     target.var.slot = slot;
                 } else {
-                    panic!("Variable {} not found", target.var.name);
+                    self.errors
+                        .push(VariableNotDefined(target.var.name.clone()));
                 }
                 for index in target.path.iter_mut() {
                     self.analyze_expr(index);
@@ -92,7 +130,7 @@ impl VariableAnalyzer {
                 if let Some(var_slot) = self.get_slot(&v.name) {
                     v.slot = var_slot;
                 } else {
-                    panic!("Variable {} not found", v.name);
+                    self.errors.push(VariableNotDefined(v.name.clone()));
                 }
             }
             Expr::If {
@@ -130,7 +168,7 @@ impl VariableAnalyzer {
                     if let Some(slot) = self.get_slot(&capture.name) {
                         capture.slot = slot;
                     } else {
-                        panic!("Capture variable {} not found", capture.name);
+                        self.errors.push(VariableNotDefined(capture.name.clone()));
                     }
                     lambda_analyzer.vars.push(LocalVar {
                         name: capture.name.to_string(),
@@ -144,6 +182,9 @@ impl VariableAnalyzer {
                     });
                 }
                 lambda_analyzer.analyze_block(Rc::get_mut(&mut l.body).unwrap());
+                for err in lambda_analyzer.errors {
+                    self.errors.push(err);
+                }
             }
             Expr::Dict(entries) => {
                 for (_, value) in entries {

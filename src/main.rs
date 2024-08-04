@@ -37,7 +37,13 @@ fn main() {
             }
             Ok(mut program) => {
                 let mut analyzer = Analyzer::new();
-                analyzer.analyze_statements(&mut program);
+                match analyzer.analyze_statements(&mut program) {
+                    Ok(()) => {}
+                    Err(errs) => {
+                        print_errors(errs);
+                        return;
+                    }
+                }
                 #[cfg(debug_assertions)]
                 println!("ast: {:#?}", program);
                 for statement in program {
@@ -85,7 +91,13 @@ fn run_repl() {
                     break;
                 }
                 Ok(mut statements) => {
-                    analyzer.analyze_statements(&mut statements);
+                    match analyzer.analyze_statements(&mut statements) {
+                        Ok(()) => {}
+                        Err(errs) => {
+                            print_errors(errs);
+                            break;
+                        }
+                    }
                     println!("ast: {:?}", statements);
                     for statement in statements {
                         match interpreter.execute(&statement) {
@@ -100,5 +112,12 @@ fn run_repl() {
                 }
             }
         }
+    }
+}
+
+fn print_errors(errs: Vec<analysis::AnalysisError>) {
+    println!("Errors while analyzing:");
+    for err in errs {
+        println!("\t{}", err);
     }
 }
