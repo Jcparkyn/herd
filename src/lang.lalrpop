@@ -121,8 +121,9 @@ LambdaExpr: Box<Expr> = {
     ))
 }
 
-DictEntry: (String, Box<Expr>) = {
-    <key:Identifier> ":" <val:Expr> => (key, val),
+DictEntry: (Box<Expr>, Box<Expr>) = {
+    <key:Identifier> ":" <val:Expr> => (Box::new(Expr::String(key.to_string())), val),
+    "[" <key:Expr> "]" ":" <val:Expr> => (key, val),
 }
 
 DictLiteral: Box<Expr> = {

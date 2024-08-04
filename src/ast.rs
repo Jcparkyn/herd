@@ -5,7 +5,7 @@ use std::fmt::Error;
 use std::fmt::Formatter;
 use std::rc::Rc;
 
-#[derive(PartialEq, Debug, Clone, Copy)]
+#[derive(PartialEq, Debug, Clone, Copy, Hash)]
 pub enum BuiltInFunction {
     // general
     Print,
@@ -138,7 +138,7 @@ pub enum Expr {
     },
     BuiltInFunction(BuiltInFunction),
     Lambda(LambdaExpr),
-    Dict(Vec<(String, Box<Expr>)>),
+    Dict(Vec<(Box<Expr>, Box<Expr>)>),
     Array(Vec<Box<Expr>>),
     GetIndex(Box<Expr>, Box<Expr>),
     ForIn {

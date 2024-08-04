@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
-    fmt::{Debug, Display},
+    fmt::{format, Debug, Display},
+    hash::Hash,
     rc::Rc,
     vec,
 };
@@ -21,7 +22,7 @@ pub enum InterpreterError {
     Return(Value), // Implemented as an error to simplify implementation.
     // VariableAlreadyDefined(String),
     // VariableNotDefined(String),
-    FieldNotExists(String),
+    KeyNotExists(Value),
     IndexOutOfRange { array_len: usize, accessed: usize },
     WrongArgumentCount { expected: usize, supplied: usize },
     WrongType { message: String },
@@ -32,7 +33,7 @@ impl Display for InterpreterError {
         match self {
             // VariableAlreadyDefined(name) => write!(f, "Variable {} is already defined", name),
             // VariableNotDefined(name) => write!(f, "Variable {} is not defined", name),
-            FieldNotExists(name) => write!(f, "Field {} doesn't exist", name),
+            KeyNotExists(name) => write!(f, "Field {} doesn't exist", name),
             IndexOutOfRange {
                 array_len,
                 accessed,
@@ -64,9 +65,19 @@ pub struct LambdaFunction {
     recursive: bool,
 }
 
+impl Display for LambdaFunction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(self_name) = &self.self_name {
+            write!(f, "<lambda: {}>", self_name)
+        } else {
+            write!(f, "<lambda>")
+        }
+    }
+}
+
 #[derive(PartialEq, Debug)]
 pub struct DictInstance {
-    values: HashMap<String, Value>,
+    values: HashMap<Value, Value>,
 }
 
 impl Clone for DictInstance {
@@ -87,13 +98,13 @@ impl Display for DictInstance {
         let values: Vec<_> = self
             .values
             .iter()
-            .map(|(name, v)| name.clone() + ": " + &v.to_string())
+            .map(|(name, v)| name.to_string() + ": " + &v.to_string())
             .collect();
         write!(f, "[{}]", values.join(", "))
     }
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Hash)]
 pub struct ArrayInstance {
     values: Vec<Value>,
 }
@@ -207,6 +218,17 @@ impl Value {
             }),
         }
     }
+
+    pub fn is_valid_dict_key(&self) -> bool {
+        match self {
+            Value::Dict(_) => false,
+            Value::Lambda(_) => false,
+            Value::Builtin(_) => false,
+            Value::Array(a) => a.as_ref().values.iter().all(Self::is_valid_dict_key),
+            Value::Number(f) => !f.is_nan(),
+            _ => true,
+        }
+    }
 }
 
 impl Display for Value {
@@ -216,13 +238,30 @@ impl Display for Value {
             Value::Bool(b) => write!(f, "{}", b),
             Value::String(s) => write!(f, "'{}'", s),
             Value::Builtin(b) => write!(f, "{}", b.to_string()),
-            Value::Lambda(l) => write!(f, "<lambda: {}>", l.params.join(", ")),
+            Value::Lambda(l) => write!(f, "{}", l),
             Value::Dict(d) => write!(f, "{}", d),
             Value::Array(a) => write!(f, "{}", a),
             Value::Nil => write!(f, "nil"),
         }
     }
 }
+
+impl std::hash::Hash for Value {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        match self {
+            Value::Number(n) => n.to_bits().hash(state),
+            Value::Bool(b) => b.hash(state),
+            Value::String(s) => s.hash(state),
+            Value::Builtin(b) => b.hash(state),
+            Value::Lambda(_) => panic!("Lambda functions cannot be used as keys inside dicts"),
+            Value::Dict(_) => panic!("Dicts cannot be used as keys inside dicts"),
+            Value::Array(a) => a.hash(state),
+            Value::Nil => ().hash(state),
+        }
+    }
+}
+
+impl Eq for Value {}
 
 fn try_into_int(value: f64) -> Result<usize, InterpreterError> {
     let int = value as usize;
@@ -248,14 +287,15 @@ impl Environment {
         index: &Value,
         path: &[Value],
     ) -> Result<Value, InterpreterError> {
-        match index {
-            Value::String(name) => Self::assign_dict_field(old.to_dict()?, rhs, name, path),
-            Value::Number(idx) => {
-                let idx_int = try_into_int(*idx)?;
-                return Self::assign_array_index(old.to_array()?, rhs, idx_int, path);
+        match old {
+            Value::Dict(dict) => Self::assign_dict_field(dict, rhs, index, path),
+            Value::Array(array) => {
+                Self::assign_array_index(array, rhs, try_into_int(index.as_number()?)?, path)
             }
             _ => Err(WrongType {
-                message: format!("Expected a string or non-negative integer, found {index}"),
+                message: format!(
+                    "Can't assign to index {index}, because {old} is neither a dict nor an array."
+                ),
             }),
         }
     }
@@ -263,17 +303,22 @@ impl Environment {
     fn assign_dict_field(
         mut dict: Rc<DictInstance>,
         rhs: Value,
-        field: &str,
+        key: &Value,
         path: &[Value],
     ) -> Result<Value, InterpreterError> {
+        if !key.is_valid_dict_key() {
+            return Err(WrongType {
+                message: format!("Can't use {key} as a key in a dict. Valid keys are strings, numbers, booleans, and arrays.")
+            });
+        }
         let mut_dict = Rc::make_mut(&mut dict);
         match path {
             [] => {
-                mut_dict.values.insert(field.to_string(), rhs);
+                mut_dict.values.insert(key.clone(), rhs);
                 Ok(Value::Dict(dict))
             }
             [next_field, rest @ ..] => {
-                match mut_dict.values.get_mut(field) {
+                match mut_dict.values.get_mut(key) {
                     Some(entry) => {
                         let old_value = std::mem::replace(entry, Value::Nil);
                         let new_value = Self::assign_part(old_value, rhs, next_field, rest)?;
@@ -281,7 +326,7 @@ impl Environment {
                         return Ok(Value::Dict(dict));
                     }
                     None => {
-                        return Err(FieldNotExists(field.to_string()));
+                        return Err(KeyNotExists(key.clone()));
                     }
                 };
             }
@@ -484,7 +529,14 @@ impl Interpreter {
             Expr::Dict(entries) => {
                 let mut values = HashMap::new();
                 for (k, v) in entries.iter() {
-                    values.insert(k.clone(), self.eval(v)?);
+                    let key = self.eval(k)?;
+                    if !key.is_valid_dict_key() {
+                        return Err(WrongType {
+                            message: format!("Can't use {key} as a key in a dict. Valid keys are strings, numbers, booleans, and arrays.")
+                        });
+                    }
+                    let value = self.eval(v)?;
+                    values.insert(key, value);
                 }
                 Ok(Value::Dict(Rc::new(DictInstance { values })))
             }
@@ -498,12 +550,20 @@ impl Interpreter {
             Expr::GetIndex(lhs_expr, index_expr) => {
                 let index = self.eval(&index_expr)?;
                 let lhs = self.eval(&lhs_expr)?;
-                match (lhs, index) {
-                    (Value::Dict(d), Value::String(name)) => {
-                        return Ok(d.values.get(name.as_ref()).cloned().unwrap_or(Value::Nil));
+                match lhs {
+                    Value::Dict(d) => {
+                        return Ok(d.values.get(&index).cloned().unwrap_or(Value::Nil));
                     }
-                    (Value::Array(a), Value::Number(idx)) => {
-                        let idx_int = try_into_int(idx)?;
+                    Value::Array(a) => {
+                        let idx_int =
+                            index
+                                .as_number()
+                                .and_then(try_into_int)
+                                .map_err(|_| WrongType {
+                                    message: format!(
+                                        "Arrays can only be indexed with integers, found {index}"
+                                    ),
+                                })?;
                         return match a.values.get(idx_int) {
                             Some(v) => Ok(v.clone()),
                             None => Err(InterpreterError::IndexOutOfRange {
@@ -512,14 +572,8 @@ impl Interpreter {
                             }),
                         };
                     }
-                    (Value::Dict(_), v) => Err(WrongType {
-                        message: format!("Dicts can only be indexed with strings, found {v}"),
-                    }),
-                    (Value::Array(_), v) => Err(WrongType {
-                        message: format!("Arrays can only be indexed with numbers, found {v}"),
-                    }),
-                    (v, _) => Err(WrongType {
-                        message: format!("Can't index {v}"),
+                    v => Err(WrongType {
+                        message: format!("Can't index {v} (trying to get key {index})"),
                     }),
                 }
             }
@@ -687,7 +741,7 @@ impl Interpreter {
                 let [dict_val, key] = destructure_args(args)?;
                 let mut dict = dict_val.to_dict()?;
                 let mut_dict = Rc::make_mut(&mut dict);
-                mut_dict.values.remove(key.as_string()?);
+                mut_dict.values.remove(&key);
                 return Ok(Value::Dict(dict));
             }
             BuiltInFunction::ShiftLeft => {
