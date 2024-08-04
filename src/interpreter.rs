@@ -294,19 +294,24 @@ impl Environment {
         index: usize,
         path: &[Value],
     ) -> Result<Value, InterpreterError> {
+        if index >= array.values.len() {
+            return Err(InterpreterError::IndexOutOfRange {
+                array_len: array.values.len(),
+                accessed: index,
+            });
+        }
         let mut_array = Rc::make_mut(&mut array);
         match path {
             [] => {
-                if index as usize >= mut_array.values.len() {
-                    return Err(InterpreterError::IndexOutOfRange {
-                        array_len: mut_array.values.len(),
-                        accessed: index,
-                    });
-                }
                 mut_array.values[index] = rhs;
                 Ok(Value::Array(array))
             }
-            _ => Err(InterpreterError::FieldNotExists(format!("{}", index))),
+            [next_field, rest @ ..] => {
+                let old_value = std::mem::replace(&mut mut_array.values[index], Value::Nil);
+                let new_value = Self::assign_part(old_value, rhs, next_field, rest)?;
+                mut_array.values[index] = new_value;
+                Ok(Value::Array(array))
+            }
         }
     }
 
