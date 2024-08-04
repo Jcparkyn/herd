@@ -1,5 +1,5 @@
 use std::{
-    collections::{hash_map::Entry, HashMap},
+    collections::HashMap,
     fmt::{Debug, Display},
     rc::Rc,
     vec,
@@ -131,7 +131,7 @@ impl Display for ArrayInstance {
 pub enum Value {
     Number(f64),
     Bool(bool),
-    String(String),
+    String(Rc<str>),
     Builtin(BuiltInFunction),
     Lambda(Rc<LambdaFunction>),
     Dict(Rc<DictInstance>),
@@ -201,7 +201,7 @@ impl Value {
         use Value::*;
         match (lhs, rhs) {
             (Number(n1), Number(n2)) => Ok(Number(n1 + n2)),
-            (String(s1), String(s2)) => Ok(String(s1 + &s2)),
+            (String(s1), String(s2)) => Ok(String(Rc::from(format!("{s1}{s2}")))),
             (x1, x2) => Err(WrongType {
                 message: format!("Can't add {x1} to {x2}"),
             }),
@@ -263,25 +263,25 @@ impl Environment {
     fn assign_dict_field(
         mut dict: Rc<DictInstance>,
         rhs: Value,
-        field: &String,
+        field: &str,
         path: &[Value],
     ) -> Result<Value, InterpreterError> {
         let mut_dict = Rc::make_mut(&mut dict);
         match path {
             [] => {
-                mut_dict.values.insert(field.clone(), rhs);
+                mut_dict.values.insert(field.to_string(), rhs);
                 Ok(Value::Dict(dict))
             }
             [next_field, rest @ ..] => {
-                match mut_dict.values.entry(field.clone()) {
-                    Entry::Occupied(mut entry) => {
-                        let old_value = entry.insert(Value::Nil);
+                match mut_dict.values.get_mut(field) {
+                    Some(entry) => {
+                        let old_value = std::mem::replace(entry, Value::Nil);
                         let new_value = Self::assign_part(old_value, rhs, next_field, rest)?;
-                        entry.insert(new_value);
+                        *entry = new_value;
                         return Ok(Value::Dict(dict));
                     }
-                    Entry::Vacant(_) => {
-                        return Err(FieldNotExists(field.clone()));
+                    None => {
+                        return Err(FieldNotExists(field.to_string()));
                     }
                 };
             }
@@ -432,7 +432,7 @@ impl Interpreter {
         match expr {
             Expr::Number(num) => Ok(Number(*num)),
             Expr::Bool(b) => Ok(Bool(*b)),
-            Expr::String(s) => Ok(String(s.clone())),
+            Expr::String(s) => Ok(String(Rc::from(s.as_str()))),
             Expr::Nil => Ok(Nil),
             Expr::Variable(v) => {
                 if v.is_final {
@@ -495,7 +495,7 @@ impl Interpreter {
                 let lhs = self.eval(&lhs_expr)?;
                 match (lhs, index) {
                     (Value::Dict(d), Value::String(name)) => {
-                        return Ok(d.values.get(&name).cloned().unwrap_or(Value::Nil));
+                        return Ok(d.values.get(name.as_ref()).cloned().unwrap_or(Value::Nil));
                     }
                     (Value::Array(a), Value::Number(idx)) => {
                         let idx_int = try_into_int(idx)?;
