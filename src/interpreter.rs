@@ -484,7 +484,7 @@ impl Interpreter {
                 Ok(Value::Dict(Rc::new(DictInstance { values })))
             }
             Expr::Array(elements) => {
-                let mut values = Vec::new();
+                let mut values = Vec::with_capacity(elements.len());
                 for e in elements.iter() {
                     values.push(self.eval(e)?);
                 }
