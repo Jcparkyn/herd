@@ -142,7 +142,7 @@ impl LambdaExpr {
 pub enum Expr {
     Number(f64),
     Bool(bool),
-    String(String),
+    String(Rc<String>),
     Nil,
     Op {
         op: Opcode,
@@ -170,6 +170,12 @@ pub enum Expr {
         var: VarRef,
         body: Block,
     },
+}
+
+impl Expr {
+    pub fn from_string(s: String) -> Expr {
+        Expr::String(Rc::new(s))
+    }
 }
 
 #[derive(PartialEq, Eq, Hash)]

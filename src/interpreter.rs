@@ -138,7 +138,7 @@ impl Display for ArrayInstance {
 pub enum Value {
     Number(f64),
     Bool(bool),
-    String(Rc<str>),
+    String(Rc<String>),
     Builtin(BuiltInFunction),
     Lambda(Rc<LambdaFunction>),
     Dict(Rc<DictInstance>),
@@ -223,7 +223,11 @@ impl Value {
         use Value::*;
         match (lhs, rhs) {
             (Number(n1), Number(n2)) => Ok(Number(n1 + n2)),
-            (String(s1), String(s2)) => Ok(String(Rc::from(format!("{s1}{s2}")))),
+            (String(mut s1), String(s2)) => {
+                let s1_mut = Rc::make_mut(&mut s1);
+                s1_mut.push_str(s2.as_ref());
+                return Ok(String(s1));
+            }
             (x1, x2) => Err(WrongType {
                 message: format!("Can't add {x1} to {x2}"),
             }),
@@ -480,7 +484,7 @@ impl Interpreter {
         match expr {
             Expr::Number(num) => Ok(Number(*num)),
             Expr::Bool(b) => Ok(Bool(*b)),
-            Expr::String(s) => Ok(String(Rc::from(s.as_str()))),
+            Expr::String(s) => Ok(String(s.clone())),
             Expr::Nil => Ok(Nil),
             Expr::Variable(v) => {
                 if v.is_final {

@@ -67,7 +67,7 @@ Term: Box<Expr> = {
     NumLiteral => Box::new(Expr::Number(<>)),
     BoolLiteral => Box::new(Expr::Bool(<>)),
     "nil" => Box::new(Expr::Nil),
-    r"'[^']*'" => Box::new(Expr::String(parse_string_literal(<>))),
+    r"'[^']*'" => Box::new(Expr::from_string(parse_string_literal(<>))),
     Identifier => Box::new(Expr::Variable(VarRef::new(<>))),
     "(" <Expr> ")",
     LambdaExpr,
@@ -77,7 +77,7 @@ Term: Box<Expr> = {
 };
 
 ValueIndex: Box<Expr> = {
-    "." <field:Identifier> => Box::new(Expr::String(field)),
+    "." <field:Identifier> => Box::new(Expr::from_string(field)),
     ".[" <index:Expr> "]" => index,
 } 
 
@@ -122,7 +122,7 @@ LambdaExpr: Box<Expr> = {
 }
 
 DictEntry: (Box<Expr>, Box<Expr>) = {
-    <key:Identifier> ":" <val:Expr> => (Box::new(Expr::String(key.to_string())), val),
+    <key:Identifier> ":" <val:Expr> => (Box::new(Expr::from_string(key)), val),
     "[" <key:Expr> "]" ":" <val:Expr> => (key, val),
 }
 
