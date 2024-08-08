@@ -1,9 +1,6 @@
 use std::{collections::HashSet, fmt::Display, rc::Rc};
 
-use crate::{
-    ast::{Block, Expr, Statement, VarRef},
-    interpreter::BUILTIN_FUNCTIONS,
-};
+use crate::ast::{Block, BuiltInFunction, Expr, Statement, VarRef};
 
 pub enum AnalysisError {
     VariableAlreadyDefined(String),
@@ -281,8 +278,8 @@ fn analyze_expr_liveness(expr: &mut Expr, deps: &mut HashSet<String>) {
         Expr::String(_) => {}
         Expr::Nil => {}
         Expr::Variable(v) => {
-            if let Some(builtin) = BUILTIN_FUNCTIONS.get(&v.name) {
-                *expr = Expr::BuiltInFunction(*builtin);
+            if let Some(builtin) = BuiltInFunction::from_name(&v.name) {
+                *expr = Expr::BuiltInFunction(builtin);
                 return;
             }
             // If is_final was already cleared, don't set it.

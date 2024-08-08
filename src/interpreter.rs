@@ -404,19 +404,6 @@ impl Environment {
     }
 }
 
-pub static BUILTIN_FUNCTIONS: phf::Map<&'static str, BuiltInFunction> = phf::phf_map! {
-    "print" => BuiltInFunction::Print,
-    "not" => BuiltInFunction::Not,
-    "range" => BuiltInFunction::Range,
-    "len" => BuiltInFunction::Len,
-    "push" => BuiltInFunction::Push,
-    "pop" => BuiltInFunction::Pop,
-    "sort" => BuiltInFunction::Sort,
-    "removeKey" => BuiltInFunction::RemoveKey,
-    "shiftLeft" => BuiltInFunction::ShiftLeft,
-    "floor" => BuiltInFunction::Floor,
-};
-
 fn destructure_args<const N: usize>(args: Vec<Value>) -> Result<[Value; N], InterpreterError> {
     match args.try_into() {
         Ok(arr) => Ok(arr),

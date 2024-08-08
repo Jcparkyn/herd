@@ -10,6 +10,9 @@ pub enum BuiltInFunction {
     // general
     Print,
     Not,
+    // numbers
+    ShiftLeft,
+    Floor,
     // arrays
     Range,
     Push,
@@ -18,24 +21,39 @@ pub enum BuiltInFunction {
     Sort,
     // dicts
     RemoveKey,
-    // numbers
-    ShiftLeft,
-    Floor,
 }
 
 impl BuiltInFunction {
-    pub fn name(&self) -> &'static str {
+    pub const fn name(&self) -> &'static str {
+        use BuiltInFunction::*;
         match self {
-            BuiltInFunction::Print => "print",
-            BuiltInFunction::Not => "not",
-            BuiltInFunction::Range => "range",
-            BuiltInFunction::Push => "push",
-            BuiltInFunction::Pop => "pop",
-            BuiltInFunction::Len => "len",
-            BuiltInFunction::Sort => "sort",
-            BuiltInFunction::ShiftLeft => "shiftLeft",
-            BuiltInFunction::Floor => "floor",
-            BuiltInFunction::RemoveKey => "removeKey",
+            Print => "print",
+            Not => "not",
+            Range => "range",
+            Push => "push",
+            Pop => "pop",
+            Len => "len",
+            Sort => "sort",
+            ShiftLeft => "shiftLeft",
+            Floor => "floor",
+            RemoveKey => "removeKey",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<BuiltInFunction> {
+        use BuiltInFunction::*;
+        match name {
+            "print" => Some(Print),
+            "not" => Some(Not),
+            "range" => Some(Range),
+            "push" => Some(Push),
+            "pop" => Some(Pop),
+            "len" => Some(Len),
+            "sort" => Some(Sort),
+            "removeKey" => Some(RemoveKey),
+            "shiftLeft" => Some(ShiftLeft),
+            "floor" => Some(Floor),
+            _ => None,
         }
     }
 }
