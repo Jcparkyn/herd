@@ -146,6 +146,11 @@ pub enum Value {
     Nil,
 }
 
+enum Callable {
+    Lambda(Rc<LambdaFunction>),
+    Builtin(BuiltInFunction),
+}
+
 impl Value {
     pub fn as_number(&self) -> Result<f64, InterpreterError> {
         match self {
@@ -187,6 +192,16 @@ impl Value {
             Value::Array(a) => Ok(a),
             v => Err(WrongType {
                 message: format!("Expected an array, found {v}"),
+            }),
+        }
+    }
+
+    fn as_callable(&self) -> Result<Callable, InterpreterError> {
+        match self {
+            Value::Lambda(l) => Ok(Callable::Lambda(l.clone())),
+            Value::Builtin(b) => Ok(Callable::Builtin(*b)),
+            v => Err(WrongType {
+                message: format!("Expected a callable, found {v}"),
             }),
         }
     }
@@ -499,7 +514,7 @@ impl Interpreter {
 
                 match self.eval(&callee)? {
                     Value::Builtin(c) => self.call_builtin(c, arg_values),
-                    Value::Lambda(f) => self.call_lambda(f, arg_values),
+                    Value::Lambda(f) => self.call_lambda(&f, arg_values),
                     v => Err(WrongType {
                         message: format!("Expected a function, found {v}"),
                     }),
@@ -625,8 +640,15 @@ impl Interpreter {
         }
     }
 
+    fn call(&mut self, callable: &Callable, args: Vec<Value>) -> Result<Value, InterpreterError> {
+        match callable {
+            Callable::Lambda(f) => self.call_lambda(f, args),
+            Callable::Builtin(f) => self.call_builtin(*f, args),
+        }
+    }
+
     fn call_builtin(
-        &self,
+        &mut self,
         builtin: BuiltInFunction,
         args: Vec<Value>,
     ) -> Result<Value, InterpreterError> {
@@ -720,6 +742,39 @@ impl Interpreter {
                     }
                 }
             }
+            BuiltInFunction::Map => {
+                let [array_val, f_val] = destructure_args(args)?;
+                let mut array = array_val.to_array()?;
+                let f = f_val.as_callable()?;
+                let mut_array = Rc::make_mut(&mut array);
+                for v in mut_array.values.iter_mut() {
+                    let v2 = std::mem::replace(v, Value::Nil);
+                    *v = self.call(&f, vec![v2])?;
+                }
+                return Ok(Value::Array(array));
+            }
+            BuiltInFunction::Filter => {
+                let [array_val, f_val] = destructure_args(args)?;
+                let mut array = array_val.to_array()?;
+                let f = f_val.as_callable()?;
+                let mut_array = Rc::make_mut(&mut array);
+
+                let mut err = None;
+                mut_array
+                    .values
+                    .retain(|x| match self.call(&f, vec![x.clone()]) {
+                        Ok(v) => v.truthy(),
+                        Err(e) => {
+                            err = Some(e);
+                            false
+                        }
+                    });
+
+                return match err {
+                    Some(e) => Err(e),
+                    None => Ok(Value::Array(array)),
+                };
+            }
             BuiltInFunction::RemoveKey => {
                 let [dict_val, key] = destructure_args(args)?;
                 let mut dict = dict_val.to_dict()?;
@@ -743,7 +798,7 @@ impl Interpreter {
 
     fn call_lambda(
         &mut self,
-        function: Rc<LambdaFunction>,
+        function: &Rc<LambdaFunction>,
         arg_values: Vec<Value>,
     ) -> Result<Value, InterpreterError> {
         if function.params.len() != arg_values.len() {

@@ -19,6 +19,8 @@ pub enum BuiltInFunction {
     Pop,
     Len,
     Sort,
+    Map,
+    Filter,
     // dicts
     RemoveKey,
 }
@@ -34,6 +36,8 @@ impl BuiltInFunction {
             Pop => "pop",
             Len => "len",
             Sort => "sort",
+            Map => "map",
+            Filter => "filter",
             ShiftLeft => "shiftLeft",
             Floor => "floor",
             RemoveKey => "removeKey",
@@ -50,6 +54,8 @@ impl BuiltInFunction {
             "pop" => Some(Pop),
             "len" => Some(Len),
             "sort" => Some(Sort),
+            "map" => Some(Map),
+            "filter" => Some(Filter),
             "removeKey" => Some(RemoveKey),
             "shiftLeft" => Some(ShiftLeft),
             "floor" => Some(Floor),
