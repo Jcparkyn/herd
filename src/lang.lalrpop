@@ -34,7 +34,7 @@ Expr = {
 
 ExprWithoutBlock = {
     LogicExpr,
-    <lhs:Expr> "|" <callee:Term> <mut args:Term*> =>{
+    <lhs:Expr> "|" <callee:Term> <mut args:Term*> => {
         args.insert(0, lhs);
         Box::new(Expr::Call { callee, args })
     },
@@ -44,7 +44,8 @@ ExprWithoutBlock = {
 ExprWithBlock: Box<Expr> = {
     IfExpression,
     "for" <var:Identifier> "in" <iter:Expr> "do" <body:BlockExpr> => Box::new(Expr::ForIn { var: VarRef::new(var), iter, body }),
-    <BlockExpr> => Box::new(Expr::Block(<>)),
+    // No blocks here at the moment, because they conflict with using block expression as terms
+    // <BlockExpr> => Box::new(Expr::Block(<>)),
 }
 
 LogicExpr = Tier<LogicOp, ComparisonExpr>;
@@ -73,6 +74,7 @@ Term: Box<Expr> = {
     LambdaExpr,
     DictLiteral,
     ArrayLiteral,
+    <BlockExpr> => Box::new(Expr::Block(<>)),
     <lhs:Term> <index:ValueIndex> => Box::new(Expr::GetIndex(lhs, index)),
 };
 
@@ -137,6 +139,7 @@ ArrayLiteral: Box<Expr> = {
 
 Identifier: String = {
     <r"[a-zA-Z]\w*"> => <>.to_string(),
+    "_" => <>.to_string(),
 }
 
 LogicOp: Opcode = {

@@ -76,6 +76,15 @@ pub struct Block {
     pub expression: Option<Box<Expr>>,
 }
 
+impl Block {
+    pub fn empty() -> Block {
+        Block {
+            statements: vec![],
+            expression: None,
+        }
+    }
+}
+
 impl Debug for Block {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         f.debug_tuple("Block")
