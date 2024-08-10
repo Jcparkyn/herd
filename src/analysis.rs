@@ -299,14 +299,41 @@ fn analyze_statement_liveness(stmt: &mut Statement, deps: &mut HashSet<String>) 
             }
             analyze_expr_liveness(rhs, deps);
         }
-        Statement::PatternAssignment(_, rhs) => {
-            // TODO lhs
+        Statement::PatternAssignment(pattern, rhs) => {
+            if let MatchPattern::Declaration(var) = pattern {
+                if let Expr::Lambda(l) = rhs.as_mut() {
+                    l.name = Some(var.name.clone());
+                }
+            }
+            analyze_pattern_liveness(pattern, deps);
             analyze_expr_liveness(rhs, deps)
         }
         Statement::Expression(expr) => {
             analyze_expr_liveness(expr, deps);
         }
         Statement::Return(expr) => analyze_expr_liveness(expr, deps),
+    }
+}
+
+fn analyze_pattern_liveness(pattern: &mut MatchPattern, deps: &mut HashSet<String>) {
+    match pattern {
+        MatchPattern::Declaration(var) => {
+            deps.remove(&var.name);
+        }
+        MatchPattern::Assignment(target) => {
+            if target.path.is_empty() {
+                deps.remove(&target.var.name);
+            } else {
+                for index in target.path.iter_mut().rev() {
+                    analyze_expr_liveness(index, deps);
+                }
+            }
+        }
+        MatchPattern::Array(parts) => {
+            for part in parts {
+                analyze_pattern_liveness(part, deps);
+            }
+        }
     }
 }
 

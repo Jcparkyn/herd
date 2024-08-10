@@ -1,0 +1,13 @@
+
+x = 7;
+![set x, y] = [1, 2];
+
+print [x: x, y: y];
+
+fn1 = { a ->
+  z = 0;
+  ![n, set z] = push a 2;
+  z + n
+};
+
+print (fn1 [1]);

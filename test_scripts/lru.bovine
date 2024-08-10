@@ -61,8 +61,8 @@ put = { lru, key, value ->
     set lru.items.[key] = [value, nil, nil];
     return lru;
   }
-  // [set lru, val] = get lru key;
-  tmp = get lru key; set lru = tmp.[0]; val = tmp.[1];
+
+  ![set lru, val] = get lru key;
 
   // Key exists
   if val != nil then {
