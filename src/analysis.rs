@@ -107,25 +107,6 @@ impl VariableAnalyzer {
 
     fn analyze_statement(&mut self, stmt: &mut Statement) {
         match stmt {
-            Statement::Declaration(var, rhs) => {
-                if let Some(_) = self.get_slot(&var.name) {
-                    self.errors.push(VariableAlreadyDefined(var.name.clone()));
-                }
-                self.analyze_expr(rhs);
-                self.push_var(var);
-            }
-            Statement::Assignment(target, rhs) => {
-                self.analyze_expr(rhs);
-                if let Some(slot) = self.get_slot(&target.var.name) {
-                    target.var.slot = slot;
-                } else {
-                    self.errors
-                        .push(VariableNotDefined(target.var.name.clone()));
-                }
-                for index in target.path.iter_mut() {
-                    self.analyze_expr(index);
-                }
-            }
             Statement::PatternAssignment(pattern, rhs) => {
                 self.analyze_expr(rhs);
                 self.analyze_pattern(pattern);
@@ -282,23 +263,6 @@ fn analyze_statements_liveness(stmts: &mut [Statement], deps: &mut HashSet<Strin
 
 fn analyze_statement_liveness(stmt: &mut Statement, deps: &mut HashSet<String>) {
     match stmt {
-        Statement::Declaration(var, rhs) => {
-            if let Expr::Lambda(l) = rhs.as_mut() {
-                l.name = Some(var.name.clone());
-            }
-            deps.remove(&var.name);
-            analyze_expr_liveness(rhs, deps);
-        }
-        Statement::Assignment(target, rhs) => {
-            if target.path.is_empty() {
-                deps.remove(&target.var.name);
-            } else {
-                for index in target.path.iter_mut().rev() {
-                    analyze_expr_liveness(index, deps);
-                }
-            }
-            analyze_expr_liveness(rhs, deps);
-        }
         Statement::PatternAssignment(pattern, rhs) => {
             if let MatchPattern::Declaration(var) = pattern {
                 if let Expr::Lambda(l) = rhs.as_mut() {
@@ -493,15 +457,7 @@ fn rewrite_implicit_lambdas(
 
 fn statement_sub_exprs_mut(stmt: &mut Statement) -> Vec<&mut Box<Expr>> {
     match stmt {
-        Statement::Declaration(_, rhs) => vec![rhs],
-        Statement::Assignment(target, rhs) => {
-            let mut exprs = vec![rhs];
-            for index in target.path.iter_mut() {
-                exprs.push(index);
-            }
-            exprs
-        }
-        Statement::PatternAssignment(_, rhs) => vec![rhs],
+        Statement::PatternAssignment(_, rhs) => vec![rhs], // TODO lhs
         Statement::Expression(expr) => vec![expr],
         Statement::Return(expr) => vec![expr],
     }

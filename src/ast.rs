@@ -115,8 +115,6 @@ pub enum MatchPattern {
 
 #[derive(PartialEq, Debug)]
 pub enum Statement {
-    Declaration(VarRef, Box<Expr>),
-    Assignment(AssignmentTarget, Box<Expr>),
     PatternAssignment(MatchPattern, Box<Expr>),
     Expression(Box<Expr>),
     Return(Box<Expr>),

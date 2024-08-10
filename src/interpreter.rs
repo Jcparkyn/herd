@@ -436,21 +436,6 @@ impl Interpreter {
 
     pub fn execute(&mut self, statement: &Statement) -> Result<(), InterpreterError> {
         match statement {
-            Statement::Declaration(var, expr) => {
-                let value = self.eval(expr)?;
-                self.environment.set(var.slot, value);
-                Ok(())
-            }
-            Statement::Assignment(target, expr) => {
-                let value = self.eval(&expr)?;
-                let mut path_values = vec![];
-                for index in &target.path {
-                    path_values.push(self.eval(index)?);
-                }
-                self.environment
-                    .assign(target.var.slot, &path_values, value)?;
-                Ok(())
-            }
             Statement::PatternAssignment(pattern, expr) => {
                 let value = self.eval(&expr)?;
                 self.assign_pattern(pattern, value)?;
