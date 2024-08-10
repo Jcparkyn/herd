@@ -143,6 +143,17 @@ impl VariableAnalyzer {
                 }
                 self.push_var(var);
             }
+            MatchPattern::Assignment(target) => {
+                if let Some(slot) = self.get_slot(&target.var.name) {
+                    target.var.slot = slot;
+                } else {
+                    self.errors
+                        .push(VariableNotDefined(target.var.name.clone()));
+                }
+                for index in target.path.iter_mut() {
+                    self.analyze_expr(index);
+                }
+            }
             MatchPattern::Array(parts) => {
                 for part in parts {
                     self.analyze_pattern(part);

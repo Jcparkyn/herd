@@ -842,6 +842,15 @@ impl Interpreter {
                 self.environment.set(var.slot, value);
                 Ok(())
             }
+            MatchPattern::Assignment(target) => {
+                let mut path_values = vec![];
+                for index in &target.path {
+                    path_values.push(self.eval(index)?);
+                }
+                self.environment
+                    .assign(target.var.slot, &path_values, value)?;
+                Ok(())
+            }
             MatchPattern::Array(parts) => {
                 match value {
                     Value::Array(arr) => {

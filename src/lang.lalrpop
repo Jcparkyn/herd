@@ -90,6 +90,7 @@ AssignmentTarget: AssignmentTarget = {
 
 MatchPattern: MatchPattern = {
     Identifier => MatchPattern::Declaration(VarRef::new(<>)),
+    "set" <target:AssignmentTarget> => MatchPattern::Assignment(target),
     "[" <patterns:Comma<MatchPattern>> "]" => MatchPattern::Array(patterns),
 }
 

@@ -104,11 +104,11 @@ pub struct AssignmentTarget {
 //     pub parts: Vec<PatternPart>,
 // }
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug)]
 pub enum MatchPattern {
     Array(Vec<MatchPattern>),
     Declaration(VarRef),
-    // Assignment(AssignmentTarget), // TODO
+    Assignment(AssignmentTarget),
     // Discard, // TODO
     // Constant, // TODO
 }
