@@ -658,16 +658,13 @@ impl Interpreter {
     ) -> Result<Value, InterpreterError> {
         match builtin {
             BuiltInFunction::Print => {
-                match args.as_slice() {
-                    [a] => println!("{}", a),
-                    _ => println!(
-                        "{}",
-                        args.iter()
-                            .map(|v| v.to_string())
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    ),
+                for arg in args {
+                    match arg {
+                        Value::String(s) => print!("{s}"),
+                        v => print!("{v}"),
+                    }
                 }
+                println!();
                 return Ok(Value::Nil);
             }
             BuiltInFunction::Not => {
