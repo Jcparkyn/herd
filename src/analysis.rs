@@ -1,6 +1,6 @@
 use std::{collections::HashSet, fmt::Display, rc::Rc};
 
-use crate::ast::{Block, BuiltInFunction, Expr, LambdaExpr, Statement, VarRef};
+use crate::ast::{Block, BuiltInFunction, Expr, LambdaExpr, MatchPattern, Statement, VarRef};
 
 pub enum AnalysisError {
     VariableAlreadyDefined(String),
@@ -126,8 +126,28 @@ impl VariableAnalyzer {
                     self.analyze_expr(index);
                 }
             }
+            Statement::PatternAssignment(pattern, rhs) => {
+                self.analyze_expr(rhs);
+                self.analyze_pattern(pattern);
+            }
             Statement::Expression(expr) => self.analyze_expr(expr),
             Statement::Return(expr) => self.analyze_expr(expr),
+        }
+    }
+
+    fn analyze_pattern(&mut self, pattern: &mut MatchPattern) {
+        match pattern {
+            MatchPattern::Declaration(var) => {
+                if let Some(_) = self.get_slot(&var.name) {
+                    self.errors.push(VariableAlreadyDefined(var.name.clone()));
+                }
+                self.push_var(var);
+            }
+            MatchPattern::Array(parts) => {
+                for part in parts {
+                    self.analyze_pattern(part);
+                }
+            }
         }
     }
 
@@ -198,7 +218,8 @@ impl VariableAnalyzer {
                 }
             }
             Expr::Dict(entries) => {
-                for (_, value) in entries {
+                for (key, value) in entries {
+                    self.analyze_expr(key);
                     self.analyze_expr(value);
                 }
             }
@@ -266,6 +287,10 @@ fn analyze_statement_liveness(stmt: &mut Statement, deps: &mut HashSet<String>) 
                 }
             }
             analyze_expr_liveness(rhs, deps);
+        }
+        Statement::PatternAssignment(_, rhs) => {
+            // TODO lhs
+            analyze_expr_liveness(rhs, deps)
         }
         Statement::Expression(expr) => {
             analyze_expr_liveness(expr, deps);
@@ -438,6 +463,7 @@ fn statement_sub_exprs_mut(stmt: &mut Statement) -> Vec<&mut Box<Expr>> {
             }
             exprs
         }
+        Statement::PatternAssignment(_, rhs) => vec![rhs],
         Statement::Expression(expr) => vec![expr],
         Statement::Return(expr) => vec![expr],
     }

@@ -1,5 +1,5 @@
 use std::{str::FromStr,rc::Rc};
-use crate::ast::{Expr, Opcode, Statement, Block, AssignmentTarget, VarRef, LambdaExpr};
+use crate::ast::{Expr, Opcode, Statement, Block, AssignmentTarget, VarRef, LambdaExpr, MatchPattern};
 use crate::parse_helpers::parse_string_literal;
 
 grammar;
@@ -24,6 +24,7 @@ StatementWithSemicolon: Statement = {
     <ExprWithoutBlock> ";" => Statement::Expression(<>),
     <name:Identifier> "=" <e:Expr> ";" => Statement::Declaration(VarRef::new(name), e),
     "set" <target:AssignmentTarget> "=" <e:Expr> ";" => Statement::Assignment(target, e),
+    "!" <pattern:MatchPattern> "=" <e:Expr> ";" => Statement::PatternAssignment(pattern, e),
     "return" <e:Expr> ";" => Statement::Return(e),
 }
 
@@ -85,7 +86,12 @@ ValueIndex: Box<Expr> = {
 
 AssignmentTarget: AssignmentTarget = {
     <var:Identifier> <path:ValueIndex*> => AssignmentTarget { var: VarRef::new(var), path },
-}   
+}
+
+MatchPattern: MatchPattern = {
+    Identifier => MatchPattern::Declaration(VarRef::new(<>)),
+    "[" <patterns:Comma<MatchPattern>> "]" => MatchPattern::Array(patterns),
+}
 
 IfExpression: Box<Expr> = {
     "if " <cond:Expr> "then" <b1:BlockExpr> <b2:("else" <BlockExpr>)?> => Box::new(

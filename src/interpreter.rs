@@ -6,7 +6,7 @@ use std::{
     vec,
 };
 
-use crate::ast::{Block, BuiltInFunction, Expr, LambdaExpr, Opcode, Statement};
+use crate::ast::{Block, BuiltInFunction, Expr, LambdaExpr, MatchPattern, Opcode, Statement};
 
 pub struct Interpreter {
     environment: Environment,
@@ -118,12 +118,6 @@ impl Clone for ArrayInstance {
         ArrayInstance {
             values: self.values.clone(),
         }
-    }
-}
-
-impl Drop for ArrayInstance {
-    fn drop(&mut self) {
-        // println!("Dropping array: {:?}", self);
     }
 }
 
@@ -455,6 +449,11 @@ impl Interpreter {
                 }
                 self.environment
                     .assign(target.var.slot, &path_values, value)?;
+                Ok(())
+            }
+            Statement::PatternAssignment(pattern, expr) => {
+                let value = self.eval(&expr)?;
+                self.assign_pattern(pattern, value)?;
                 Ok(())
             }
             Statement::Expression(expr) => {
@@ -831,5 +830,48 @@ impl Interpreter {
         self.environment.slots.truncate(self.environment.cur_frame);
         self.environment.cur_frame = old_frame;
         return result;
+    }
+
+    fn assign_pattern(
+        &mut self,
+        pattern: &MatchPattern,
+        value: Value,
+    ) -> Result<(), InterpreterError> {
+        match pattern {
+            MatchPattern::Declaration(var) => {
+                self.environment.set(var.slot, value);
+                Ok(())
+            }
+            MatchPattern::Array(parts) => {
+                match value {
+                    Value::Array(arr) => {
+                        // TODO
+                        if arr.values.len() != parts.len() {
+                            return Err(WrongType {
+                                message: format!("Pattern matching error: expected array of length {}, found array of length {}", parts.len(), arr.values.len()),
+                            });
+                        }
+                        match Rc::try_unwrap(arr) {
+                            // If we're the only reference, move (replace) the elements to avoid clone.
+                            Ok(a) => {
+                                for (part, value) in parts.into_iter().zip(a.values.into_iter()) {
+                                    self.assign_pattern(part, value)?;
+                                }
+                            }
+                            // If the array is shared, just clone each item
+                            Err(a) => {
+                                for (part, value) in parts.iter().zip(a.values.iter()) {
+                                    self.assign_pattern(part, value.clone())?;
+                                }
+                            }
+                        }
+                        Ok(())
+                    }
+                    _ => Err(WrongType {
+                        message: format!("Expected array, found {value}"),
+                    }),
+                }
+            }
+        }
     }
 }

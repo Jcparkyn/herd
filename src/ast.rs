@@ -100,10 +100,24 @@ pub struct AssignmentTarget {
     pub path: Vec<Box<Expr>>,
 }
 
+// pub struct Pattern {
+//     pub parts: Vec<PatternPart>,
+// }
+
+#[derive(PartialEq, Debug, Clone)]
+pub enum MatchPattern {
+    Array(Vec<MatchPattern>),
+    Declaration(VarRef),
+    // Assignment(AssignmentTarget), // TODO
+    // Discard, // TODO
+    // Constant, // TODO
+}
+
 #[derive(PartialEq, Debug)]
 pub enum Statement {
     Declaration(VarRef, Box<Expr>),
     Assignment(AssignmentTarget, Box<Expr>),
+    PatternAssignment(MatchPattern, Box<Expr>),
     Expression(Box<Expr>),
     Return(Box<Expr>),
 }
