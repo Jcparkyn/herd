@@ -866,6 +866,7 @@ impl Interpreter {
                     }),
                 }
             }
+            MatchPattern::Discard => Ok(()),
         }
     }
 }

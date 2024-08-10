@@ -109,7 +109,7 @@ pub enum MatchPattern {
     Array(Vec<MatchPattern>),
     Declaration(VarRef),
     Assignment(AssignmentTarget),
-    // Discard, // TODO
+    Discard,
     // Constant, // TODO
 }
 

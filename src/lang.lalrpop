@@ -89,7 +89,13 @@ AssignmentTarget: AssignmentTarget = {
 }
 
 MatchPattern: MatchPattern = {
-    Identifier => MatchPattern::Declaration(VarRef::new(<>)),
+    <var:Identifier> => {
+        if var == "_" {
+            MatchPattern::Discard
+        } else {
+            MatchPattern::Declaration(VarRef::new(var))
+        }
+    },
     "set" <target:AssignmentTarget> => MatchPattern::Assignment(target),
     "[" <patterns:Comma<MatchPattern>> "]" => MatchPattern::Array(patterns),
 }

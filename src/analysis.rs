@@ -140,6 +140,7 @@ impl VariableAnalyzer {
                     self.analyze_pattern(part);
                 }
             }
+            MatchPattern::Discard => {}
         }
     }
 
@@ -298,6 +299,7 @@ fn analyze_pattern_liveness(pattern: &mut MatchPattern, deps: &mut HashSet<Strin
                 analyze_pattern_liveness(part, deps);
             }
         }
+        MatchPattern::Discard => {}
     }
 }
 
