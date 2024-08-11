@@ -7,7 +7,8 @@ use std::{
 };
 
 use crate::ast::{
-    Block, BuiltInFunction, Expr, LambdaExpr, MatchPattern, Opcode, SpreadArrayPattern, Statement,
+    AssignmentTarget, Block, BuiltInFunction, Expr, LambdaExpr, MatchPattern, Opcode,
+    SpreadArrayPattern, Statement,
 };
 
 pub struct Interpreter {
@@ -26,7 +27,10 @@ pub enum InterpreterError {
     IndexOutOfRange { array_len: usize, accessed: usize },
     WrongArgumentCount { expected: usize, supplied: usize },
     WrongType { message: String },
+    PatternMatchFailed { message: String },
 }
+
+type IResult<T> = Result<T, InterpreterError>;
 
 impl Display for InterpreterError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -48,6 +52,7 @@ impl Display for InterpreterError {
             }
             WrongType { message } => f.write_str(&message),
             Return(val) => write!(f, "Returning {val}"),
+            PatternMatchFailed { message } => write!(f, "Unsuccessful pattern match: {}", message),
         }
     }
 }
@@ -440,8 +445,7 @@ impl Interpreter {
         match statement {
             Statement::PatternAssignment(pattern, expr) => {
                 let value = self.eval(&expr)?;
-                // TODO
-                self.assign_pattern(pattern, value)?;
+                self.match_pattern(pattern, value)?;
                 Ok(())
             }
             Statement::Expression(expr) => {
@@ -820,101 +824,107 @@ impl Interpreter {
         return result;
     }
 
-    fn assign_pattern(
-        &mut self,
-        pattern: &MatchPattern,
-        value: Value,
-    ) -> Result<(), InterpreterError> {
+    fn match_slice(&mut self, parts: &[MatchPattern], values: &mut [Value]) -> IResult<()> {
+        if parts.len() != values.len() {
+            return Err(PatternMatchFailed {
+                message: format!(
+                    "Expected an array with length={}, but actual array had length={}",
+                    parts.len(),
+                    values.len()
+                ),
+            });
+        }
+        for (part, value) in parts.iter().zip(values) {
+            self.match_pattern(part, std::mem::replace(value, Value::Nil))?;
+        }
+        return Ok(());
+    }
+
+    fn match_array_spread(&mut self, pattern: &MatchPattern, values: &mut [Value]) -> IResult<()> {
+        fn to_value_array(values: &mut [Value]) -> Value {
+            let mut vec = Vec::with_capacity(values.len());
+            for value in values {
+                vec.push(std::mem::replace(value, Value::Nil));
+            }
+            Value::Array(Rc::new(ArrayInstance::new(vec)))
+        }
         match pattern {
+            MatchPattern::Discard => Ok(()),
             MatchPattern::Declaration(var) => {
-                self.environment.set(var.slot, value);
+                self.environment.set(var.slot, to_value_array(values));
                 Ok(())
             }
             MatchPattern::Assignment(target) => {
-                let mut path_values = vec![];
-                for index in &target.path {
-                    path_values.push(self.eval(index)?);
-                }
-                self.environment
-                    .assign(target.var.slot, &path_values, value)?;
+                self.assign(target, to_value_array(values))?;
                 Ok(())
             }
-            MatchPattern::SimpleArray(parts) => {
-                match value {
-                    Value::Array(arr) => {
-                        // TODO
-                        if arr.values.len() != parts.len() {
-                            return Err(WrongType {
-                                message: format!("Pattern matching error: expected array of length {}, found array of length {}", parts.len(), arr.values.len()),
-                            });
-                        }
-                        match Rc::try_unwrap(arr) {
-                            // If we're the only reference, move (replace) the elements to avoid clone.
-                            Ok(a) => {
-                                for (part, value) in parts.into_iter().zip(a.values.into_iter()) {
-                                    self.assign_pattern(&part, value)?;
-                                }
-                            }
-                            // If the array is shared, just clone each item
-                            Err(a) => {
-                                for (part, value) in parts.iter().zip(a.values.iter()) {
-                                    self.assign_pattern(&part, value.clone())?;
-                                }
-                            }
-                        }
-                        Ok(())
-                    }
-                    _ => Err(WrongType {
-                        message: format!("Expected array, found {value}"),
-                    }),
-                }
-            }
-            MatchPattern::Discard => Ok(()),
-            MatchPattern::SpreadArray(pattern) => todo!(),
-        }
-    }
-
-    fn match_slice(&mut self, parts: &[MatchPattern], values: &[Value]) -> bool {
-        assert!(parts.len() == values.len());
-        parts
-            .iter()
-            .zip(values)
-            .all(|(p, v)| self.match_pattern(&p, &v))
-    }
-
-    fn match_array_spread(&mut self, pattern: &MatchPattern, values: &[Value]) -> bool {
-        match pattern {
-            MatchPattern::Discard => true,
-            MatchPattern::Declaration(_) => true,
-            MatchPattern::Assignment(_) => true,
             MatchPattern::SimpleArray(parts) => self.match_slice(parts, values),
             MatchPattern::SpreadArray(pattern) => self.match_spread_array(pattern, values),
         }
     }
 
-    fn match_spread_array(&mut self, pattern: &SpreadArrayPattern, values: &[Value]) -> bool {
-        let values_before = &values[..pattern.before.len()];
-        let spread_end_idx = values.len() - pattern.after.len();
-        let values_spread = &values[pattern.before.len()..spread_end_idx];
-        let values_after = &values[spread_end_idx..];
-        return self.match_slice(&pattern.before, values_before)
-            && self.match_array_spread(&pattern.spread, values_spread)
-            && self.match_slice(&pattern.after, values_after);
+    fn match_spread_array(
+        &mut self,
+        pattern: &SpreadArrayPattern,
+        values: &mut [Value],
+    ) -> IResult<()> {
+        let (values_before, rest) = values.split_at_mut(pattern.before.len());
+        let (values_spread, values_after) = rest.split_at_mut(rest.len() - pattern.after.len());
+        self.match_slice(&pattern.before, values_before)?;
+        self.match_array_spread(&pattern.spread, values_spread)?;
+        self.match_slice(&pattern.after, values_after)?;
+        return Ok(());
     }
 
-    fn match_pattern(&mut self, pattern: &MatchPattern, value: &Value) -> bool {
+    fn match_pattern(&mut self, pattern: &MatchPattern, value: Value) -> IResult<()> {
         match pattern {
-            MatchPattern::Discard => true,
-            MatchPattern::Declaration(_) => true,
-            MatchPattern::Assignment(_) => true,
+            MatchPattern::Discard => Ok(()),
+            MatchPattern::Declaration(var) => {
+                self.environment.set(var.slot, value);
+                Ok(())
+            }
+            MatchPattern::Assignment(target) => {
+                self.assign(target, value)?;
+                Ok(())
+            }
             MatchPattern::SimpleArray(parts) => match value {
-                Value::Array(a) => self.match_slice(parts, &a.values),
-                _ => false,
+                Value::Array(mut a) => {
+                    let mut_values = &mut Rc::make_mut(&mut a).values;
+                    self.match_slice(parts, mut_values)
+                }
+                _ => Err(PatternMatchFailed {
+                    message: format!("Expected an array, found {value}"),
+                }),
             },
             MatchPattern::SpreadArray(pattern) => match value {
-                Value::Array(a) => self.match_spread_array(pattern, &a.values),
-                _ => false,
+                Value::Array(mut a) => {
+                    let min_len = pattern.before.len() + pattern.after.len();
+                    if a.values.len() < min_len {
+                        return Err(PatternMatchFailed {
+                            message: format!(
+                                "Expected an array with length >= {}, but actual array had length = {}",
+                                min_len,
+                                a.values.len()
+                            ),
+                        });
+                    }
+                    let mut_values = &mut Rc::make_mut(&mut a).values;
+                    self.match_spread_array(pattern, mut_values)
+                }
+                _ => Err(PatternMatchFailed {
+                    message: format!("Expected an array, found {value}"),
+                }),
             },
         }
+    }
+
+    fn assign(&mut self, target: &AssignmentTarget, value: Value) -> Result<(), InterpreterError> {
+        let mut path_values = vec![];
+        for index in &target.path {
+            path_values.push(self.eval(index)?);
+        }
+        self.environment
+            .assign(target.var.slot, &path_values, value)?;
+        Ok(())
     }
 }
