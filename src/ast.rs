@@ -115,6 +115,10 @@ impl SpreadArrayPattern {
             .chain(iter::once(&mut *self.spread))
             .chain(self.after.iter_mut())
     }
+
+    pub fn min_len(&self) -> usize {
+        self.before.len() + self.after.len()
+    }
 }
 
 #[derive(PartialEq, Debug)]

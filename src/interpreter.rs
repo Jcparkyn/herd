@@ -504,11 +504,9 @@ impl Interpreter {
             }) => {
                 let cond = self.eval(&condition)?;
                 for (pattern, body) in branches {
-                    // TODO fix side effects etc.
-                    match self.match_pattern(pattern, cond.clone()) {
-                        Err(PatternMatchFailed { .. }) => {}
-                        Err(e) => return Err(e),
-                        Ok(_) => return self.eval(body),
+                    if Interpreter::matches_pattern(pattern, &cond) {
+                        self.match_pattern(pattern, cond)?;
+                        return self.eval(body);
                     }
                 }
                 Err(PatternMatchFailed {
@@ -915,12 +913,11 @@ impl Interpreter {
             },
             MatchPattern::SpreadArray(pattern) => match value {
                 Value::Array(mut a) => {
-                    let min_len = pattern.before.len() + pattern.after.len();
-                    if a.values.len() < min_len {
+                    if a.values.len() < pattern.min_len() {
                         return Err(PatternMatchFailed {
                             message: format!(
                                 "Expected an array with length >= {}, but actual array had length = {}",
-                                min_len,
+                                pattern.min_len(),
                                 a.values.len()
                             ),
                         });
@@ -931,6 +928,51 @@ impl Interpreter {
                 _ => Err(PatternMatchFailed {
                     message: format!("Expected an array, found {value}"),
                 }),
+            },
+        }
+    }
+
+    fn matches_pattern(pattern: &MatchPattern, value: &Value) -> bool {
+        fn matches_slice(parts: &[MatchPattern], values: &[Value]) -> bool {
+            if parts.len() != values.len() {
+                return false;
+            }
+            let mut zip = parts.iter().zip(values);
+            zip.all(|(p, v)| Interpreter::matches_pattern(&p, &v))
+        }
+
+        fn matches_array_spread(pattern: &MatchPattern, values: &[Value]) -> bool {
+            match pattern {
+                MatchPattern::Discard => true,
+                MatchPattern::Declaration(_) => true,
+                MatchPattern::Assignment(_) => true,
+                MatchPattern::SimpleArray(parts) => matches_slice(parts, values),
+                MatchPattern::SpreadArray(pattern) => matches_spread_array(pattern, values),
+            }
+        }
+
+        fn matches_spread_array(pattern: &SpreadArrayPattern, values: &[Value]) -> bool {
+            if values.len() < pattern.min_len() {
+                return false;
+            }
+            let (values_before, rest) = values.split_at(pattern.before.len());
+            let (values_spread, values_after) = rest.split_at(rest.len() - pattern.after.len());
+            return matches_slice(&pattern.before, values_before)
+                && matches_array_spread(&pattern.spread, values_spread)
+                && matches_slice(&pattern.after, values_after);
+        }
+
+        match pattern {
+            MatchPattern::Discard => true,
+            MatchPattern::Declaration(_) => true,
+            MatchPattern::Assignment(_) => true,
+            MatchPattern::SimpleArray(parts) => match value {
+                Value::Array(a) => matches_slice(parts, &a.values),
+                _ => false,
+            },
+            MatchPattern::SpreadArray(pattern) => match value {
+                Value::Array(a) => matches_spread_array(pattern, &a.values),
+                _ => false,
             },
         }
     }
