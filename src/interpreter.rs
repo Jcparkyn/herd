@@ -7,7 +7,7 @@ use std::{
 };
 
 use crate::ast::{
-    AssignmentTarget, Block, BuiltInFunction, Expr, LambdaExpr, MatchPattern, Opcode,
+    AssignmentTarget, Block, BuiltInFunction, Expr, LambdaExpr, MatchExpr, MatchPattern, Opcode,
     SpreadArrayPattern, Statement,
 };
 
@@ -497,6 +497,23 @@ impl Interpreter {
                     return self.eval_block(&else_branch2);
                 }
                 Ok(Value::Nil)
+            }
+            Expr::Match(MatchExpr {
+                condition,
+                branches,
+            }) => {
+                let cond = self.eval(&condition)?;
+                for (pattern, body) in branches {
+                    // TODO fix side effects etc.
+                    match self.match_pattern(pattern, cond.clone()) {
+                        Err(PatternMatchFailed { .. }) => {}
+                        Err(e) => return Err(e),
+                        Ok(_) => return self.eval(body),
+                    }
+                }
+                Err(PatternMatchFailed {
+                    message: format!("No branches matched successfully"),
+                })
             }
             Expr::Op { op, lhs, rhs } => self.eval_binary_op(lhs, rhs, op),
             Expr::Block(block) => self.eval_block(block),

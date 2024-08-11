@@ -1,6 +1,8 @@
 use std::{collections::HashSet, fmt::Display, rc::Rc};
 
-use crate::ast::{Block, BuiltInFunction, Expr, LambdaExpr, MatchPattern, Statement, VarRef};
+use crate::ast::{
+    Block, BuiltInFunction, Expr, LambdaExpr, MatchExpr, MatchPattern, Statement, VarRef,
+};
 
 pub enum AnalysisError {
     VariableAlreadyDefined(String),
@@ -173,6 +175,15 @@ impl VariableAnalyzer {
                     self.analyze_block(else_branch);
                 }
             }
+            Expr::Match(m) => {
+                self.analyze_expr(&mut m.condition);
+                for (pattern, body) in m.branches.iter_mut() {
+                    self.push_scope();
+                    self.analyze_pattern(pattern);
+                    self.analyze_expr(body);
+                    self.pop_scope();
+                }
+            }
             Expr::Op { op: _, lhs, rhs } => {
                 self.analyze_expr(lhs);
                 self.analyze_expr(rhs);
@@ -240,15 +251,14 @@ impl VariableAnalyzer {
     }
 
     fn analyze_block(&mut self, block: &mut Block) {
-        self.depth += 1;
+        self.push_scope();
         for stmt in block.statements.iter_mut() {
             self.analyze_statement(stmt);
         }
         if let Some(expr) = &mut block.expression {
             self.analyze_expr(expr);
         }
-        self.depth -= 1;
-        self.vars.retain(|var| var.depth <= self.depth);
+        self.pop_scope();
     }
 
     fn get_slot(&self, name: &str) -> Option<u32> {
@@ -258,6 +268,15 @@ impl VariableAnalyzer {
             }
         }
         None
+    }
+
+    fn push_scope(&mut self) {
+        self.depth += 1;
+    }
+
+    fn pop_scope(&mut self) {
+        self.depth -= 1;
+        self.vars.retain(|var| var.depth <= self.depth);
     }
 }
 
@@ -352,6 +371,21 @@ fn analyze_expr_liveness(expr: &mut Expr, deps: &mut HashSet<String>) {
             // Deps at start of expression are union of both blocks (because we don't know which branch will be taken).
             for dep in deps_else {
                 deps.insert(dep);
+            }
+            analyze_expr_liveness(condition, deps);
+        }
+        Expr::Match(MatchExpr {
+            condition,
+            branches,
+        }) => {
+            let deps_original = deps.clone();
+            for (pattern, body) in branches.iter_mut() {
+                let mut deps_branch = deps_original.clone();
+                analyze_pattern_liveness(pattern, &mut deps_branch);
+                analyze_expr_liveness(body, &mut deps_branch);
+                for dep in deps_branch {
+                    deps.insert(dep);
+                }
             }
             analyze_expr_liveness(condition, deps);
         }
@@ -505,6 +539,15 @@ fn expr_sub_exprs_mut(expr: &mut Expr) -> Vec<&mut Box<Expr>> {
                 exprs.append(&mut block_sub_exprs_mut(else_branch));
             }
         }
+        Expr::Match(MatchExpr {
+            condition,
+            branches,
+        }) => {
+            exprs.push(condition);
+            for (_, body) in branches {
+                exprs.push(body);
+            }
+        }
         Expr::Op { op: _, lhs, rhs } => {
             exprs.push(lhs);
             exprs.push(rhs);
@@ -543,3 +586,29 @@ fn expr_sub_exprs_mut(expr: &mut Expr) -> Vec<&mut Box<Expr>> {
     }
     exprs
 }
+
+// fn pattern_sub_exprs_mut(
+//     pattern: &mut MatchPattern,
+//     out: &mut Vec<&mut Box<Expr>>,
+// ) -> Vec<&mut Box<Expr>> {
+//     // let mut exprs = Vec::new();
+//     match pattern {
+//         MatchPattern::Declaration(var) => {}
+//         MatchPattern::Assignment(target) => {
+//             exprs.append(&mut target.path);
+//             exprs.push(&mut target.var);
+//         }
+//         MatchPattern::SimpleArray(parts) => {
+//             for part in parts {
+//                 exprs.append(&mut pattern_sub_exprs_mut(part));
+//             }
+//         }
+//         MatchPattern::SpreadArray(pattern) => {
+//             for part in pattern.all_parts_mut() {
+//                 exprs.append(&mut pattern_sub_exprs_mut(part));
+//             }
+//         }
+//         MatchPattern::Discard => {}
+//     }
+//     exprs
+// }

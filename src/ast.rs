@@ -173,6 +173,12 @@ impl LambdaExpr {
     }
 }
 
+#[derive(PartialEq, Debug)]
+pub struct MatchExpr {
+    pub condition: Box<Expr>,
+    pub branches: Vec<(MatchPattern, Box<Expr>)>,
+}
+
 #[derive(PartialEq)]
 pub enum Expr {
     Number(f64),
@@ -191,6 +197,7 @@ pub enum Expr {
         then_branch: Block,
         else_branch: Option<Block>,
     },
+    Match(MatchExpr),
     Call {
         callee: Box<Expr>,
         args: Vec<Box<Expr>>,
@@ -258,14 +265,9 @@ impl Debug for Expr {
                 }
                 Ok(())
             }
+            Expr::Match(m) => m.fmt(f),
             Expr::Call { callee, args } => f.debug_tuple("Call").field(callee).field(args).finish(),
-            Expr::Lambda(l) => f
-                .debug_struct("Lambda")
-                .field("name", &l.name)
-                .field("params", &l.params)
-                .field("body", &l.body)
-                .field("captures", &l.potential_captures)
-                .finish(),
+            Expr::Lambda(l) => l.fmt(f),
             Expr::Dict(entries) => write!(f, "Dict{:?}", entries),
             Expr::Array(elements) => write!(f, "Array{:?}", elements),
             Expr::GetIndex(lhs, index) => write!(f, "GetIndex({:?}, {:?})", lhs, index),

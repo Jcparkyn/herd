@@ -1,5 +1,5 @@
 use std::{str::FromStr,rc::Rc};
-use crate::ast::{Expr, Opcode, Statement, Block, AssignmentTarget, VarRef, LambdaExpr, MatchPattern};
+use crate::ast::{Expr, Opcode, Statement, Block, AssignmentTarget, VarRef, LambdaExpr, MatchPattern, MatchExpr};
 use crate::parse_helpers::{parse_string_literal, process_array_match};
 
 grammar;
@@ -44,6 +44,7 @@ ExprWithoutBlock = {
 // Expressions that don't need a trailing semicolon
 ExprWithBlock: Box<Expr> = {
     IfExpression,
+    MatchExpr,
     "for" <var:Identifier> "in" <iter:Expr> "do" <body:BlockExpr> => Box::new(Expr::ForIn { var: VarRef::new(var), iter, body }),
     // No blocks here at the moment, because they conflict with using block expression as terms
     // <BlockExpr> => Box::new(Expr::Block(<>)),
@@ -108,6 +109,16 @@ IfExpression: Box<Expr> = {
     "if " <cond:Expr> "then" <b1:BlockExpr> <b2:("else" <BlockExpr>)?> => Box::new(
         Expr::If { condition: cond, then_branch: b1, else_branch: b2 }
     )
+}
+
+MatchExpr: Box<Expr> = {
+    "match" <condition:Expr> "with" "{" <branches:CommaNonEmpty<MatchExprBranch>> "}" => Box::new(
+        Expr::Match(MatchExpr { condition, branches })
+    )
+}
+
+MatchExprBranch: (MatchPattern, Box<Expr>) = {
+    <p:MatchPattern> "=>" <e:Expr> => (p, e),
 }
 
 BlockExpr: Block = {
