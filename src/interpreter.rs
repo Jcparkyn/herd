@@ -874,45 +874,45 @@ impl Interpreter {
         }
     }
 
-    fn match_pattern(pattern: &MatchPattern, value: &Value) -> bool {
-        fn matches_slice(parts: &[MatchPattern], values: &[Value]) -> bool {
-            assert!(parts.len() == values.len());
-            parts
-                .iter()
-                .zip(values)
-                .all(|(p, v)| Interpreter::match_pattern(&p, &v))
-        }
+    fn match_slice(&mut self, parts: &[MatchPattern], values: &[Value]) -> bool {
+        assert!(parts.len() == values.len());
+        parts
+            .iter()
+            .zip(values)
+            .all(|(p, v)| self.match_pattern(&p, &v))
+    }
 
-        fn matches_array_spread(pattern: &MatchPattern, values: &[Value]) -> bool {
-            match pattern {
-                MatchPattern::Discard => true,
-                MatchPattern::Declaration(_) => true,
-                MatchPattern::Assignment(_) => true,
-                MatchPattern::SimpleArray(parts) => matches_slice(parts, values),
-                MatchPattern::SpreadArray(pattern) => matches_spread_array(pattern, values),
-            }
+    fn match_array_spread(&mut self, pattern: &MatchPattern, values: &[Value]) -> bool {
+        match pattern {
+            MatchPattern::Discard => true,
+            MatchPattern::Declaration(_) => true,
+            MatchPattern::Assignment(_) => true,
+            MatchPattern::SimpleArray(parts) => self.match_slice(parts, values),
+            MatchPattern::SpreadArray(pattern) => self.match_spread_array(pattern, values),
         }
+    }
 
-        fn matches_spread_array(pattern: &SpreadArrayPattern, values: &[Value]) -> bool {
-            let values_before = &values[..pattern.before.len()];
-            let spread_end_idx = values.len() - pattern.after.len();
-            let values_spread = &values[pattern.before.len()..spread_end_idx];
-            let values_after = &values[spread_end_idx..];
-            return matches_slice(&pattern.before, values_before)
-                && matches_array_spread(&pattern.spread, values_spread)
-                && matches_slice(&pattern.after, values_after);
-        }
+    fn match_spread_array(&mut self, pattern: &SpreadArrayPattern, values: &[Value]) -> bool {
+        let values_before = &values[..pattern.before.len()];
+        let spread_end_idx = values.len() - pattern.after.len();
+        let values_spread = &values[pattern.before.len()..spread_end_idx];
+        let values_after = &values[spread_end_idx..];
+        return self.match_slice(&pattern.before, values_before)
+            && self.match_array_spread(&pattern.spread, values_spread)
+            && self.match_slice(&pattern.after, values_after);
+    }
 
+    fn match_pattern(&mut self, pattern: &MatchPattern, value: &Value) -> bool {
         match pattern {
             MatchPattern::Discard => true,
             MatchPattern::Declaration(_) => true,
             MatchPattern::Assignment(_) => true,
             MatchPattern::SimpleArray(parts) => match value {
-                Value::Array(a) => matches_slice(parts, &a.values),
+                Value::Array(a) => self.match_slice(parts, &a.values),
                 _ => false,
             },
             MatchPattern::SpreadArray(pattern) => match value {
-                Value::Array(a) => matches_spread_array(pattern, &a.values),
+                Value::Array(a) => self.match_spread_array(pattern, &a.values),
                 _ => false,
             },
         }
