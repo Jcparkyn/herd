@@ -137,7 +137,7 @@ impl VariableAnalyzer {
             }
             MatchPattern::Array(parts) => {
                 for part in parts {
-                    self.analyze_pattern(part);
+                    self.analyze_pattern(&mut part.pattern);
                 }
             }
             MatchPattern::Discard => {}
@@ -296,7 +296,7 @@ fn analyze_pattern_liveness(pattern: &mut MatchPattern, deps: &mut HashSet<Strin
         }
         MatchPattern::Array(parts) => {
             for part in parts {
-                analyze_pattern_liveness(part, deps);
+                analyze_pattern_liveness(&mut part.pattern, deps);
             }
         }
         MatchPattern::Discard => {}

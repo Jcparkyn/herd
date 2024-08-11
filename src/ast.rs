@@ -100,13 +100,15 @@ pub struct AssignmentTarget {
     pub path: Vec<Box<Expr>>,
 }
 
-// pub struct Pattern {
-//     pub parts: Vec<PatternPart>,
-// }
+#[derive(PartialEq, Debug)]
+pub struct MatchArrayPart {
+    pub pattern: MatchPattern,
+    pub spread: bool,
+}
 
 #[derive(PartialEq, Debug)]
 pub enum MatchPattern {
-    Array(Vec<MatchPattern>),
+    Array(Vec<MatchArrayPart>),
     Declaration(VarRef),
     Assignment(AssignmentTarget),
     Discard,

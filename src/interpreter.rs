@@ -6,7 +6,9 @@ use std::{
     vec,
 };
 
-use crate::ast::{Block, BuiltInFunction, Expr, LambdaExpr, MatchPattern, Opcode, Statement};
+use crate::ast::{
+    Block, BuiltInFunction, Expr, LambdaExpr, MatchArrayPart, MatchPattern, Opcode, Statement,
+};
 
 pub struct Interpreter {
     environment: Environment,
@@ -427,6 +429,59 @@ fn destructure_args<const N: usize>(args: Vec<Value>) -> Result<[Value; N], Inte
     }
 }
 
+fn matches_pattern(pattern: &MatchPattern, value: &Value) -> bool {
+    match pattern {
+        MatchPattern::Discard => true,
+        MatchPattern::Declaration(_) => true,
+        MatchPattern::Assignment(_) => true,
+        MatchPattern::Array(parts) => {
+            let arr = match value {
+                Value::Array(a) => &a.values,
+                _ => return false,
+            };
+            matches_array(parts, arr)
+            // todo!()
+        }
+    }
+}
+
+fn matches_array(parts: &Vec<MatchArrayPart>, arr: &[Value]) -> bool {
+    fn matches_slice(parts: &[MatchArrayPart], values: &[Value]) -> bool {
+        assert!(parts.len() == values.len());
+        parts
+            .iter()
+            .zip(values)
+            .all(|(p, v)| matches_pattern(&p.pattern, &v))
+    }
+    fn matches_array_spread(pattern: &MatchPattern, values: &[Value]) -> bool {
+        match pattern {
+            MatchPattern::Discard => true,
+            MatchPattern::Declaration(_) => true,
+            MatchPattern::Assignment(_) => true,
+            MatchPattern::Array(parts) => matches_array(parts, values),
+        }
+    }
+    let min_len = parts.iter().filter(|p| !p.spread).count();
+    if arr.len() < min_len {
+        return false;
+    }
+    let spread_idx = parts.iter().position(|p| p.spread);
+    match spread_idx {
+        None => matches_slice(parts, &arr),
+        Some(spread_idx) => {
+            let values_before = &arr[..spread_idx];
+            let parts_before = &parts[..spread_idx];
+            let parts_after = &parts[spread_idx + 1..];
+            let spread_idx_end = arr.len() - parts_after.len();
+            let values_spread = &arr[spread_idx..spread_idx_end];
+            let values_after = &arr[spread_idx_end..];
+            return matches_slice(parts_before, values_before)
+                && matches_array_spread(&parts[spread_idx].pattern, values_spread)
+                && matches_slice(parts_after, values_after);
+        }
+    }
+}
+
 impl Interpreter {
     pub fn new() -> Interpreter {
         Interpreter {
@@ -438,6 +493,7 @@ impl Interpreter {
         match statement {
             Statement::PatternAssignment(pattern, expr) => {
                 let value = self.eval(&expr)?;
+                // TODO
                 self.assign_pattern(pattern, value)?;
                 Ok(())
             }
@@ -849,13 +905,13 @@ impl Interpreter {
                             // If we're the only reference, move (replace) the elements to avoid clone.
                             Ok(a) => {
                                 for (part, value) in parts.into_iter().zip(a.values.into_iter()) {
-                                    self.assign_pattern(part, value)?;
+                                    self.assign_pattern(&part.pattern, value)?;
                                 }
                             }
                             // If the array is shared, just clone each item
                             Err(a) => {
                                 for (part, value) in parts.iter().zip(a.values.iter()) {
-                                    self.assign_pattern(part, value.clone())?;
+                                    self.assign_pattern(&part.pattern, value.clone())?;
                                 }
                             }
                         }
