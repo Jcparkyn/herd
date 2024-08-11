@@ -7,7 +7,7 @@ use std::{
 };
 
 use crate::ast::{
-    Block, BuiltInFunction, Expr, LambdaExpr, MatchArrayPart, MatchPattern, Opcode, Statement,
+    Block, BuiltInFunction, Expr, LambdaExpr, MatchPattern, Opcode, SpreadArrayPattern, Statement,
 };
 
 pub struct Interpreter {
@@ -430,55 +430,46 @@ fn destructure_args<const N: usize>(args: Vec<Value>) -> Result<[Value; N], Inte
 }
 
 fn matches_pattern(pattern: &MatchPattern, value: &Value) -> bool {
-    match pattern {
-        MatchPattern::Discard => true,
-        MatchPattern::Declaration(_) => true,
-        MatchPattern::Assignment(_) => true,
-        MatchPattern::Array(parts) => {
-            let arr = match value {
-                Value::Array(a) => &a.values,
-                _ => return false,
-            };
-            matches_array(parts, arr)
-            // todo!()
-        }
-    }
-}
-
-fn matches_array(parts: &Vec<MatchArrayPart>, arr: &[Value]) -> bool {
-    fn matches_slice(parts: &[MatchArrayPart], values: &[Value]) -> bool {
+    fn matches_slice(parts: &[MatchPattern], values: &[Value]) -> bool {
         assert!(parts.len() == values.len());
         parts
             .iter()
             .zip(values)
-            .all(|(p, v)| matches_pattern(&p.pattern, &v))
+            .all(|(p, v)| matches_pattern(&p, &v))
     }
+
     fn matches_array_spread(pattern: &MatchPattern, values: &[Value]) -> bool {
         match pattern {
             MatchPattern::Discard => true,
             MatchPattern::Declaration(_) => true,
             MatchPattern::Assignment(_) => true,
-            MatchPattern::Array(parts) => matches_array(parts, values),
+            MatchPattern::SimpleArray(parts) => matches_slice(parts, values),
+            MatchPattern::SpreadArray(pattern) => matches_spread_array(pattern, values),
         }
     }
-    let min_len = parts.iter().filter(|p| !p.spread).count();
-    if arr.len() < min_len {
-        return false;
+
+    fn matches_spread_array(pattern: &SpreadArrayPattern, values: &[Value]) -> bool {
+        let values_before = &values[..pattern.before.len()];
+        let spread_end_idx = values.len() - pattern.after.len();
+        let values_spread = &values[pattern.before.len()..spread_end_idx];
+        let values_after = &values[spread_end_idx..];
+        return matches_slice(&pattern.before, values_before)
+            && matches_array_spread(&pattern.spread, values_spread)
+            && matches_slice(&pattern.after, values_after);
     }
-    let spread_idx = parts.iter().position(|p| p.spread);
-    match spread_idx {
-        None => matches_slice(parts, &arr),
-        Some(spread_idx) => {
-            let values_before = &arr[..spread_idx];
-            let parts_before = &parts[..spread_idx];
-            let parts_after = &parts[spread_idx + 1..];
-            let spread_idx_end = arr.len() - parts_after.len();
-            let values_spread = &arr[spread_idx..spread_idx_end];
-            let values_after = &arr[spread_idx_end..];
-            return matches_slice(parts_before, values_before)
-                && matches_array_spread(&parts[spread_idx].pattern, values_spread)
-                && matches_slice(parts_after, values_after);
-        }
+
+    match pattern {
+        MatchPattern::Discard => true,
+        MatchPattern::Declaration(_) => true,
+        MatchPattern::Assignment(_) => true,
+        MatchPattern::SimpleArray(parts) => match value {
+            Value::Array(a) => matches_slice(parts, &a.values),
+            _ => false,
+        },
+        MatchPattern::SpreadArray(pattern) => match value {
+            Value::Array(a) => matches_spread_array(pattern, &a.values),
+            _ => false,
+        },
     }
 }
 
@@ -892,7 +883,7 @@ impl Interpreter {
                     .assign(target.var.slot, &path_values, value)?;
                 Ok(())
             }
-            MatchPattern::Array(parts) => {
+            MatchPattern::SimpleArray(parts) => {
                 match value {
                     Value::Array(arr) => {
                         // TODO
@@ -905,13 +896,13 @@ impl Interpreter {
                             // If we're the only reference, move (replace) the elements to avoid clone.
                             Ok(a) => {
                                 for (part, value) in parts.into_iter().zip(a.values.into_iter()) {
-                                    self.assign_pattern(&part.pattern, value)?;
+                                    self.assign_pattern(&part, value)?;
                                 }
                             }
                             // If the array is shared, just clone each item
                             Err(a) => {
                                 for (part, value) in parts.iter().zip(a.values.iter()) {
-                                    self.assign_pattern(&part.pattern, value.clone())?;
+                                    self.assign_pattern(&part, value.clone())?;
                                 }
                             }
                         }
@@ -923,6 +914,7 @@ impl Interpreter {
                 }
             }
             MatchPattern::Discard => Ok(()),
+            MatchPattern::SpreadArray(pattern) => todo!(),
         }
     }
 }

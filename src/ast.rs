@@ -3,6 +3,7 @@ use std::fmt::Debug;
 use std::fmt::Display;
 use std::fmt::Error;
 use std::fmt::Formatter;
+use std::iter;
 use std::rc::Rc;
 
 #[derive(PartialEq, Debug, Clone, Copy, Hash)]
@@ -101,14 +102,25 @@ pub struct AssignmentTarget {
 }
 
 #[derive(PartialEq, Debug)]
-pub struct MatchArrayPart {
-    pub pattern: MatchPattern,
-    pub spread: bool,
+pub struct SpreadArrayPattern {
+    pub before: Vec<MatchPattern>,
+    pub spread: Box<MatchPattern>,
+    pub after: Vec<MatchPattern>,
+}
+
+impl SpreadArrayPattern {
+    pub fn all_parts_mut(&mut self) -> impl Iterator<Item = &mut MatchPattern> {
+        self.before
+            .iter_mut()
+            .chain(iter::once(&mut *self.spread))
+            .chain(self.after.iter_mut())
+    }
 }
 
 #[derive(PartialEq, Debug)]
 pub enum MatchPattern {
-    Array(Vec<MatchArrayPart>),
+    SimpleArray(Vec<MatchPattern>),
+    SpreadArray(SpreadArrayPattern),
     Declaration(VarRef),
     Assignment(AssignmentTarget),
     Discard,

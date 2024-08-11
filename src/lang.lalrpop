@@ -1,7 +1,6 @@
 use std::{str::FromStr,rc::Rc};
-use crate::ast::{Expr, Opcode, Statement, Block, AssignmentTarget, VarRef, LambdaExpr, MatchPattern, MatchArrayPart};
-use crate::parse_helpers::parse_string_literal;
-use lalrpop_util::ParseError;
+use crate::ast::{Expr, Opcode, Statement, Block, AssignmentTarget, VarRef, LambdaExpr, MatchPattern};
+use crate::parse_helpers::{parse_string_literal, process_array_match};
 
 grammar;
 
@@ -98,21 +97,11 @@ MatchPattern: MatchPattern = {
         }
     },
     "set" <target:AssignmentTarget> => MatchPattern::Assignment(target),
-    "[" <patterns:Comma<MatchArrayPart>> "]" =>? {
-        if patterns.iter().filter(|p| p.spread).count() > 1 {
-            return Err(ParseError::User {
-                error: "Array patterns can only contain one spread variable (..)"
-            })
-        }
-        Ok(MatchPattern::Array(patterns))
-    },
+    "[" <parts:Comma<MatchArrayPart>> "]" =>? Ok(process_array_match(parts)?),
 }
 
-MatchArrayPart: MatchArrayPart = {
-    <spread:".."?> <pattern:MatchPattern> => MatchArrayPart {
-        pattern,
-        spread: spread != None,
-    }
+MatchArrayPart: (MatchPattern, bool) = {
+    <spread:".."?> <pattern:MatchPattern> => (pattern, spread != None),
 }
 
 IfExpression: Box<Expr> = {
