@@ -429,50 +429,6 @@ fn destructure_args<const N: usize>(args: Vec<Value>) -> Result<[Value; N], Inte
     }
 }
 
-fn matches_pattern(pattern: &MatchPattern, value: &Value) -> bool {
-    fn matches_slice(parts: &[MatchPattern], values: &[Value]) -> bool {
-        assert!(parts.len() == values.len());
-        parts
-            .iter()
-            .zip(values)
-            .all(|(p, v)| matches_pattern(&p, &v))
-    }
-
-    fn matches_array_spread(pattern: &MatchPattern, values: &[Value]) -> bool {
-        match pattern {
-            MatchPattern::Discard => true,
-            MatchPattern::Declaration(_) => true,
-            MatchPattern::Assignment(_) => true,
-            MatchPattern::SimpleArray(parts) => matches_slice(parts, values),
-            MatchPattern::SpreadArray(pattern) => matches_spread_array(pattern, values),
-        }
-    }
-
-    fn matches_spread_array(pattern: &SpreadArrayPattern, values: &[Value]) -> bool {
-        let values_before = &values[..pattern.before.len()];
-        let spread_end_idx = values.len() - pattern.after.len();
-        let values_spread = &values[pattern.before.len()..spread_end_idx];
-        let values_after = &values[spread_end_idx..];
-        return matches_slice(&pattern.before, values_before)
-            && matches_array_spread(&pattern.spread, values_spread)
-            && matches_slice(&pattern.after, values_after);
-    }
-
-    match pattern {
-        MatchPattern::Discard => true,
-        MatchPattern::Declaration(_) => true,
-        MatchPattern::Assignment(_) => true,
-        MatchPattern::SimpleArray(parts) => match value {
-            Value::Array(a) => matches_slice(parts, &a.values),
-            _ => false,
-        },
-        MatchPattern::SpreadArray(pattern) => match value {
-            Value::Array(a) => matches_spread_array(pattern, &a.values),
-            _ => false,
-        },
-    }
-}
-
 impl Interpreter {
     pub fn new() -> Interpreter {
         Interpreter {
@@ -915,6 +871,50 @@ impl Interpreter {
             }
             MatchPattern::Discard => Ok(()),
             MatchPattern::SpreadArray(pattern) => todo!(),
+        }
+    }
+
+    fn match_pattern(pattern: &MatchPattern, value: &Value) -> bool {
+        fn matches_slice(parts: &[MatchPattern], values: &[Value]) -> bool {
+            assert!(parts.len() == values.len());
+            parts
+                .iter()
+                .zip(values)
+                .all(|(p, v)| Interpreter::match_pattern(&p, &v))
+        }
+
+        fn matches_array_spread(pattern: &MatchPattern, values: &[Value]) -> bool {
+            match pattern {
+                MatchPattern::Discard => true,
+                MatchPattern::Declaration(_) => true,
+                MatchPattern::Assignment(_) => true,
+                MatchPattern::SimpleArray(parts) => matches_slice(parts, values),
+                MatchPattern::SpreadArray(pattern) => matches_spread_array(pattern, values),
+            }
+        }
+
+        fn matches_spread_array(pattern: &SpreadArrayPattern, values: &[Value]) -> bool {
+            let values_before = &values[..pattern.before.len()];
+            let spread_end_idx = values.len() - pattern.after.len();
+            let values_spread = &values[pattern.before.len()..spread_end_idx];
+            let values_after = &values[spread_end_idx..];
+            return matches_slice(&pattern.before, values_before)
+                && matches_array_spread(&pattern.spread, values_spread)
+                && matches_slice(&pattern.after, values_after);
+        }
+
+        match pattern {
+            MatchPattern::Discard => true,
+            MatchPattern::Declaration(_) => true,
+            MatchPattern::Assignment(_) => true,
+            MatchPattern::SimpleArray(parts) => match value {
+                Value::Array(a) => matches_slice(parts, &a.values),
+                _ => false,
+            },
+            MatchPattern::SpreadArray(pattern) => match value {
+                Value::Array(a) => matches_spread_array(pattern, &a.values),
+                _ => false,
+            },
         }
     }
 }
