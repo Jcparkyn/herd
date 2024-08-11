@@ -103,6 +103,7 @@ MatchPattern: MatchPattern = {
 
 MatchArrayPart: (MatchPattern, bool) = {
     <spread:".."?> <pattern:MatchPattern> => (pattern, spread != None),
+    ".." => (MatchPattern::Discard, true),
 }
 
 IfExpression: Box<Expr> = {
