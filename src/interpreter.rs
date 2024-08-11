@@ -7,8 +7,8 @@ use std::{
 };
 
 use crate::ast::{
-    AssignmentTarget, Block, BuiltInFunction, Expr, LambdaExpr, MatchExpr, MatchPattern, Opcode,
-    SpreadArrayPattern, Statement,
+    AssignmentTarget, Block, BuiltInFunction, Expr, LambdaExpr, MatchConstant, MatchExpr,
+    MatchPattern, Opcode, SpreadArrayPattern, Statement,
 };
 
 pub struct Interpreter {
@@ -875,6 +875,9 @@ impl Interpreter {
             }
             MatchPattern::SimpleArray(parts) => self.match_slice(parts, values),
             MatchPattern::SpreadArray(pattern) => self.match_spread_array(pattern, values),
+            MatchPattern::Constant(c) => Err(InterpreterError::PatternMatchFailed {
+                message: format!("Can't use a constant ({c}) as a spread parameter (..)"),
+            }),
         }
     }
 
@@ -929,6 +932,15 @@ impl Interpreter {
                     message: format!("Expected an array, found {value}"),
                 }),
             },
+            MatchPattern::Constant(c) => {
+                if Self::matches_constant(c, &value) {
+                    Ok(())
+                } else {
+                    Err(PatternMatchFailed {
+                        message: format!("Expected constant {c}, found {value}"),
+                    })
+                }
+            }
         }
     }
 
@@ -948,6 +960,7 @@ impl Interpreter {
                 MatchPattern::Assignment(_) => true,
                 MatchPattern::SimpleArray(parts) => matches_slice(parts, values),
                 MatchPattern::SpreadArray(pattern) => matches_spread_array(pattern, values),
+                MatchPattern::Constant(_) => false,
             }
         }
 
@@ -974,6 +987,17 @@ impl Interpreter {
                 Value::Array(a) => matches_spread_array(pattern, &a.values),
                 _ => false,
             },
+            MatchPattern::Constant(c) => Self::matches_constant(c, value),
+        }
+    }
+
+    fn matches_constant(constant: &MatchConstant, value: &Value) -> bool {
+        match (constant, value) {
+            (MatchConstant::Number(n), Value::Number(m)) => n == m,
+            (MatchConstant::String(s), Value::String(m)) => s == m.as_ref(),
+            (MatchConstant::Bool(b), Value::Bool(m)) => b == m,
+            (MatchConstant::Nil, Value::Nil) => true,
+            _ => false,
         }
     }
 

@@ -128,7 +128,26 @@ pub enum MatchPattern {
     Declaration(VarRef),
     Assignment(AssignmentTarget),
     Discard,
-    // Constant, // TODO
+    Constant(MatchConstant),
+}
+
+#[derive(PartialEq, Debug)]
+pub enum MatchConstant {
+    Number(f64),
+    Bool(bool),
+    String(String),
+    Nil,
+}
+
+impl Display for MatchConstant {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        match self {
+            MatchConstant::Number(n) => write!(f, "{}", n),
+            MatchConstant::Bool(b) => write!(f, "{}", b),
+            MatchConstant::String(s) => write!(f, "'{}'", s),
+            MatchConstant::Nil => write!(f, "nil"),
+        }
+    }
 }
 
 #[derive(PartialEq, Debug)]

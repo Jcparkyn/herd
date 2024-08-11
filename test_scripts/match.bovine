@@ -1,0 +1,25 @@
+
+arr = [6, 7];
+foo = match arr with {
+  [a, b] => [a + b],
+  _ => 0,
+};
+print foo;
+
+// invert = { node ->
+//   match node with {
+//     [l] => [invert l],
+//   }
+// };
+
+invert = { node ->
+  match node with {
+    [l, r] => [invert r, invert l],
+    x => x,
+  }
+};
+
+tree = [[0, 1], [2, 3]];
+
+tree2 = invert tree;
+print tree2;

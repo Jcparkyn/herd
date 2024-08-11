@@ -110,8 +110,8 @@ impl VariableAnalyzer {
     fn analyze_statement(&mut self, stmt: &mut Statement) {
         match stmt {
             Statement::PatternAssignment(pattern, rhs) => {
-                self.analyze_expr(rhs);
                 self.analyze_pattern(pattern);
+                self.analyze_expr(rhs);
             }
             Statement::Expression(expr) => self.analyze_expr(expr),
             Statement::Return(expr) => self.analyze_expr(expr),
@@ -148,6 +148,7 @@ impl VariableAnalyzer {
                 }
             }
             MatchPattern::Discard => {}
+            MatchPattern::Constant(_) => {}
         }
     }
 
@@ -329,6 +330,7 @@ fn analyze_pattern_liveness(pattern: &mut MatchPattern, deps: &mut HashSet<Strin
             }
         }
         MatchPattern::Discard => {}
+        MatchPattern::Constant(_) => {}
     }
 }
 
@@ -381,8 +383,8 @@ fn analyze_expr_liveness(expr: &mut Expr, deps: &mut HashSet<String>) {
             let deps_original = deps.clone();
             for (pattern, body) in branches.iter_mut() {
                 let mut deps_branch = deps_original.clone();
-                analyze_pattern_liveness(pattern, &mut deps_branch);
                 analyze_expr_liveness(body, &mut deps_branch);
+                analyze_pattern_liveness(pattern, &mut deps_branch);
                 for dep in deps_branch {
                     deps.insert(dep);
                 }

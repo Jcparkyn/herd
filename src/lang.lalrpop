@@ -1,4 +1,5 @@
 use std::{str::FromStr,rc::Rc};
+use crate::ast;
 use crate::ast::{Expr, Opcode, Statement, Block, AssignmentTarget, VarRef, LambdaExpr, MatchPattern, MatchExpr};
 use crate::parse_helpers::{parse_string_literal, process_array_match};
 
@@ -70,7 +71,7 @@ Term: Box<Expr> = {
     NumLiteral => Box::new(Expr::Number(<>)),
     BoolLiteral => Box::new(Expr::Bool(<>)),
     "nil" => Box::new(Expr::Nil),
-    r"'[^']*'" => Box::new(Expr::from_string(parse_string_literal(<>))),
+    StringLiteral => Box::new(Expr::from_string(<>)),
     Identifier => Box::new(Expr::Variable(VarRef::new(<>))),
     "(" <Expr> ")",
     LambdaExpr,
@@ -99,6 +100,10 @@ MatchPattern: MatchPattern = {
     },
     "set" <target:AssignmentTarget> => MatchPattern::Assignment(target),
     "[" <parts:Comma<MatchArrayPart>> "]" =>? Ok(process_array_match(parts)?),
+    NumLiteral => MatchPattern::Constant(ast::MatchConstant::Number(<>)),
+    BoolLiteral => MatchPattern::Constant(ast::MatchConstant::Bool(<>)),
+    StringLiteral => MatchPattern::Constant(ast::MatchConstant::String(<>)),
+    "nil" => MatchPattern::Constant(ast::MatchConstant::Nil),
 }
 
 MatchArrayPart: (MatchPattern, bool) = {
@@ -145,6 +150,10 @@ BoolLiteral: bool = {
     "true" => true,
     "false" => false,
 };
+
+StringLiteral: String = {
+    r"'[^']*'" => parse_string_literal(<>),
+}
 
 LambdaExpr: Box<Expr> = {
     "{" <params:Comma<Identifier>> "->" <body:BlockBody> "}" => Box::new(Expr::Lambda(

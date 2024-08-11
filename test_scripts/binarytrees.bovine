@@ -9,9 +9,9 @@ makeTree = { d ->
 };
 
 checkTree = { node ->
-  if node == nil then { 1 } else {
-    ![l, r] = node;
-    1 + (checkTree l) + (checkTree r)
+  match node with {
+    nil => 1,
+    [l, r] => 1 + (checkTree l) + (checkTree r),
   }
 };
 

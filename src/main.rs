@@ -37,15 +37,16 @@ fn main() {
             }
             Ok(mut program) => {
                 let mut analyzer = Analyzer::new();
-                match analyzer.analyze_statements(&mut program) {
+                let analyze_result = analyzer.analyze_statements(&mut program);
+                #[cfg(debug_assertions)]
+                println!("ast: {:#?}", program);
+                match analyze_result {
                     Ok(()) => {}
                     Err(errs) => {
                         print_errors(errs);
                         return;
                     }
                 }
-                #[cfg(debug_assertions)]
-                println!("ast: {:#?}", program);
                 for statement in program {
                     match interpreter.execute(&statement) {
                         Ok(()) => {}
