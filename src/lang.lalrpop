@@ -112,7 +112,7 @@ MatchArrayPart: (MatchPattern, bool) = {
 }
 
 IfExpression: Box<Expr> = {
-    "if " <cond:Expr> "then" <b1:BlockExpr> <b2:("else" <BlockExpr>)?> => Box::new(
+    "if " <cond:Expr> "then" <b1:Term> <b2:("else" <Term>)?> => Box::new(
         Expr::If { condition: cond, then_branch: b1, else_branch: b2 }
     )
 }

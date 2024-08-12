@@ -491,10 +491,10 @@ impl Interpreter {
             } => {
                 let cond = self.eval(&condition)?;
                 if cond.truthy() {
-                    return self.eval_block(&then_branch);
+                    return self.eval(&then_branch);
                 }
                 if let Some(else_branch2) = else_branch {
-                    return self.eval_block(&else_branch2);
+                    return self.eval(&else_branch2);
                 }
                 Ok(Value::Nil)
             }

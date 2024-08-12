@@ -217,8 +217,8 @@ pub enum Expr {
     Block(Block),
     If {
         condition: Box<Expr>,
-        then_branch: Block,
-        else_branch: Option<Block>,
+        then_branch: Box<Expr>,
+        else_branch: Option<Box<Expr>>,
     },
     Match(MatchExpr),
     Call {

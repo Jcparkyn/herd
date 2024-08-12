@@ -171,9 +171,9 @@ impl VariableAnalyzer {
                 else_branch,
             } => {
                 self.analyze_expr(condition);
-                self.analyze_block(then_branch);
+                self.analyze_expr(then_branch);
                 if let Some(else_branch) = else_branch {
-                    self.analyze_block(else_branch);
+                    self.analyze_expr(else_branch);
                 }
             }
             Expr::Match(m) => {
@@ -367,9 +367,9 @@ fn analyze_expr_liveness(expr: &mut Expr, deps: &mut HashSet<String>) {
         } => {
             let mut deps_else = deps.clone(); // need to clone even if else is empty, in case deps got removed in if branch.
             if let Some(else_branch) = else_branch {
-                analyze_block_liveness(else_branch, &mut deps_else);
+                analyze_expr_liveness(else_branch, &mut deps_else);
             }
-            analyze_block_liveness(then_branch, deps);
+            analyze_expr_liveness(then_branch, deps);
             // Deps at start of expression are union of both blocks (because we don't know which branch will be taken).
             for dep in deps_else {
                 deps.insert(dep);
@@ -536,9 +536,9 @@ fn expr_sub_exprs_mut(expr: &mut Expr) -> Vec<&mut Box<Expr>> {
             else_branch,
         } => {
             exprs.push(condition);
-            exprs.append(&mut block_sub_exprs_mut(then_branch));
+            exprs.append(&mut expr_sub_exprs_mut(then_branch));
             if let Some(else_branch) = else_branch {
-                exprs.append(&mut block_sub_exprs_mut(else_branch));
+                exprs.append(&mut expr_sub_exprs_mut(else_branch));
             }
         }
         Expr::Match(MatchExpr {
