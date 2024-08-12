@@ -1,7 +1,7 @@
 use std::{str::FromStr,rc::Rc};
 use crate::ast;
 use crate::ast::{Expr, Opcode, Statement, Block, AssignmentTarget, VarRef, LambdaExpr, MatchPattern, MatchExpr};
-use crate::parse_helpers::{parse_string_literal, process_array_match};
+use crate::parse_helpers::{parse_string_literal, process_array_match, process_declaration};
 
 grammar;
 
@@ -23,7 +23,7 @@ Statement: Statement = {
 
 StatementWithSemicolon: Statement = {
     <ExprWithoutBlock> ";" => Statement::Expression(<>),
-    <name:Identifier> "=" <e:Expr> ";" => Statement::PatternAssignment(MatchPattern::Declaration(VarRef::new(name)), e),
+    <name:Identifier> "=" <e:Expr> ";" => process_declaration(name, e),
     "set" <target:AssignmentTarget> "=" <e:Expr> ";" => Statement::PatternAssignment(MatchPattern::Assignment(target), e),
     "!" <pattern:MatchPattern> "=" <e:Expr> ";" => Statement::PatternAssignment(pattern, e),
     "return" <e:Expr> ";" => Statement::Return(e),

@@ -2,6 +2,6 @@ a = 'global';
 {
   showA = { x -> print a };
   showA 0;
-  a = 'block';
+  set a = 'block';
   showA 0;
-}
+};

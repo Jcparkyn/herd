@@ -6,12 +6,6 @@ foo = match arr with {
 };
 print foo;
 
-// invert = { node ->
-//   match node with {
-//     [l] => [invert l],
-//   }
-// };
-
 invert = { node ->
   match node with {
     [l, r] => [invert r, invert l],

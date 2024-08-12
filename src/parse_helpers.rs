@@ -1,4 +1,4 @@
-use crate::ast::{MatchPattern, SpreadArrayPattern};
+use crate::ast::{Expr, MatchPattern, SpreadArrayPattern, Statement, VarRef};
 
 pub fn parse_string_literal(s: &str) -> String {
     s[1..s.len() - 1].to_string()
@@ -28,4 +28,11 @@ pub fn process_array_match(parts: Vec<(MatchPattern, bool)>) -> Result<MatchPatt
         }
         None => Ok(MatchPattern::SimpleArray(parts_vec)),
     }
+}
+
+pub fn process_declaration(name: String, mut rhs: Box<Expr>) -> Statement {
+    if let Expr::Lambda(lambda) = rhs.as_mut() {
+        lambda.name = Some(name.clone());
+    }
+    return Statement::PatternAssignment(MatchPattern::Declaration(VarRef::new(name)), rhs);
 }

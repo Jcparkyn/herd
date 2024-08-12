@@ -290,11 +290,6 @@ fn analyze_statements_liveness(stmts: &mut [Statement], deps: &mut HashSet<Strin
 fn analyze_statement_liveness(stmt: &mut Statement, deps: &mut HashSet<String>) {
     match stmt {
         Statement::PatternAssignment(pattern, rhs) => {
-            if let MatchPattern::Declaration(var) = pattern {
-                if let Expr::Lambda(l) = rhs.as_mut() {
-                    l.name = Some(var.name.clone());
-                }
-            }
             analyze_pattern_liveness(pattern, deps);
             analyze_expr_liveness(rhs, deps)
         }
@@ -568,7 +563,6 @@ fn expr_sub_exprs_mut(expr: &mut Expr) -> Vec<&mut Box<Expr>> {
         Expr::Lambda(_) => panic!("TODO"),
         Expr::Dict(entries) => {
             for (k, v) in entries {
-                // TODO correct order
                 exprs.push(k);
                 exprs.push(v);
             }
