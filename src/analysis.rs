@@ -422,8 +422,9 @@ fn analyze_expr_liveness(expr: &mut Expr, deps: &mut HashSet<String>) {
             }
         }
         Expr::Dict(entries) => {
-            for (_, v) in entries.iter_mut().rev() {
+            for (k, v) in entries.iter_mut().rev() {
                 analyze_expr_liveness(v, deps);
+                analyze_expr_liveness(k, deps);
             }
         }
         Expr::Array(elements) => {
