@@ -413,7 +413,8 @@ fn analyze_expr_liveness(expr: &mut Expr, deps: &mut HashSet<String>) {
                 lambda_deps.remove(name);
             }
             for dep in lambda_deps {
-                l.potential_captures.push(VarRef::new(dep));
+                l.potential_captures.push(VarRef::new(dep.clone()));
+                deps.insert(dep);
             }
         }
         Expr::Dict(entries) => {
