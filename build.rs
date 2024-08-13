@@ -1,3 +1,3 @@
 fn main() {
-    lalrpop::Configuration::new().process_dir("src").unwrap();
+    lalrpop::Configuration::new().process_current_dir().unwrap();
 }
