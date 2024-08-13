@@ -2,7 +2,13 @@ use analysis::Analyzer;
 use clap::Parser;
 use interpreter::{Interpreter, InterpreterError};
 use lalrpop_util::{lalrpop_mod, ParseError};
-use std::io::{stdin, stdout, Write};
+use rustyline::error::ReadlineError;
+use rustyline::highlight::MatchingBracketHighlighter;
+use rustyline::validate::{ValidationContext, ValidationResult, Validator};
+use rustyline::{
+    Cmd, Completer, Config, Editor, EventHandler, Helper, Highlighter, Hinter, KeyCode, KeyEvent,
+    Modifiers, Movement, Result,
+};
 
 mod analysis;
 mod ast;
@@ -75,53 +81,59 @@ fn main() {
 }
 
 fn run_repl(args: Args) {
+    let rl_config = Config::builder()
+        .history_ignore_space(true)
+        .auto_add_history(true)
+        .indent_size(4)
+        .build();
+    let helper = ReplInputValidator {
+        parser: lang::ProgramParser::new(),
+        highlighter: MatchingBracketHighlighter::new(),
+    };
+    let mut rl = Editor::with_config(rl_config).unwrap();
+    rl.set_helper(Some(helper));
+    rl.bind_sequence(
+        KeyEvent(KeyCode::Tab, Modifiers::NONE),
+        EventHandler::Simple(Cmd::Indent(Movement::ForwardChar(0))),
+    );
     let parser = lang::ProgramParser::new();
     let mut interpreter = Interpreter::new();
     let mut analyzer = Analyzer::new();
     loop {
-        print!("> ");
-        match stdout().flush() {
+        let input = match rl.readline("> ") {
+            Ok(input) => input,
+            Err(ReadlineError::Interrupted) => return,
             Err(err) => {
-                println!("Error while flushing: {}", err);
-                break;
-            }
-            _ => {}
-        }
-        let mut buffer = String::new();
-        loop {
-            if let Err(err) = stdin().read_line(&mut buffer) {
-                println!("Error while reading: {}", err);
+                println!("Error: {err}");
                 return;
             }
-            let ast_result = parser.parse(&buffer);
-            match ast_result {
-                Err(ParseError::UnrecognizedEof { .. }) => {}
-                Err(err) => {
-                    println!("Error while parsing: {}", err);
-                    break;
-                }
-                Ok(mut statements) => {
-                    match analyzer.analyze_statements(&mut statements) {
-                        Ok(()) => {}
-                        Err(errs) => {
-                            print_errors(errs);
-                            break;
-                        }
-                    }
-                    if args.ast {
-                        println!("ast: {:?}", statements);
-                    }
-                    for statement in statements {
-                        match interpreter.execute(&statement) {
-                            Ok(()) => {}
-                            Err(InterpreterError::Return(value)) => {
-                                return println!("Return value: {value}")
-                            }
-                            Err(err) => println!("Error while evaluating: {}", err),
-                        }
-                    }
-                    break;
-                }
+        };
+
+        let ast_result = parser.parse(&input);
+        let mut statements = match ast_result {
+            Err(err) => {
+                println!("Error while parsing: {}", err);
+                continue;
+            }
+            Ok(s) => s,
+        };
+        let analyze_result = analyzer.analyze_statements(&mut statements);
+        if args.ast {
+            println!("ast: {:?}", statements);
+        }
+        match analyze_result {
+            Ok(()) => {}
+            Err(errs) => {
+                print_errors(errs);
+                break;
+            }
+        }
+
+        for statement in statements {
+            match interpreter.execute(&statement) {
+                Ok(()) => {}
+                Err(InterpreterError::Return(value)) => return println!("Return value: {value}"),
+                Err(err) => println!("Error while evaluating: {}", err),
             }
         }
     }
@@ -131,5 +143,22 @@ fn print_errors(errs: Vec<analysis::AnalysisError>) {
     println!("Errors while analyzing:");
     for err in errs {
         println!("\t{}", err);
+    }
+}
+
+#[derive(Completer, Helper, Hinter, Highlighter)]
+struct ReplInputValidator {
+    parser: lang::ProgramParser,
+    #[rustyline(Highlighter)]
+    highlighter: MatchingBracketHighlighter,
+}
+
+impl Validator for ReplInputValidator {
+    fn validate(&self, ctx: &mut ValidationContext<'_>) -> Result<ValidationResult> {
+        let parse_result = self.parser.parse(ctx.input());
+        match parse_result {
+            Err(ParseError::UnrecognizedEof { .. }) => Ok(ValidationResult::Incomplete),
+            _ => Ok(ValidationResult::Valid(None)),
+        }
     }
 }

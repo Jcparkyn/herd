@@ -9,6 +9,7 @@ lalrpop = "0.20.2"
 [dependencies]
 clap = { version = "4.5.15", features = ["derive"] }
 lalrpop-util = { version = "0.20.2", features = ["lexer", "unicode"] }
+rustyline = { version = "14.0.0", features = ["derive"] }
 
 [dev-dependencies]
 rstest = "0.6.4"
