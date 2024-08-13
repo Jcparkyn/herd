@@ -1,10 +1,8 @@
 use analysis::Analyzer;
+use clap::Parser;
 use interpreter::{Interpreter, InterpreterError};
 use lalrpop_util::{lalrpop_mod, ParseError};
-use std::{
-    env,
-    io::{stdin, stdout, Write},
-};
+use std::io::{stdin, stdout, Write};
 
 mod analysis;
 mod ast;
@@ -17,10 +15,20 @@ lalrpop_mod!(
     pub lang
 );
 
-fn main() {
-    let args: Vec<String> = env::args().collect();
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = None)]
+struct Args {
+    #[arg()]
+    file: Option<String>,
 
-    if let [_, path] = &args[..] {
+    #[arg(long)]
+    ast: bool,
+}
+
+fn main() {
+    let args = Args::parse();
+
+    if let Some(path) = args.file {
         let program = match std::fs::read_to_string(path) {
             Ok(program) => program,
             Err(err) => {
@@ -38,8 +46,9 @@ fn main() {
             Ok(mut program) => {
                 let mut analyzer = Analyzer::new();
                 let analyze_result = analyzer.analyze_statements(&mut program);
-                #[cfg(debug_assertions)]
-                println!("ast: {:#?}", program);
+                if args.ast {
+                    println!("ast: {:#?}", program);
+                }
                 match analyze_result {
                     Ok(()) => {}
                     Err(errs) => {
@@ -61,11 +70,11 @@ fn main() {
             }
         }
     } else {
-        run_repl();
+        run_repl(args);
     }
 }
 
-fn run_repl() {
+fn run_repl(args: Args) {
     let parser = lang::ProgramParser::new();
     let mut interpreter = Interpreter::new();
     let mut analyzer = Analyzer::new();
@@ -99,7 +108,9 @@ fn run_repl() {
                             break;
                         }
                     }
-                    println!("ast: {:?}", statements);
+                    if args.ast {
+                        println!("ast: {:?}", statements);
+                    }
                     for statement in statements {
                         match interpreter.execute(&statement) {
                             Ok(()) => {}
