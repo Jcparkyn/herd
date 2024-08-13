@@ -157,7 +157,7 @@ pub enum Statement {
     Return(Box<Expr>),
 }
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Clone)]
 pub struct VarRef {
     pub name: String,
     pub slot: u32,
@@ -174,6 +174,18 @@ impl VarRef {
             slot: 0,
             is_final: true,
         }
+    }
+}
+
+impl Debug for VarRef {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{:?}[{}]{}",
+            self.name,
+            self.slot,
+            if self.is_final { "❌" } else { "" }
+        )
     }
 }
 
@@ -265,15 +277,7 @@ impl Debug for Expr {
             Expr::String(s) => write!(f, "'{}'", s),
             Expr::BuiltInFunction(b) => write!(f, "{:?}", b),
             Expr::Op { op, lhs, rhs } => write!(f, "({:?} {:?} {:?})", lhs, op, rhs),
-            Expr::Variable(v) => {
-                write!(
-                    f,
-                    "{:?}[{}]{}",
-                    v.name,
-                    v.slot,
-                    if (*v).is_final { "❌" } else { "" }
-                )
-            }
+            Expr::Variable(v) => v.fmt(f),
             Expr::Block(b) => b.fmt(f),
             Expr::Nil => f.write_str("nil"),
             Expr::If {
