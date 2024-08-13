@@ -1,0 +1,70 @@
+
+
+iterRange = { start, stop -> [
+  init: start,
+  current: {_},
+  next: { state -> if state == stop - 1 then nil else (state + 1) },
+]};
+
+iterToArray = { iter ->
+  arr = [];
+  state = iter.init;
+  getCurrent = iter.current;
+  getNext = iter.next;
+  for _ in range 0 20 do {
+    if state == nil then {
+      return arr;
+    }
+    set arr = arr | push (getCurrent state);
+    set state = getNext state;
+  }
+  return arr;
+};
+
+iterStep = { iter, n ->
+  next = iter.next;
+  set iter.next = {state ->
+    for _ in range 0 n do {
+      set state = next state;
+      if state == nil then {
+        return nil;
+      }
+    }
+    return state;
+  };
+  iter
+};
+
+iterMap = { iter, f ->
+  getCurrent = iter.current;
+  set iter.current = {f (getCurrent _)};
+  iter
+};
+
+iterRepeat = { iter, iterations ->
+  [
+    init: [1, iter.init],
+    current: {iter.current (_.[1])},
+    next: { state ->
+      ![iteration, innerState] = state;
+      set innerState = iter.next innerState;
+      if innerState == nil then {
+        if iteration < iterations then {
+          set state.[0] = iteration + 1;
+          set state.[1] = iter.init;
+          return state;
+        } else {
+          return nil;
+        }
+      }
+      set state.[1] = innerState;
+      state
+    }
+  ]
+};
+
+iter2 = iterRange 1 7
+  | iterStep 2
+  | iterMap {0 - _}
+  | iterRepeat 2;
+print (iterToArray iter2);
