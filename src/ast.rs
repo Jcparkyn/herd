@@ -285,22 +285,32 @@ impl Debug for Expr {
                 then_branch,
                 else_branch,
             } => {
-                write!(f, "if ({:?}) then {:?}", condition, then_branch)?;
+                let mut s = f.debug_struct("If");
+                s.field("condition", condition);
+                s.field("then", then_branch);
                 if let Some(else_branch) = else_branch {
-                    f.write_str(" else ")?;
-                    else_branch.fmt(f)?;
+                    s.field("else", else_branch);
                 }
-                Ok(())
+                s.finish()
             }
             Expr::Match(m) => m.fmt(f),
             Expr::Call { callee, args } => f.debug_tuple("Call").field(callee).field(args).finish(),
             Expr::Lambda(l) => l.fmt(f),
-            Expr::Dict(entries) => write!(f, "Dict{:?}", entries),
-            Expr::Array(elements) => write!(f, "Array{:?}", elements),
-            Expr::GetIndex(lhs, index) => write!(f, "GetIndex({:?}, {:?})", lhs, index),
-            Expr::ForIn { iter, var, body } => {
-                write!(f, "ForIn({var:?}, {iter:?}, {body:?})")
+            Expr::Dict(entries) => {
+                f.write_str("Dict")?;
+                f.debug_list().entries(entries.iter()).finish()
             }
+            Expr::Array(elements) => {
+                f.write_str("Array")?;
+                f.debug_list().entries(elements.iter()).finish()
+            }
+            Expr::GetIndex(lhs, index) => write!(f, "GetIndex({:?}, {:?})", lhs, index),
+            Expr::ForIn { iter, var, body } => f
+                .debug_tuple("ForIn")
+                .field(iter)
+                .field(var)
+                .field(body)
+                .finish(),
         }
     }
 }
