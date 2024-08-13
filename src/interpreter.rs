@@ -13,6 +13,9 @@ use crate::ast::{
 
 pub struct Interpreter {
     environment: Environment,
+    // Temporary stack used for passing function arguments.
+    // Using a shared vec so we don't need to re-allocate for each function call.
+    arg_stack: Vec<Value>,
 }
 
 pub struct Environment {
@@ -146,6 +149,8 @@ pub enum Value {
     Array(Rc<ArrayInstance>),
     Nil,
 }
+
+const NIL: Value = Value::Nil;
 
 enum Callable {
     Lambda(Rc<LambdaFunction>),
@@ -424,20 +429,11 @@ impl Environment {
     }
 }
 
-fn destructure_args<const N: usize>(args: Vec<Value>) -> Result<[Value; N], InterpreterError> {
-    match args.try_into() {
-        Ok(arr) => Ok(arr),
-        Err(vec) => Err(WrongArgumentCount {
-            expected: N,
-            supplied: vec.len(),
-        }),
-    }
-}
-
 impl Interpreter {
     pub fn new() -> Interpreter {
         Interpreter {
             environment: Environment::new(),
+            arg_stack: Vec::with_capacity(32),
         }
     }
 
@@ -517,18 +513,28 @@ impl Interpreter {
             Expr::Block(block) => self.eval_block(block),
             Expr::BuiltInFunction(f) => Ok(Builtin(f.clone())),
             Expr::Call { callee, args } => {
-                let arg_values = args
-                    .iter()
-                    .map(|arg| self.eval(arg))
-                    .collect::<Result<Vec<_>, _>>()?;
+                let arg_stack_len_before = self.arg_stack.len();
+                let arg_count = args.len();
+                // self.arg_stack.clear();
+                for arg in args.iter() {
+                    match self.eval(arg) {
+                        Ok(v) => self.arg_stack.push(v),
+                        Err(e) => {
+                            self.arg_stack.truncate(arg_stack_len_before);
+                            return Err(e);
+                        }
+                    };
+                }
 
-                match self.eval(&callee)? {
-                    Value::Builtin(c) => self.call_builtin(c, arg_values),
-                    Value::Lambda(f) => self.call_lambda(&f, arg_values),
+                let result = match self.eval(&callee)? {
+                    Value::Builtin(c) => self.call_builtin(c, arg_count),
+                    Value::Lambda(f) => self.call_lambda(&f, arg_count),
                     v => Err(WrongType {
                         message: format!("Expected a function, found {v}"),
                     }),
-                }
+                };
+                self.arg_stack.truncate(arg_stack_len_before);
+                return result;
             }
             Expr::Lambda(l) => {
                 let f = self.eval_lambda_definition(l);
@@ -650,21 +656,33 @@ impl Interpreter {
         }
     }
 
-    fn call(&mut self, callable: &Callable, args: Vec<Value>) -> Result<Value, InterpreterError> {
+    fn call(&mut self, callable: &Callable, arg_count: usize) -> Result<Value, InterpreterError> {
         match callable {
-            Callable::Lambda(f) => self.call_lambda(f, args),
-            Callable::Builtin(f) => self.call_builtin(*f, args),
+            Callable::Lambda(f) => self.call_lambda(f, arg_count),
+            Callable::Builtin(f) => self.call_builtin(*f, arg_count),
         }
+    }
+
+    fn call_internal<const N: usize>(
+        &mut self,
+        callable: &Callable,
+        args: [Value; N],
+    ) -> IResult<Value> {
+        let arg_stack_len_before = self.arg_stack.len();
+        self.arg_stack.extend(args);
+        let result = self.call(callable, N);
+        self.arg_stack.truncate(arg_stack_len_before);
+        result
     }
 
     fn call_builtin(
         &mut self,
         builtin: BuiltInFunction,
-        args: Vec<Value>,
+        arg_count: usize,
     ) -> Result<Value, InterpreterError> {
         match builtin {
             BuiltInFunction::Print => {
-                for arg in args {
+                for arg in Self::pop_args(&mut self.arg_stack, arg_count) {
                     match arg {
                         Value::String(s) => print!("{s}"),
                         v => print!("{v}"),
@@ -674,11 +692,11 @@ impl Interpreter {
                 return Ok(Value::Nil);
             }
             BuiltInFunction::Not => {
-                let [arg] = destructure_args(args)?;
+                let [arg] = self.destructure_args(arg_count)?;
                 return Ok(Value::Bool(!arg.truthy()));
             }
             BuiltInFunction::Range => {
-                let [start, stop] = destructure_args(args)?;
+                let [start, stop] = self.destructure_args(arg_count)?;
                 let start_int = try_into_int(start.as_number()?)?;
                 let stop_int = try_into_int(stop.as_number()?)?;
                 let mut values = Vec::new();
@@ -687,7 +705,7 @@ impl Interpreter {
                 }
                 return Ok(Value::Array(Rc::new(ArrayInstance::new(values))));
             }
-            BuiltInFunction::Len => match destructure_args::<1>(args)? {
+            BuiltInFunction::Len => match self.destructure_args(arg_count)? {
                 [Value::Array(a)] => Ok(Value::Number(a.values.len() as f64)),
                 [Value::Dict(d)] => Ok(Value::Number(d.values.len() as f64)),
                 [v] => Err(WrongType {
@@ -695,14 +713,14 @@ impl Interpreter {
                 }),
             },
             BuiltInFunction::Push => {
-                let [array_val, new_value] = destructure_args(args)?;
+                let [array_val, new_value] = self.destructure_args(arg_count)?;
                 let mut array = array_val.to_array()?;
                 let mut_array = Rc::make_mut(&mut array);
                 mut_array.values.push(new_value);
                 return Ok(Value::Array(array));
             }
             BuiltInFunction::Pop => {
-                let [array_val] = destructure_args(args)?;
+                let [array_val] = self.destructure_args(arg_count)?;
                 let mut array = array_val.to_array()?;
                 let mut_array = Rc::make_mut(&mut array);
                 mut_array.values.pop();
@@ -710,7 +728,7 @@ impl Interpreter {
                 return Ok(Value::Array(array));
             }
             BuiltInFunction::Sort => {
-                let [array_val] = destructure_args(args)?;
+                let [array_val] = self.destructure_args(arg_count)?;
                 let mut array = array_val.to_array()?;
                 match (*array).values.as_slice() {
                     [] => Ok(Value::Array(array)),
@@ -750,32 +768,32 @@ impl Interpreter {
                 }
             }
             BuiltInFunction::Map => {
-                let [array_val, f_val] = destructure_args(args)?;
+                let [array_val, f_val] = self.destructure_args(arg_count)?;
                 let mut array = array_val.to_array()?;
                 let f = f_val.as_callable()?;
                 let mut_array = Rc::make_mut(&mut array);
                 for v in mut_array.values.iter_mut() {
                     let v2 = std::mem::replace(v, Value::Nil);
-                    *v = self.call(&f, vec![v2])?;
+                    *v = self.call_internal(&f, [v2])?;
                 }
                 return Ok(Value::Array(array));
             }
             BuiltInFunction::Filter => {
-                let [array_val, f_val] = destructure_args(args)?;
+                let [array_val, f_val] = self.destructure_args(arg_count)?;
                 let mut array = array_val.to_array()?;
                 let f = f_val.as_callable()?;
                 let mut_array = Rc::make_mut(&mut array);
 
                 let mut err = None;
-                mut_array
-                    .values
-                    .retain(|x| match self.call(&f, vec![x.clone()]) {
+                mut_array.values.retain(|x| -> bool {
+                    match self.call_internal(&f, [x.clone()]) {
                         Ok(v) => v.truthy(),
                         Err(e) => {
                             err = Some(e);
                             false
                         }
-                    });
+                    }
+                });
 
                 return match err {
                     Some(e) => Err(e),
@@ -783,20 +801,20 @@ impl Interpreter {
                 };
             }
             BuiltInFunction::RemoveKey => {
-                let [dict_val, key] = destructure_args(args)?;
+                let [dict_val, key] = self.destructure_args(arg_count)?;
                 let mut dict = dict_val.to_dict()?;
                 let mut_dict = Rc::make_mut(&mut dict);
                 mut_dict.values.remove(&key);
                 return Ok(Value::Dict(dict));
             }
             BuiltInFunction::ShiftLeft => {
-                let [val, shift_by] = destructure_args(args)?;
+                let [val, shift_by] = self.destructure_args(arg_count)?;
                 let val_int = try_into_int(val.as_number()?)?;
                 let shift_by_int = try_into_int(shift_by.as_number()?)?;
                 return Ok(Value::Number((val_int << shift_by_int) as f64));
             }
             BuiltInFunction::Floor => {
-                let [val] = destructure_args(args)?;
+                let [val] = self.destructure_args(arg_count)?;
                 let val_num = val.as_number()?;
                 return Ok(Value::Number(val_num.floor()));
             }
@@ -806,17 +824,17 @@ impl Interpreter {
     fn call_lambda(
         &mut self,
         function: &Rc<LambdaFunction>,
-        arg_values: Vec<Value>,
+        arg_count: usize,
     ) -> Result<Value, InterpreterError> {
-        if function.params.len() != arg_values.len() {
+        if function.params.len() != arg_count {
             return Err(WrongArgumentCount {
                 expected: function.params.len(),
-                supplied: arg_values.len(),
+                supplied: arg_count,
             });
         }
         let old_frame = self.environment.cur_frame;
         self.environment.cur_frame = self.environment.slots.len();
-        for val in arg_values {
+        for val in Self::pop_args(&mut self.arg_stack, arg_count) {
             self.environment.slots.push(val);
         }
         for val in &function.closure {
@@ -837,6 +855,29 @@ impl Interpreter {
         self.environment.slots.truncate(self.environment.cur_frame);
         self.environment.cur_frame = old_frame;
         return result;
+    }
+
+    fn destructure_args<const N: usize>(
+        &mut self,
+        arg_count: usize,
+    ) -> Result<[Value; N], InterpreterError> {
+        if arg_count != N {
+            return Err(InterpreterError::WrongArgumentCount {
+                expected: N,
+                supplied: self.arg_stack.len(),
+            });
+        }
+        let mut result = [NIL; N];
+        for (i, arg) in Self::pop_args(&mut self.arg_stack, N).enumerate() {
+            result[i] = arg;
+        }
+        Ok(result)
+    }
+
+    fn pop_args(arg_stack: &mut Vec<Value>, arg_count: usize) -> vec::Drain<Value> {
+        assert!(arg_stack.len() >= arg_count);
+        // self.arg_stack.truncate(self.arg_stack.len() - arg_count);
+        arg_stack.drain(arg_stack.len() - arg_count..)
     }
 
     fn match_slice(&mut self, parts: &[MatchPattern], values: &mut [Value]) -> IResult<()> {

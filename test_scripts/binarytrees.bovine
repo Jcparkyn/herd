@@ -4,13 +4,13 @@ makeTree = { d ->
   if d > 0 then {
     [makeTree (d - 1), makeTree (d - 1)]
   } else {
-    nil
+    [nil, nil]
   }
 };
 
 checkTree = { node ->
   match node with {
-    nil => 1,
+    [nil, nil] => 1,
     [l, r] => 1 + (checkTree l) + (checkTree r),
   }
 };
