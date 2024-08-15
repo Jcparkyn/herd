@@ -157,7 +157,10 @@ StringLiteral: String = {
 LambdaExpr: Box<Expr> = {
     "{" <params:Identifier*> "->" <body:BlockBody> "}" => Box::new(Expr::Lambda(
         LambdaExpr::new(params, Rc::new(Expr::Block(body)))
-    ))
+    )),
+    "{" "{" <body:BlockBody> "}" "}" => Box::new(Expr::Lambda(
+        LambdaExpr::new(vec!["_".to_string()], Rc::new(Expr::Block(body)))
+    )),
 }
 
 DictEntry: (Box<Expr>, Box<Expr>) = {

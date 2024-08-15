@@ -1,13 +1,10 @@
 use std::{collections::HashSet, fmt::Display, rc::Rc};
 
-use crate::ast::{
-    Block, BuiltInFunction, Expr, LambdaExpr, MatchExpr, MatchPattern, Statement, VarRef,
-};
+use crate::ast::{Block, BuiltInFunction, Expr, MatchExpr, MatchPattern, Statement, VarRef};
 
 pub enum AnalysisError {
     VariableAlreadyDefined(String),
     VariableNotDefined(String),
-    InvalidImplicitLambda,
 }
 
 use AnalysisError::*;
@@ -20,9 +17,6 @@ impl Display for AnalysisError {
             }
             VariableNotDefined(name) => {
                 write!(f, "Variable {} is not defined", name)
-            }
-            InvalidImplicitLambda => {
-                write!(f, "Using _ as a variable creates an implicit lambda function, but these are only allowed inside a {{}} expression with no statements. For example, {{_ + 1}}.")
             }
         }
     }
@@ -43,16 +37,6 @@ impl Analyzer {
         &mut self,
         stmts: &mut [Statement],
     ) -> Result<(), Vec<AnalysisError>> {
-        let mut errors = Vec::new();
-        for stmt in stmts.iter_mut() {
-            for expr in statement_sub_exprs_mut(stmt) {
-                rewrite_implicit_lambdas(expr, false, &mut errors);
-            }
-        }
-        if !errors.is_empty() {
-            return Err(errors);
-        }
-
         let initial_var_count = self.var_analyzer.vars.len();
         // Make sure we don't drop any current globals
         let mut deps = HashSet::from_iter(self.var_analyzer.list_vars().cloned());
@@ -452,162 +436,3 @@ fn analyze_expr_liveness(expr: &mut Expr, deps: &mut HashSet<String>) {
         }
     }
 }
-
-// Returns true if the expression contains an _ identifier (excluding nested blocks).
-fn rewrite_implicit_lambdas(
-    expr: &mut Expr,
-    inside_block: bool,
-    errors: &mut Vec<AnalysisError>,
-) -> bool {
-    match expr {
-        Expr::Block(b) => {
-            let mut contains = false;
-            let valid_block = b.statements.is_empty();
-            for e in block_sub_exprs_mut(b) {
-                contains |= rewrite_implicit_lambdas(e, valid_block, errors);
-            }
-            if valid_block && contains {
-                let block = std::mem::replace(b, Block::empty());
-                *expr = Expr::Lambda(LambdaExpr::new(
-                    vec!["_".to_string()],
-                    Rc::new(Expr::Block(block)),
-                ))
-            }
-            return false;
-        }
-        Expr::Variable(v) => {
-            if v.name == "_" {
-                if inside_block {
-                    return true;
-                } else {
-                    errors.push(AnalysisError::InvalidImplicitLambda);
-                }
-            }
-            return false;
-        }
-        Expr::Lambda(l) => {
-            // TODO assuming no shared references to body at this point.
-            let mut_body = Rc::get_mut(&mut l.body).unwrap();
-            rewrite_implicit_lambdas(mut_body, false, errors);
-            return false;
-        }
-        _ => {
-            let mut result = false;
-            for sub_expr in expr_sub_exprs_mut(expr).into_iter().rev() {
-                result |= rewrite_implicit_lambdas(sub_expr, inside_block, errors);
-            }
-            result
-        }
-    }
-}
-
-fn statement_sub_exprs_mut(stmt: &mut Statement) -> Vec<&mut Box<Expr>> {
-    match stmt {
-        Statement::PatternAssignment(_, rhs) => vec![rhs], // TODO lhs
-        Statement::Expression(expr) => vec![expr],
-        Statement::Return(expr) => vec![expr],
-    }
-}
-
-fn block_sub_exprs_mut(block: &mut Block) -> Vec<&mut Box<Expr>> {
-    let mut exprs = Vec::new();
-    for stmt in &mut block.statements {
-        exprs.append(&mut statement_sub_exprs_mut(stmt));
-    }
-    if let Some(expr) = &mut block.expression {
-        exprs.push(expr);
-    }
-    exprs
-}
-
-fn expr_sub_exprs_mut(expr: &mut Expr) -> Vec<&mut Box<Expr>> {
-    let mut exprs = Vec::new();
-    match expr {
-        Expr::Number(_) => {}
-        Expr::Bool(_) => {}
-        Expr::String(_) => {}
-        Expr::Nil => {}
-        Expr::Variable(_) => {}
-        Expr::If {
-            condition,
-            then_branch,
-            else_branch,
-        } => {
-            exprs.push(condition);
-            exprs.append(&mut expr_sub_exprs_mut(then_branch));
-            if let Some(else_branch) = else_branch {
-                exprs.append(&mut expr_sub_exprs_mut(else_branch));
-            }
-        }
-        Expr::Match(MatchExpr {
-            condition,
-            branches,
-        }) => {
-            exprs.push(condition);
-            for (_, body) in branches {
-                exprs.push(body);
-            }
-        }
-        Expr::Op { op: _, lhs, rhs } => {
-            exprs.push(lhs);
-            exprs.push(rhs);
-        }
-        Expr::Block(b) => {
-            exprs.append(&mut block_sub_exprs_mut(b));
-        }
-        Expr::BuiltInFunction(_) => {}
-        Expr::Call { callee, args } => {
-            exprs.push(callee);
-            for arg in args {
-                exprs.push(arg);
-            }
-        }
-        Expr::Lambda(_) => panic!("TODO"),
-        Expr::Dict(entries) => {
-            for (k, v) in entries {
-                exprs.push(k);
-                exprs.push(v);
-            }
-        }
-        Expr::Array(elements) => {
-            for e in elements {
-                exprs.push(e);
-            }
-        }
-        Expr::GetIndex(lhs_expr, index_expr) => {
-            exprs.push(lhs_expr);
-            exprs.push(index_expr);
-        }
-        Expr::ForIn { var: _, iter, body } => {
-            exprs.push(iter);
-            exprs.append(&mut block_sub_exprs_mut(body));
-        }
-    }
-    exprs
-}
-
-// fn pattern_sub_exprs_mut(
-//     pattern: &mut MatchPattern,
-//     out: &mut Vec<&mut Box<Expr>>,
-// ) -> Vec<&mut Box<Expr>> {
-//     // let mut exprs = Vec::new();
-//     match pattern {
-//         MatchPattern::Declaration(var) => {}
-//         MatchPattern::Assignment(target) => {
-//             exprs.append(&mut target.path);
-//             exprs.push(&mut target.var);
-//         }
-//         MatchPattern::SimpleArray(parts) => {
-//             for part in parts {
-//                 exprs.append(&mut pattern_sub_exprs_mut(part));
-//             }
-//         }
-//         MatchPattern::SpreadArray(pattern) => {
-//             for part in pattern.all_parts_mut() {
-//                 exprs.append(&mut pattern_sub_exprs_mut(part));
-//             }
-//         }
-//         MatchPattern::Discard => {}
-//     }
-//     exprs
-// }
