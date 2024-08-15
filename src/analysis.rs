@@ -222,7 +222,7 @@ impl VariableAnalyzer {
                         depth: 0,
                     });
                 }
-                lambda_analyzer.analyze_block(Rc::get_mut(&mut l.body).unwrap());
+                lambda_analyzer.analyze_expr(Rc::get_mut(&mut l.body).unwrap());
                 for err in lambda_analyzer.errors {
                     self.errors.push(err);
                 }
@@ -405,7 +405,7 @@ fn analyze_expr_liveness(expr: &mut Expr, deps: &mut HashSet<String>) {
             let mut_body = Rc::get_mut(&mut l.body).unwrap();
             // analyze lambda body, in a separate scope.
             let mut lambda_deps = HashSet::new();
-            analyze_block_liveness(mut_body, &mut lambda_deps);
+            analyze_expr_liveness(mut_body, &mut lambda_deps);
             for p in &l.params {
                 lambda_deps.remove(p);
             }
@@ -468,7 +468,10 @@ fn rewrite_implicit_lambdas(
             }
             if valid_block && contains {
                 let block = std::mem::replace(b, Block::empty());
-                *expr = Expr::Lambda(LambdaExpr::new(vec!["_".to_string()], Rc::new(block)))
+                *expr = Expr::Lambda(LambdaExpr::new(
+                    vec!["_".to_string()],
+                    Rc::new(Expr::Block(block)),
+                ))
             }
             return false;
         }
@@ -485,9 +488,7 @@ fn rewrite_implicit_lambdas(
         Expr::Lambda(l) => {
             // TODO assuming no shared references to body at this point.
             let mut_body = Rc::get_mut(&mut l.body).unwrap();
-            for e in block_sub_exprs_mut(mut_body) {
-                rewrite_implicit_lambdas(e, false, errors);
-            }
+            rewrite_implicit_lambdas(mut_body, false, errors);
             return false;
         }
         _ => {

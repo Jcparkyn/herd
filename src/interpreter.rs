@@ -65,7 +65,7 @@ use InterpreterError::*;
 #[derive(PartialEq, Debug, Clone)]
 pub struct LambdaFunction {
     params: Vec<String>,
-    body: Rc<Block>,
+    body: Rc<Expr>,
     closure: Vec<Value>,
     self_name: Option<String>,
     recursive: bool,
@@ -847,7 +847,7 @@ impl Interpreter {
             // }
         }
 
-        let result = match self.eval_block(&function.body) {
+        let result = match self.eval(&function.body) {
             Ok(val) => Ok(val),
             Err(InterpreterError::Return(v)) => Ok(v),
             Err(e) => Err(e),
