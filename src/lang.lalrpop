@@ -155,7 +155,7 @@ StringLiteral: String = {
 }
 
 LambdaExpr: Box<Expr> = {
-    "{" <params:Comma<Identifier>> "->" <body:BlockBody> "}" => Box::new(Expr::Lambda(
+    "{" <params:Identifier*> "->" <body:BlockBody> "}" => Box::new(Expr::Lambda(
         LambdaExpr::new(params, Rc::new(Expr::Block(body)))
     ))
 }
