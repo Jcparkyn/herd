@@ -1,12 +1,12 @@
-{
+(
   x = [:];
   y = x;
   set y.a = 'a';
   print x;
   print y;
-}
+);
 
-{
+(
   order1 = [
     status: [ dispatched: false ],
     name: 'ignored',
@@ -24,4 +24,4 @@
   print order1;
   print order2;
   print order3;
-}
+);

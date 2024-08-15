@@ -1,9 +1,9 @@
-isEven_ = { isOdd, n ->
-  if n == 0 then { true } else { isOdd (n - 1) }
+isEven_ = { isOdd n ->
+  if n == 0 then true else (isOdd (n - 1))
 };
 
 isOdd = { n ->
-  if n == 0 then { false } else { isEven_ isOdd (n - 1) }
+  if n == 0 then false else (isEven_ isOdd (n - 1))
 };
 
 isEven = { n -> isEven_ isOdd n };
