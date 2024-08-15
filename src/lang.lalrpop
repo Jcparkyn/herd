@@ -73,7 +73,6 @@ Term: Box<Expr> = {
     "nil" => Box::new(Expr::Nil),
     StringLiteral => Box::new(Expr::from_string(<>)),
     Identifier => Box::new(Expr::Variable(VarRef::new(<>))),
-    "(" <Expr> ")",
     LambdaExpr,
     DictLiteral,
     ArrayLiteral,
@@ -128,7 +127,7 @@ MatchExprBranch: (MatchPattern, Box<Expr>) = {
 }
 
 BlockExpr: Block = {
-    "{" <b:BlockBody> "}" => b
+    "(" <b:BlockBody> ")" => b
 }
 
 BlockBody: Block = {
