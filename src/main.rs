@@ -125,7 +125,7 @@ fn run_repl(args: Args) {
             Ok(()) => {}
             Err(errs) => {
                 print_errors(errs);
-                break;
+                continue;
             }
         }
 
