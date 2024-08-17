@@ -882,7 +882,7 @@ impl Interpreter {
         arg_stack.drain(arg_stack.len() - arg_count..)
     }
 
-    fn match_slice(&mut self, parts: &[MatchPattern], values: &mut [Value]) -> IResult<()> {
+    fn match_slice_replace(&mut self, parts: &[MatchPattern], values: &mut [Value]) -> IResult<()> {
         if parts.len() != values.len() {
             return Err(PatternMatchFailed {
                 message: format!(
@@ -894,6 +894,23 @@ impl Interpreter {
         }
         for (part, value) in parts.iter().zip(values) {
             self.match_pattern(part, std::mem::replace(value, Value::Nil))?;
+        }
+        return Ok(());
+    }
+
+    fn match_slice_clone(&mut self, parts: &[MatchPattern], values: &[Value]) -> IResult<()> {
+        if parts.len() != values.len() {
+            return Err(PatternMatchFailed {
+                message: format!(
+                    "Expected an array with length={}, but actual array had length={}",
+                    parts.len(),
+                    values.len()
+                ),
+            });
+        }
+        for (part, value) in parts.iter().zip(values) {
+            // TODO: We shouldn't need to clone the whole value (parts might not be used)
+            self.match_pattern(part, value.clone())?;
         }
         return Ok(());
     }
@@ -916,7 +933,7 @@ impl Interpreter {
                 self.assign(target, to_value_array(values))?;
                 Ok(())
             }
-            MatchPattern::SimpleArray(parts) => self.match_slice(parts, values),
+            MatchPattern::SimpleArray(parts) => self.match_slice_replace(parts, values),
             MatchPattern::SpreadArray(pattern) => self.match_spread_array(pattern, values),
             MatchPattern::Constant(c) => Err(InterpreterError::PatternMatchFailed {
                 message: format!("Can't use a constant ({c}) as a spread parameter (..)"),
@@ -931,9 +948,9 @@ impl Interpreter {
     ) -> IResult<()> {
         let (values_before, rest) = values.split_at_mut(pattern.before.len());
         let (values_spread, values_after) = rest.split_at_mut(rest.len() - pattern.after.len());
-        self.match_slice(&pattern.before, values_before)?;
+        self.match_slice_replace(&pattern.before, values_before)?;
         self.match_array_spread(&pattern.spread, values_spread)?;
-        self.match_slice(&pattern.after, values_after)?;
+        self.match_slice_replace(&pattern.after, values_after)?;
         return Ok(());
     }
 
@@ -949,10 +966,10 @@ impl Interpreter {
                 Ok(())
             }
             MatchPattern::SimpleArray(parts) => match value {
-                Value::Array(mut a) => {
-                    let mut_values = &mut Rc::make_mut(&mut a).values;
-                    self.match_slice(parts, mut_values)
-                }
+                Value::Array(a) => match Rc::try_unwrap(a) {
+                    Ok(mut arr) => self.match_slice_replace(&parts, &mut arr.values),
+                    Err(rc) => self.match_slice_clone(&parts, &rc.values),
+                },
                 _ => Err(PatternMatchFailed {
                     message: format!("Expected an array, found {value}"),
                 }),

@@ -43,7 +43,7 @@ iterMap = { iter f ->
 iterRepeat = { iter iterations ->
   [
     init: [1, iter.init],
-    current: {{iter.current (_.[1])}},
+    current: {[_, i] -> iter.current i},
     next: { state ->
       ![iteration, innerState] = state;
       set innerState = iter.next innerState;
