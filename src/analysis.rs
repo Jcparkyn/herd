@@ -183,11 +183,12 @@ impl VariableAnalyzer {
             Expr::BuiltInFunction(_) => {}
             Expr::Lambda(l) => {
                 let mut lambda_analyzer = VariableAnalyzer::new();
-                for param in &l.params {
-                    lambda_analyzer.vars.push(LocalVar {
-                        name: param.to_string(),
-                        depth: 0,
-                    });
+                for param in Rc::get_mut(&mut l.params).unwrap() {
+                    // lambda_analyzer.vars.push(LocalVar {
+                    //     name: param.to_string(),
+                    //     depth: 0,
+                    // });
+                    lambda_analyzer.analyze_pattern(param)
                 }
                 for capture in &mut l.potential_captures {
                     if let Some(slot) = self.get_slot(&capture.name) {
@@ -390,8 +391,8 @@ fn analyze_expr_liveness(expr: &mut Expr, deps: &mut HashSet<String>) {
             // analyze lambda body, in a separate scope.
             let mut lambda_deps = HashSet::new();
             analyze_expr_liveness(mut_body, &mut lambda_deps);
-            for p in &l.params {
-                lambda_deps.remove(p);
+            for pattern in Rc::get_mut(&mut l.params).unwrap().iter_mut().rev() {
+                analyze_pattern_liveness(pattern, &mut lambda_deps)
             }
             if let Some(name) = &l.name {
                 lambda_deps.remove(name);

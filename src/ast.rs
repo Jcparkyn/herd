@@ -191,16 +191,16 @@ impl Debug for VarRef {
 
 #[derive(PartialEq, Debug)]
 pub struct LambdaExpr {
-    pub params: Vec<String>,
+    pub params: Rc<Vec<MatchPattern>>,
     pub body: Rc<Expr>,
     pub potential_captures: Vec<VarRef>,
     pub name: Option<String>,
 }
 
 impl LambdaExpr {
-    pub fn new(params: Vec<String>, body: Rc<Expr>) -> LambdaExpr {
+    pub fn new(params: Vec<MatchPattern>, body: Rc<Expr>) -> LambdaExpr {
         LambdaExpr {
-            params,
+            params: Rc::new(params),
             body,
             potential_captures: vec![],
             name: None,

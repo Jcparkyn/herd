@@ -62,9 +62,9 @@ impl Display for InterpreterError {
 
 use InterpreterError::*;
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug)]
 pub struct LambdaFunction {
-    params: Vec<String>,
+    params: Rc<Vec<MatchPattern>>,
     body: Rc<Expr>,
     closure: Vec<Value>,
     self_name: Option<String>,
@@ -617,7 +617,7 @@ impl Interpreter {
             captures.push(v.clone());
         }
         LambdaFunction {
-            params: lambda.params.to_vec(),
+            params: lambda.params.clone(),
             body: lambda.body.clone(),
             closure: captures,
             self_name: lambda.name.clone(),
@@ -834,8 +834,10 @@ impl Interpreter {
         }
         let old_frame = self.environment.cur_frame;
         self.environment.cur_frame = self.environment.slots.len();
-        for val in Self::pop_args(&mut self.arg_stack, arg_count) {
-            self.environment.slots.push(val);
+        for param_idx in (0..arg_count).rev() {
+            let arg = self.arg_stack.pop().unwrap();
+            let pattern = &function.params[param_idx];
+            self.match_pattern(pattern, arg)?;
         }
         for val in &function.closure {
             self.environment.slots.push(val.clone());

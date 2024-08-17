@@ -1,7 +1,12 @@
 use std::{str::FromStr,rc::Rc};
 use crate::ast;
 use crate::ast::{Expr, Opcode, Statement, Block, AssignmentTarget, VarRef, LambdaExpr, MatchPattern, MatchExpr};
-use crate::parse_helpers::{parse_string_literal, process_array_match, process_declaration};
+use crate::parse_helpers::{
+    parse_string_literal,
+    process_array_match,
+    process_declaration,
+    make_implicit_lambda,
+};
 
 grammar;
 
@@ -155,12 +160,10 @@ StringLiteral: String = {
 }
 
 LambdaExpr: Box<Expr> = {
-    "{" <params:Identifier*> "->" <body:BlockBody> "}" => Box::new(Expr::Lambda(
+    "{" <params:MatchPattern*> "->" <body:BlockBody> "}" => Box::new(Expr::Lambda(
         LambdaExpr::new(params, Rc::new(Expr::Block(body)))
     )),
-    "{" "{" <body:BlockBody> "}" "}" => Box::new(Expr::Lambda(
-        LambdaExpr::new(vec!["_".to_string()], Rc::new(Expr::Block(body)))
-    )),
+    "{" "{" <body:BlockBody> "}" "}" => make_implicit_lambda(body),
 }
 
 DictEntry: (Box<Expr>, Box<Expr>) = {
