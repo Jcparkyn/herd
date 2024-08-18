@@ -883,15 +883,7 @@ impl Interpreter {
     }
 
     fn match_slice_replace(&mut self, parts: &[MatchPattern], values: &mut [Value]) -> IResult<()> {
-        if parts.len() != values.len() {
-            return Err(PatternMatchFailed {
-                message: format!(
-                    "Expected an array with length={}, but actual array had length={}",
-                    parts.len(),
-                    values.len()
-                ),
-            });
-        }
+        assert_slice_len(parts, values)?;
         for (part, value) in parts.iter().zip(values) {
             self.match_pattern(part, std::mem::replace(value, Value::Nil))?;
         }
@@ -899,15 +891,7 @@ impl Interpreter {
     }
 
     fn match_slice_clone(&mut self, parts: &[MatchPattern], values: &[Value]) -> IResult<()> {
-        if parts.len() != values.len() {
-            return Err(PatternMatchFailed {
-                message: format!(
-                    "Expected an array with length={}, but actual array had length={}",
-                    parts.len(),
-                    values.len()
-                ),
-            });
-        }
+        assert_slice_len(parts, values)?;
         for (part, value) in parts.iter().zip(values) {
             // TODO: We shouldn't need to clone the whole value (parts might not be used)
             self.match_pattern(part, value.clone())?;
@@ -1070,4 +1054,17 @@ impl Interpreter {
             .assign(target.var.slot, &path_values, value)?;
         Ok(())
     }
+}
+
+fn assert_slice_len(parts: &[MatchPattern], values: &[Value]) -> IResult<()> {
+    if parts.len() != values.len() {
+        return Err(PatternMatchFailed {
+            message: format!(
+                "Expected an array with length={}, but actual array had length={}",
+                parts.len(),
+                values.len()
+            ),
+        });
+    }
+    Ok(())
 }
