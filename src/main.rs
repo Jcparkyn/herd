@@ -14,6 +14,7 @@ mod analysis;
 mod ast;
 mod interpreter;
 mod parse_helpers;
+mod value;
 
 lalrpop_mod!(
     #[allow(clippy::ptr_arg)]

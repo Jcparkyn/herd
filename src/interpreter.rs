@@ -1,14 +1,16 @@
 use std::{
     collections::HashMap,
     fmt::{Debug, Display},
-    hash::Hash,
     rc::Rc,
     vec,
 };
 
-use crate::ast::{
-    AssignmentTarget, Block, BuiltInFunction, Expr, LambdaExpr, MatchConstant, MatchExpr,
-    MatchPattern, Opcode, SpreadArrayPattern, Statement,
+use crate::{
+    ast::{
+        AssignmentTarget, Block, BuiltInFunction, Expr, LambdaExpr, MatchConstant, MatchExpr,
+        MatchPattern, Opcode, SpreadArrayPattern, Statement,
+    },
+    value::{ArrayInstance, Callable, DictInstance, LambdaFunction, Value, NIL},
 };
 
 pub struct Interpreter {
@@ -61,228 +63,6 @@ impl Display for InterpreterError {
 }
 
 use InterpreterError::*;
-
-#[derive(PartialEq, Debug)]
-pub struct LambdaFunction {
-    params: Rc<Vec<MatchPattern>>,
-    body: Rc<Expr>,
-    closure: Vec<Value>,
-    self_name: Option<String>,
-    recursive: bool,
-}
-
-impl Display for LambdaFunction {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(self_name) = &self.self_name {
-            write!(f, "<lambda: {}>", self_name)
-        } else {
-            write!(f, "<lambda>")
-        }
-    }
-}
-
-#[derive(PartialEq, Debug)]
-pub struct DictInstance {
-    values: HashMap<Value, Value>,
-}
-
-impl Clone for DictInstance {
-    fn clone(&self) -> Self {
-        #[cfg(debug_assertions)]
-        println!("Cloning dict: {}", self);
-        DictInstance {
-            values: self.values.clone(),
-        }
-    }
-}
-
-impl Display for DictInstance {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.values.is_empty() {
-            return write!(f, "[:]");
-        }
-        let values: Vec<_> = self
-            .values
-            .iter()
-            .map(|(name, v)| name.to_string() + ": " + &v.to_string())
-            .collect();
-        write!(f, "[{}]", values.join(", "))
-    }
-}
-
-#[derive(PartialEq, Debug, Hash)]
-pub struct ArrayInstance {
-    values: Vec<Value>,
-}
-
-impl ArrayInstance {
-    pub fn new(values: Vec<Value>) -> Self {
-        ArrayInstance { values }
-    }
-}
-
-impl Clone for ArrayInstance {
-    fn clone(&self) -> Self {
-        #[cfg(debug_assertions)]
-        println!("Cloning array: {}", self);
-        ArrayInstance {
-            values: self.values.clone(),
-        }
-    }
-}
-
-impl Display for ArrayInstance {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let values: Vec<_> = self.values.iter().map(|v| v.to_string()).collect();
-        write!(f, "[{}]", values.join(", "))
-    }
-}
-
-#[derive(PartialEq, Debug, Clone)]
-pub enum Value {
-    Number(f64),
-    Bool(bool),
-    String(Rc<String>),
-    Builtin(BuiltInFunction),
-    Lambda(Rc<LambdaFunction>),
-    Dict(Rc<DictInstance>),
-    Array(Rc<ArrayInstance>),
-    Nil,
-}
-
-const NIL: Value = Value::Nil;
-
-enum Callable {
-    Lambda(Rc<LambdaFunction>),
-    Builtin(BuiltInFunction),
-}
-
-impl Value {
-    pub fn as_number(&self) -> Result<f64, InterpreterError> {
-        match self {
-            Value::Number(n) => Ok(*n),
-            v => Err(WrongType {
-                message: format!("Expected a number, found {v}"),
-            }),
-        }
-    }
-
-    pub fn is_number(&self) -> bool {
-        matches!(self, Value::Number(_))
-    }
-
-    pub fn as_string(&self) -> Result<&str, InterpreterError> {
-        match self {
-            Value::String(s) => Ok(s),
-            v => Err(WrongType {
-                message: format!("Expected a string, found {v}"),
-            }),
-        }
-    }
-
-    pub fn is_string(&self) -> bool {
-        matches!(self, Value::String(_))
-    }
-
-    pub fn to_dict(self) -> Result<Rc<DictInstance>, InterpreterError> {
-        match self {
-            Value::Dict(d) => Ok(d),
-            v => Err(WrongType {
-                message: format!("Expected a dict, found {v}"),
-            }),
-        }
-    }
-
-    pub fn to_array(self) -> Result<Rc<ArrayInstance>, InterpreterError> {
-        match self {
-            Value::Array(a) => Ok(a),
-            v => Err(WrongType {
-                message: format!("Expected an array, found {v}"),
-            }),
-        }
-    }
-
-    fn as_callable(&self) -> Result<Callable, InterpreterError> {
-        match self {
-            Value::Lambda(l) => Ok(Callable::Lambda(l.clone())),
-            Value::Builtin(b) => Ok(Callable::Builtin(*b)),
-            v => Err(WrongType {
-                message: format!("Expected a callable, found {v}"),
-            }),
-        }
-    }
-
-    pub fn truthy(&self) -> bool {
-        match self {
-            Value::Number(n) => *n != 0.0,
-            Value::Bool(b) => *b,
-            Value::String(s) => !s.is_empty(),
-            Value::Nil => false,
-            Value::Builtin(_) => true,
-            Value::Lambda { .. } => true,
-            Value::Dict(_) => true,
-            Value::Array(arr) => !arr.values.is_empty(),
-        }
-    }
-
-    pub fn add(lhs: Value, rhs: Value) -> Result<Value, InterpreterError> {
-        use Value::*;
-        match (lhs, rhs) {
-            (Number(n1), Number(n2)) => Ok(Number(n1 + n2)),
-            (String(mut s1), String(s2)) => {
-                let s1_mut = Rc::make_mut(&mut s1);
-                s1_mut.push_str(s2.as_ref());
-                return Ok(String(s1));
-            }
-            (x1, x2) => Err(WrongType {
-                message: format!("Can't add {x1} to {x2}"),
-            }),
-        }
-    }
-
-    pub fn is_valid_dict_key(&self) -> bool {
-        match self {
-            Value::Dict(_) => false,
-            Value::Lambda(_) => false,
-            Value::Builtin(_) => false,
-            Value::Array(a) => a.as_ref().values.iter().all(Self::is_valid_dict_key),
-            Value::Number(f) => !f.is_nan(),
-            _ => true,
-        }
-    }
-}
-
-impl Display for Value {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Value::Number(n) => write!(f, "{}", n),
-            Value::Bool(b) => write!(f, "{}", b),
-            Value::String(s) => write!(f, "'{}'", s),
-            Value::Builtin(b) => write!(f, "{}", b.to_string()),
-            Value::Lambda(l) => write!(f, "{}", l),
-            Value::Dict(d) => write!(f, "{}", d),
-            Value::Array(a) => write!(f, "{}", a),
-            Value::Nil => write!(f, "nil"),
-        }
-    }
-}
-
-impl std::hash::Hash for Value {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        match self {
-            Value::Number(n) => n.to_bits().hash(state),
-            Value::Bool(b) => b.hash(state),
-            Value::String(s) => s.hash(state),
-            Value::Builtin(b) => b.hash(state),
-            Value::Lambda(_) => panic!("Lambda functions cannot be used as keys inside dicts"),
-            Value::Dict(_) => panic!("Dicts cannot be used as keys inside dicts"),
-            Value::Array(a) => a.hash(state),
-            Value::Nil => ().hash(state),
-        }
-    }
-}
-
-impl Eq for Value {}
 
 fn try_into_int(value: f64) -> Result<usize, InterpreterError> {
     let int = value as usize;
@@ -341,7 +121,7 @@ impl Environment {
             [next_field, rest @ ..] => {
                 match mut_dict.values.get_mut(key) {
                     Some(entry) => {
-                        let old_value = std::mem::replace(entry, Value::Nil);
+                        let old_value = std::mem::replace(entry, NIL);
                         let new_value = Self::assign_part(old_value, rhs, next_field, rest)?;
                         *entry = new_value;
                         return Ok(Value::Dict(dict));
@@ -373,7 +153,7 @@ impl Environment {
                 Ok(Value::Array(array))
             }
             [next_field, rest @ ..] => {
-                let old_value = std::mem::replace(&mut mut_array.values[index], Value::Nil);
+                let old_value = std::mem::replace(&mut mut_array.values[index], NIL);
                 let new_value = Self::assign_part(old_value, rhs, next_field, rest)?;
                 mut_array.values[index] = new_value;
                 Ok(Value::Array(array))
@@ -393,7 +173,7 @@ impl Environment {
                 Ok(())
             }
             [field, rest @ ..] => {
-                let current = self.replace(slot, Value::Nil);
+                let current = self.replace(slot, NIL);
                 let new_value = Self::assign_part(current, value, field, rest)?;
                 self.replace(slot, new_value);
                 Ok(())
@@ -424,7 +204,7 @@ impl Environment {
             return;
         }
         for _ in 0..(new_len - self.slots.len()) {
-            self.slots.push(Value::Nil);
+            self.slots.push(NIL);
         }
     }
 }
@@ -462,7 +242,7 @@ impl Interpreter {
         if let Some(expr) = &block.expression {
             self.eval(expr)
         } else {
-            Ok(Value::Nil)
+            Ok(NIL)
         }
     }
 
@@ -475,7 +255,7 @@ impl Interpreter {
             Expr::Nil => Ok(Nil),
             Expr::Variable(v) => {
                 if v.is_final {
-                    Ok(self.environment.replace(v.slot, Value::Nil))
+                    Ok(self.environment.replace(v.slot, NIL))
                 } else {
                     Ok(self.environment.get(v.slot).clone())
                 }
@@ -492,7 +272,7 @@ impl Interpreter {
                 if let Some(else_branch2) = else_branch {
                     return self.eval(&else_branch2);
                 }
-                Ok(Value::Nil)
+                Ok(NIL)
             }
             Expr::Match(MatchExpr {
                 condition,
@@ -566,7 +346,7 @@ impl Interpreter {
                 let lhs = self.eval(&lhs_expr)?;
                 match lhs {
                     Value::Dict(d) => {
-                        return Ok(d.values.get(&index).cloned().unwrap_or(Value::Nil));
+                        return Ok(d.values.get(&index).cloned().unwrap_or(NIL));
                     }
                     Value::Array(a) => {
                         let idx_int =
@@ -599,7 +379,7 @@ impl Interpreter {
                             self.environment.set(var.slot, v.clone());
                             self.eval_block(body)?;
                         }
-                        Ok(Value::Nil)
+                        Ok(NIL)
                     }
                     _ => Err(WrongType {
                         message: format!("Expected an array, found {iter_value}"),
@@ -689,7 +469,7 @@ impl Interpreter {
                     }
                 }
                 println!();
-                return Ok(Value::Nil);
+                return Ok(NIL);
             }
             BuiltInFunction::Not => {
                 let [arg] = self.destructure_args(arg_count)?;
@@ -773,7 +553,7 @@ impl Interpreter {
                 let f = f_val.as_callable()?;
                 let mut_array = Rc::make_mut(&mut array);
                 for v in mut_array.values.iter_mut() {
-                    let v2 = std::mem::replace(v, Value::Nil);
+                    let v2 = std::mem::replace(v, NIL);
                     *v = self.call_internal(&f, [v2])?;
                 }
                 return Ok(Value::Array(array));
@@ -885,7 +665,7 @@ impl Interpreter {
     fn match_slice_replace(&mut self, parts: &[MatchPattern], values: &mut [Value]) -> IResult<()> {
         assert_slice_len(parts, values)?;
         for (part, value) in parts.iter().zip(values) {
-            self.match_pattern(part, std::mem::replace(value, Value::Nil))?;
+            self.match_pattern(part, std::mem::replace(value, NIL))?;
         }
         return Ok(());
     }
@@ -903,7 +683,7 @@ impl Interpreter {
         fn to_value_array(values: &mut [Value]) -> Value {
             let mut vec = Vec::with_capacity(values.len());
             for value in values {
-                vec.push(std::mem::replace(value, Value::Nil));
+                vec.push(std::mem::replace(value, NIL));
             }
             Value::Array(Rc::new(ArrayInstance::new(vec)))
         }
