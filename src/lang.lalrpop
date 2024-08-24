@@ -32,6 +32,7 @@ StatementWithSemicolon: Statement = {
     "set" <target:AssignmentTarget> "=" <e:Expr> ";" => Statement::PatternAssignment(MatchPattern::Assignment(target), e),
     "!" <pattern:MatchPattern> "=" <e:Expr> ";" => Statement::PatternAssignment(pattern, e),
     "return" <e:Expr> ";" => Statement::Return(e),
+    "return" ";" => Statement::Return(Box::new(Expr::Nil)),
 }
 
 Expr = {
