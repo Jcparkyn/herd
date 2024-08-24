@@ -1,0 +1,59 @@
+
+mandelbrot = {size ->
+  sum = 0;
+  byteAcc = 0;
+  bitNum = 0;
+  y = 0;
+  while y < size do (
+    ci = (2 * y / size) - 1;
+    x = 0;
+    while x < size do (
+      zrzr = 0;
+      zizi = 0;
+      zi = 0;
+      cr = (2.0 * x / size) - 1.5;
+
+      z = 0;
+      done = false;
+      escape = 0;
+      while not done and z < 50 do (
+        zr = zrzr - zizi + cr;
+        set zi = 2.0 * zr * zi + ci;
+
+        // preserve recalculation
+        set zrzr = zr * zr;
+        set zizi = zi * zi;
+        if zrzr + zizi > 4.0 then (
+            set done = true;
+            set escape = 1;
+        )
+        set z = z + 1;
+      )
+
+      set byteAcc = (byteAcc | shiftLeft 1) + escape;
+      set bitNum = bitNum + 1;
+
+      if bitNum == 8 then (
+        set sum = xor sum byteAcc;
+        set byteAcc = 0;
+        set bitNum  = 0;
+      ) else (
+        if x == size - 1 then (
+          set byteAcc = byteAcc | shiftLeft (8 - bitNum);
+          set sum = xor sum byteAcc;
+          set byteAcc = 0;
+          set bitNum  = 0;
+        )
+      )
+      set x = x + 1;
+    )
+    set y = y + 1;
+  )
+
+  return sum;
+};
+
+print 'starting';
+print (mandelbrot 1);
+print (mandelbrot 500);
+print (mandelbrot 750);
