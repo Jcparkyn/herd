@@ -52,6 +52,7 @@ ExprWithBlock: Box<Expr> = {
     IfExpression,
     MatchExpr,
     "for" <var:Identifier> "in" <iter:Expr> "do" <body:BlockExpr> => Box::new(Expr::ForIn { var: VarRef::new(var), iter, body }),
+    "while" <condition:Expr> "do" <body:Term> => Box::new(Expr::While { condition, body }),
     // No blocks here at the moment, because they conflict with using block expression as terms
     // <BlockExpr> => Box::new(Expr::Block(<>)),
 }

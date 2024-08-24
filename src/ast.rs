@@ -13,6 +13,7 @@ pub enum BuiltInFunction {
     Not,
     // numbers
     ShiftLeft,
+    XOR,
     Floor,
     // arrays
     Range,
@@ -40,6 +41,7 @@ impl BuiltInFunction {
             Map => "map",
             Filter => "filter",
             ShiftLeft => "shiftLeft",
+            XOR => "xor",
             Floor => "floor",
             RemoveKey => "removeKey",
         }
@@ -59,6 +61,7 @@ impl BuiltInFunction {
             "filter" => Some(Filter),
             "removeKey" => Some(RemoveKey),
             "shiftLeft" => Some(ShiftLeft),
+            "xor" => Some(XOR),
             "floor" => Some(Floor),
             _ => None,
         }
@@ -247,6 +250,10 @@ pub enum Expr {
         var: VarRef,
         body: Block,
     },
+    While {
+        condition: Box<Expr>,
+        body: Box<Expr>,
+    },
 }
 
 impl Expr {
@@ -311,6 +318,9 @@ impl Debug for Expr {
                 .field(var)
                 .field(body)
                 .finish(),
+            Expr::While { condition, body } => {
+                f.debug_tuple("While").field(condition).field(body).finish()
+            }
         }
     }
 }

@@ -386,6 +386,12 @@ impl Interpreter {
                     }),
                 }
             }
+            Expr::While { condition, body } => {
+                while self.eval(&condition)?.truthy() {
+                    self.eval(body)?;
+                }
+                return Ok(NIL);
+            }
         }
     }
 
@@ -592,6 +598,12 @@ impl Interpreter {
                 let val_int = try_into_int(val.as_number()?)?;
                 let shift_by_int = try_into_int(shift_by.as_number()?)?;
                 return Ok(Value::Number((val_int << shift_by_int) as f64));
+            }
+            BuiltInFunction::XOR => {
+                let [lhs, rhs] = self.destructure_args(arg_count)?;
+                let lhs_int = try_into_int(lhs.as_number()?)?;
+                let rhs_int = try_into_int(rhs.as_number()?)?;
+                return Ok(Value::Number((lhs_int ^ rhs_int) as f64));
             }
             BuiltInFunction::Floor => {
                 let [val] = self.destructure_args(arg_count)?;
