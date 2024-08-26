@@ -227,15 +227,15 @@ pub enum Expr {
     Nil,
     Op {
         op: Opcode,
-        lhs: Box<Expr>,
-        rhs: Box<Expr>,
+        lhs: Box<SpannedExpr>,
+        rhs: Box<SpannedExpr>,
     },
     Variable(VarRef),
     Block(Block),
     If {
-        condition: Box<Expr>,
-        then_branch: Box<Expr>,
-        else_branch: Option<Box<Expr>>,
+        condition: Box<SpannedExpr>,
+        then_branch: Box<SpannedExpr>,
+        else_branch: Option<Box<SpannedExpr>>,
     },
     Match(Box<MatchExpr>),
     Call {
@@ -347,5 +347,7 @@ impl Debug for Opcode {
         })
     }
 }
+
+pub type SpannedExpr = Spanned<Expr>;
 
 pub type SpannedStatement = Spanned<Statement>;

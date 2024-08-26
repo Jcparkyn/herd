@@ -154,10 +154,10 @@ impl VariableAnalyzer {
                 then_branch,
                 else_branch,
             } => {
-                self.analyze_expr(condition);
-                self.analyze_expr(then_branch);
+                self.analyze_expr(&mut condition.value);
+                self.analyze_expr(&mut then_branch.value);
                 if let Some(else_branch) = else_branch {
-                    self.analyze_expr(else_branch);
+                    self.analyze_expr(&mut else_branch.value);
                 }
             }
             Expr::Match(m) => {
@@ -170,8 +170,8 @@ impl VariableAnalyzer {
                 }
             }
             Expr::Op { op: _, lhs, rhs } => {
-                self.analyze_expr(lhs);
-                self.analyze_expr(rhs);
+                self.analyze_expr(&mut lhs.value);
+                self.analyze_expr(&mut rhs.value);
             }
             Expr::Block(b) => self.analyze_block(b),
             Expr::Call { callee, args } => {
@@ -351,14 +351,14 @@ fn analyze_expr_liveness(expr: &mut Expr, deps: &mut HashSet<String>) {
         } => {
             let mut deps_else = deps.clone(); // need to clone even if else is empty, in case deps got removed in if branch.
             if let Some(else_branch) = else_branch {
-                analyze_expr_liveness(else_branch, &mut deps_else);
+                analyze_expr_liveness(&mut else_branch.value, &mut deps_else);
             }
-            analyze_expr_liveness(then_branch, deps);
+            analyze_expr_liveness(&mut then_branch.value, deps);
             // Deps at start of expression are union of both blocks (because we don't know which branch will be taken).
             for dep in deps_else {
                 deps.insert(dep);
             }
-            analyze_expr_liveness(condition, deps);
+            analyze_expr_liveness(&mut condition.value, deps);
         }
         Expr::Match(m) => {
             let deps_original = deps.clone();
@@ -373,8 +373,8 @@ fn analyze_expr_liveness(expr: &mut Expr, deps: &mut HashSet<String>) {
             analyze_expr_liveness(&mut m.condition, deps);
         }
         Expr::Op { op: _, lhs, rhs } => {
-            analyze_expr_liveness(rhs, deps);
-            analyze_expr_liveness(lhs, deps);
+            analyze_expr_liveness(&mut rhs.value, deps);
+            analyze_expr_liveness(&mut lhs.value, deps);
         }
         Expr::Block(block) => {
             analyze_block_liveness(block, deps);

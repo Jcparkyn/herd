@@ -265,12 +265,12 @@ impl Interpreter {
                 then_branch,
                 else_branch,
             } => {
-                let cond = self.eval(&condition)?;
+                let cond = self.eval(&condition.value)?;
                 if cond.truthy() {
-                    return self.eval(&then_branch);
+                    return self.eval(&then_branch.value);
                 }
                 if let Some(else_branch2) = else_branch {
-                    return self.eval(&else_branch2);
+                    return self.eval(&else_branch2.value);
                 }
                 Ok(NIL)
             }
@@ -286,7 +286,7 @@ impl Interpreter {
                     message: format!("No branches matched successfully"),
                 })
             }
-            Expr::Op { op, lhs, rhs } => self.eval_binary_op(lhs, rhs, op),
+            Expr::Op { op, lhs, rhs } => self.eval_binary_op(&lhs.value, &rhs.value, op),
             Expr::Block(block) => self.eval_block(block),
             Expr::BuiltInFunction(f) => Ok(Builtin(f.clone())),
             Expr::Call { callee, args } => {

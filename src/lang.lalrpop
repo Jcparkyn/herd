@@ -71,11 +71,7 @@ AddSubCallExpr: Expr = {
     AddSubExpr,
 }
 
-AddSubExpr: Expr = {
-    <lhs:AddSubExpr> <op:AddSubOp> <rhs:Factor> =>
-        Expr::Op { op, lhs: Box::new(lhs), rhs: Box::new(rhs) },
-    Factor,
-}
+AddSubExpr = Tier<AddSubOp, Factor>;
 
 Factor = Tier<FactorOp, Term>;
 
@@ -123,7 +119,7 @@ MatchArrayPart: (MatchPattern, bool) = {
 }
 
 IfExpression: Expr =
-    "if " <cond:Expr> "then" <b1:Term> <b2:("else" <Box<Term>>)?> =>
+    "if " <cond:SpExpr> "then" <b1:Sp<Term>> <b2:("else" <Box<Sp<Term>>>)?> =>
         Expr::If {
             condition: Box::new(cond),
             then_branch: Box::new(b1),
@@ -216,7 +212,7 @@ FactorOp: Opcode = {
 };
 
 Tier<Op,NextTier>: Expr = {
-    <lhs:Tier<Op,NextTier>> <op:Op> <rhs:NextTier> =>
+    <lhs:Sp<Tier<Op,NextTier>>> <op:Op> <rhs:Sp<NextTier>> =>
         Expr::Op { op, lhs: Box::new(lhs), rhs: Box::new(rhs) },
     NextTier
 };
@@ -226,6 +222,8 @@ Sp<Rule>: pos::Spanned<Rule> =
         pos::Span::new(l, r),
         rule,
     );
+
+SpExpr = Sp<Expr>;
 
 SpStatement: ast::SpannedStatement = Sp<Statement>;
 
