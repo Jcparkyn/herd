@@ -79,7 +79,7 @@ impl Display for BuiltInFunction {
 #[derive(PartialEq)]
 pub struct Block {
     pub statements: Vec<SpannedStatement>,
-    pub expression: Option<Box<Expr>>,
+    pub expression: Option<Box<SpannedExpr>>,
 }
 
 impl Block {

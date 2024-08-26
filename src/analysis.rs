@@ -246,7 +246,7 @@ impl VariableAnalyzer {
             self.analyze_statement(&mut stmt.value);
         }
         if let Some(expr) = &mut block.expression {
-            self.analyze_expr(expr);
+            self.analyze_expr(&mut expr.value);
         }
         self.pop_scope();
     }
@@ -322,7 +322,7 @@ fn analyze_block_liveness(block: &mut Block, deps: &mut HashSet<String>) {
     // deps: Variables that may be depended on at the current execution point.
     // Code is processed in reverse order, starting with the final expression.
     if let Some(expr) = &mut block.expression {
-        analyze_expr_liveness(expr, deps);
+        analyze_expr_liveness(&mut expr.value, deps);
     }
     analyze_statements_liveness(&mut block.statements, deps);
 }

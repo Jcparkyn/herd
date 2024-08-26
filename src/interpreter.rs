@@ -240,7 +240,7 @@ impl Interpreter {
             self.execute(&stmt.value)?;
         }
         if let Some(expr) = &block.expression {
-            self.eval(expr)
+            self.eval(&expr.value)
         } else {
             Ok(NIL)
         }

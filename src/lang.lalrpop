@@ -141,7 +141,7 @@ BlockBody: Block = {
     => Block { statements: vec![], expression: None },
     // separate patterns to remove ambiguity.
     // If there's no trailing semicolon it should always be an Expr.
-    <s:SpStatement*> <e:Expr> => Block { statements: s, expression: Some(Box::new(e)) },
+    <s:SpStatement*> <e:SpExpr> => Block { statements: s, expression: Some(Box::new(e)) },
     <mut s1:SpStatement*> <s2:Sp<StatementWithSemicolon>> => Block {
         statements: { s1.push(s2); s1 },
         expression: None,
