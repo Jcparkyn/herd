@@ -161,11 +161,11 @@ impl VariableAnalyzer {
                 }
             }
             Expr::Match(m) => {
-                self.analyze_expr(&mut m.condition);
+                self.analyze_expr(&mut m.condition.value);
                 for (pattern, body) in m.branches.iter_mut() {
                     self.push_scope();
                     self.analyze_pattern(pattern);
-                    self.analyze_expr(body);
+                    self.analyze_expr(&mut body.value);
                     self.pop_scope();
                 }
             }
@@ -364,13 +364,13 @@ fn analyze_expr_liveness(expr: &mut Expr, deps: &mut HashSet<String>) {
             let deps_original = deps.clone();
             for (pattern, body) in m.branches.iter_mut() {
                 let mut deps_branch = deps_original.clone();
-                analyze_expr_liveness(body, &mut deps_branch);
+                analyze_expr_liveness(&mut body.value, &mut deps_branch);
                 analyze_pattern_liveness(pattern, &mut deps_branch);
                 for dep in deps_branch {
                     deps.insert(dep);
                 }
             }
-            analyze_expr_liveness(&mut m.condition, deps);
+            analyze_expr_liveness(&mut m.condition.value, deps);
         }
         Expr::Op { op: _, lhs, rhs } => {
             analyze_expr_liveness(&mut rhs.value, deps);

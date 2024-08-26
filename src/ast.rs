@@ -215,8 +215,8 @@ impl LambdaExpr {
 
 #[derive(PartialEq, Debug)]
 pub struct MatchExpr {
-    pub condition: Expr,
-    pub branches: Vec<(MatchPattern, Expr)>,
+    pub condition: SpannedExpr,
+    pub branches: Vec<(MatchPattern, SpannedExpr)>,
 }
 
 #[derive(PartialEq)]

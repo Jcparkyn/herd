@@ -127,11 +127,11 @@ IfExpr: Expr =
         };
 
 MatchExpr: Expr =
-    "match" <condition:Expr> "with" "{" <branches:CommaNonEmpty<MatchExprBranch>> "}" =>
+    "match" <condition:SpExpr> "with" "{" <branches:CommaNonEmpty<MatchExprBranch>> "}" =>
         Expr::Match(Box::new(MatchExpr { condition, branches }));
 
-MatchExprBranch: (MatchPattern, Expr) =
-    <p:MatchPattern> "=>" <e:Expr> => (p, e);
+MatchExprBranch: (MatchPattern, ast::SpannedExpr) =
+    <p:MatchPattern> "=>" <e:SpExpr> => (p, e);
 
 BlockExpr: Block = {
     "(" <b:BlockBody> ")" => b

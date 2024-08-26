@@ -275,11 +275,11 @@ impl Interpreter {
                 Ok(NIL)
             }
             Expr::Match(m) => {
-                let cond = self.eval(&m.condition)?;
+                let cond = self.eval(&m.condition.value)?;
                 for (pattern, body) in &m.branches {
                     if Interpreter::matches_pattern(pattern, &cond) {
                         self.match_pattern(pattern, cond)?;
-                        return self.eval(body);
+                        return self.eval(&body.value);
                     }
                 }
                 Err(PatternMatchFailed {
