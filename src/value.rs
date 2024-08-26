@@ -1,7 +1,7 @@
 use std::{collections::HashMap, fmt::Display, rc::Rc};
 
 use crate::{
-    ast::{BuiltInFunction, Expr, MatchPattern},
+    ast::{BuiltInFunction, MatchPattern, SpannedExpr},
     interpreter::InterpreterError,
 };
 
@@ -156,7 +156,7 @@ impl Eq for Value {}
 #[derive(PartialEq, Debug)]
 pub struct LambdaFunction {
     pub params: Rc<Vec<MatchPattern>>,
-    pub body: Rc<Expr>,
+    pub body: Rc<SpannedExpr>,
     pub closure: Vec<Value>,
     pub self_name: Option<String>,
     pub recursive: bool,

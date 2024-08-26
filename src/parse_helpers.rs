@@ -1,6 +1,9 @@
 use std::rc::Rc;
 
-use crate::ast::{Block, Expr, LambdaExpr, MatchPattern, SpreadArrayPattern, Statement, VarRef};
+use crate::{
+    ast::{Block, Expr, LambdaExpr, MatchPattern, SpreadArrayPattern, Statement, VarRef},
+    pos::Spanned,
+};
 
 pub fn parse_string_literal(s: &str) -> String {
     s[1..s.len() - 1].to_string()
@@ -42,7 +45,7 @@ pub fn process_declaration(name: String, mut rhs: Expr) -> Statement {
     );
 }
 
-pub fn make_implicit_lambda(body: Block) -> Expr {
+pub fn make_implicit_lambda(body: Spanned<Block>) -> Expr {
     let param = MatchPattern::Declaration(VarRef::new("_".to_string()));
-    Expr::Lambda(LambdaExpr::new(vec![param], Rc::new(Expr::Block(body))))
+    Expr::Lambda(LambdaExpr::new(vec![param], Rc::new(body.map(Expr::Block))))
 }

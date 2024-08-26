@@ -644,7 +644,7 @@ impl Interpreter {
             // }
         }
 
-        let result = match self.eval(&function.body) {
+        let result = match self.eval(&function.body.value) {
             Ok(val) => Ok(val),
             Err(InterpreterError::Return(v)) => Ok(v),
             Err(e) => Err(e),

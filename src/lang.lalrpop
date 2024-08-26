@@ -162,10 +162,10 @@ StringLiteral: String = {
 }
 
 LambdaExpr: Expr = {
-    "{" <params:MatchPattern*> "->" <body:BlockBody> "}" => Expr::Lambda(
-        LambdaExpr::new(params, Rc::new(Expr::Block(body)))
+    "{" <params:MatchPattern*> "->" <body:Sp<BlockBody>> "}" => Expr::Lambda(
+        LambdaExpr::new(params, Rc::new(body.map(Expr::Block)))
     ),
-    "{" "{" <body:BlockBody> "}" "}" => make_implicit_lambda(body),
+    "{" "{" <body:Sp<BlockBody>> "}" "}" => make_implicit_lambda(body),
 }
 
 DictEntry: (ast::SpannedExpr, ast::SpannedExpr) = {

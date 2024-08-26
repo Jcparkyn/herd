@@ -207,7 +207,7 @@ impl VariableAnalyzer {
                         depth: 0,
                     });
                 }
-                lambda_analyzer.analyze_expr(Rc::get_mut(&mut l.body).unwrap());
+                lambda_analyzer.analyze_expr(&mut Rc::get_mut(&mut l.body).unwrap().value);
                 for err in lambda_analyzer.errors {
                     self.errors.push(err);
                 }
@@ -391,7 +391,7 @@ fn analyze_expr_liveness(expr: &mut Expr, deps: &mut HashSet<String>) {
             let mut_body = Rc::get_mut(&mut l.body).unwrap();
             // analyze lambda body, in a separate scope.
             let mut lambda_deps = HashSet::new();
-            analyze_expr_liveness(mut_body, &mut lambda_deps);
+            analyze_expr_liveness(&mut mut_body.value, &mut lambda_deps);
             for pattern in Rc::get_mut(&mut l.params).unwrap().iter_mut().rev() {
                 analyze_pattern_liveness(pattern, &mut lambda_deps)
             }
