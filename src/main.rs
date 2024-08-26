@@ -14,6 +14,7 @@ mod analysis;
 mod ast;
 mod interpreter;
 mod parse_helpers;
+mod pos;
 mod value;
 
 lalrpop_mod!(
@@ -64,7 +65,7 @@ fn main() {
                     }
                 }
                 for statement in program {
-                    match interpreter.execute(&statement) {
+                    match interpreter.execute(&statement.value) {
                         Ok(()) => {}
                         Err(InterpreterError::Return(_)) => {
                             return println!(
@@ -131,7 +132,7 @@ fn run_repl(args: Args) {
         }
 
         for statement in statements {
-            match interpreter.execute(&statement) {
+            match interpreter.execute(&statement.value) {
                 Ok(()) => {}
                 Err(InterpreterError::Return(value)) => return println!("Return value: {value}"),
                 Err(err) => println!("Error while evaluating: {}", err),

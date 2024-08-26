@@ -1,5 +1,6 @@
 use std::{str::FromStr,rc::Rc};
 use crate::ast;
+use crate::pos;
 use crate::ast::{Expr, Opcode, Statement, Block, AssignmentTarget, VarRef, LambdaExpr, MatchPattern, MatchExpr};
 use crate::parse_helpers::{
     parse_string_literal,
@@ -17,8 +18,8 @@ match {
     _
 }
 
-pub Program: Vec<Statement> = {
-    Statement+
+pub Program: Vec<ast::SpannedStatement> = {
+    SpStatement+
 }
 
 Statement: Statement = {
@@ -141,8 +142,8 @@ BlockBody: Block = {
     => Block { statements: vec![], expression: None },
     // separate patterns to remove ambiguity.
     // If there's no trailing semicolon it should always be an Expr.
-    <s:Statement*> <e:Expr> => Block { statements: s, expression: Some(e) },
-    <mut s1:Statement*> <s2:StatementWithSemicolon> => Block {
+    <s:SpStatement*> <e:Expr> => Block { statements: s, expression: Some(e) },
+    <mut s1:SpStatement*> <s2:Sp<StatementWithSemicolon>> => Block {
         statements: { s1.push(s2); s1 },
         expression: None,
     },
@@ -215,6 +216,14 @@ Tier<Op,NextTier>: Box<Expr> = {
     <lhs:Tier<Op,NextTier>> <op:Op> <rhs:NextTier> => Box::new(Expr::Op { op, lhs, rhs }),
     NextTier
 };
+
+Sp<Rule>: pos::Spanned<Rule> =
+    <l: @L> <rule: Rule> <r: @R> => pos::Spanned::new(
+        pos::Span::new(l, r),
+        rule,
+    );
+
+SpStatement: ast::SpannedStatement = Sp<Statement>;
 
 #[inline]
 CommaNonEmpty<T>: Vec<T> = {

@@ -6,6 +6,8 @@ use std::fmt::Formatter;
 use std::iter;
 use std::rc::Rc;
 
+use crate::pos::Spanned;
+
 #[derive(PartialEq, Debug, Clone, Copy, Hash)]
 pub enum BuiltInFunction {
     // general
@@ -76,7 +78,7 @@ impl Display for BuiltInFunction {
 
 #[derive(PartialEq)]
 pub struct Block {
-    pub statements: Vec<Statement>,
+    pub statements: Vec<SpannedStatement>,
     pub expression: Option<Box<Expr>>,
 }
 
@@ -345,3 +347,5 @@ impl Debug for Opcode {
         })
     }
 }
+
+pub type SpannedStatement = Spanned<Statement>;

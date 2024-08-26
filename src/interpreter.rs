@@ -237,7 +237,7 @@ impl Interpreter {
 
     pub fn eval_block(&mut self, block: &Block) -> Result<Value, InterpreterError> {
         for stmt in block.statements.iter() {
-            self.execute(stmt)?;
+            self.execute(&stmt.value)?;
         }
         if let Some(expr) = &block.expression {
             self.eval(expr)

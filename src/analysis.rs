@@ -1,6 +1,8 @@
 use std::{collections::HashSet, fmt::Display, rc::Rc};
 
-use crate::ast::{Block, BuiltInFunction, Expr, MatchExpr, MatchPattern, Statement, VarRef};
+use crate::ast::{
+    Block, BuiltInFunction, Expr, MatchExpr, MatchPattern, SpannedStatement, Statement, VarRef,
+};
 
 pub enum AnalysisError {
     VariableAlreadyDefined(String),
@@ -35,7 +37,7 @@ impl Analyzer {
 
     pub fn analyze_statements(
         &mut self,
-        stmts: &mut [Statement],
+        stmts: &mut [SpannedStatement],
     ) -> Result<(), Vec<AnalysisError>> {
         let initial_var_count = self.var_analyzer.vars.len();
         // Make sure we don't drop any current globals
@@ -85,9 +87,9 @@ impl VariableAnalyzer {
         });
     }
 
-    fn analyze_stamements(&mut self, stmts: &mut [Statement]) {
+    fn analyze_stamements(&mut self, stmts: &mut [SpannedStatement]) {
         for stmt in stmts {
-            self.analyze_statement(stmt);
+            self.analyze_statement(&mut stmt.value);
         }
     }
 
@@ -243,7 +245,7 @@ impl VariableAnalyzer {
     fn analyze_block(&mut self, block: &mut Block) {
         self.push_scope();
         for stmt in block.statements.iter_mut() {
-            self.analyze_statement(stmt);
+            self.analyze_statement(&mut stmt.value);
         }
         if let Some(expr) = &mut block.expression {
             self.analyze_expr(expr);
@@ -270,9 +272,9 @@ impl VariableAnalyzer {
     }
 }
 
-fn analyze_statements_liveness(stmts: &mut [Statement], deps: &mut HashSet<String>) {
+fn analyze_statements_liveness(stmts: &mut [SpannedStatement], deps: &mut HashSet<String>) {
     for stmt in stmts.iter_mut().rev() {
-        analyze_statement_liveness(stmt, deps);
+        analyze_statement_liveness(&mut stmt.value, deps);
     }
 }
 
