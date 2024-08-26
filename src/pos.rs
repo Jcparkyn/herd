@@ -33,3 +33,15 @@ impl<T: fmt::Debug> fmt::Debug for Spanned<T> {
         self.value.fmt(f)
     }
 }
+
+impl<T> Spanned<T> {
+    pub fn map<U, F>(self, mut f: F) -> Spanned<U>
+    where
+        F: FnMut(T) -> U,
+    {
+        Spanned {
+            span: self.span,
+            value: f(self.value),
+        }
+    }
+}

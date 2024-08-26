@@ -176,9 +176,9 @@ impl VariableAnalyzer {
             Expr::Block(b) => self.analyze_block(b),
             Expr::Call { callee, args } => {
                 for arg in args {
-                    self.analyze_expr(arg);
+                    self.analyze_expr(&mut arg.value);
                 }
-                self.analyze_expr(callee);
+                self.analyze_expr(&mut callee.value);
             }
             Expr::BuiltInFunction(_) => {}
             Expr::Lambda(l) => {
@@ -214,28 +214,28 @@ impl VariableAnalyzer {
             }
             Expr::Dict(entries) => {
                 for (key, value) in entries {
-                    self.analyze_expr(key);
-                    self.analyze_expr(value);
+                    self.analyze_expr(&mut key.value);
+                    self.analyze_expr(&mut value.value);
                 }
             }
             Expr::Array(entries) => {
                 for entry in entries {
-                    self.analyze_expr(entry);
+                    self.analyze_expr(&mut entry.value);
                 }
             }
             Expr::GetIndex(lhs, index) => {
-                self.analyze_expr(index);
-                self.analyze_expr(lhs);
+                self.analyze_expr(&mut index.value);
+                self.analyze_expr(&mut lhs.value);
             }
             Expr::ForIn { iter, var, body } => {
-                self.analyze_expr(iter);
+                self.analyze_expr(&mut iter.value);
                 self.push_var(var);
                 self.analyze_block(body);
                 self.vars.pop();
             }
             Expr::While { condition, body } => {
-                self.analyze_expr(condition);
-                self.analyze_expr(body)
+                self.analyze_expr(&mut condition.value);
+                self.analyze_expr(&mut body.value)
             }
         }
     }
@@ -381,9 +381,9 @@ fn analyze_expr_liveness(expr: &mut Expr, deps: &mut HashSet<String>) {
         }
         Expr::BuiltInFunction(_) => {}
         Expr::Call { callee, args } => {
-            analyze_expr_liveness(callee, deps);
+            analyze_expr_liveness(&mut callee.value, deps);
             for arg in args.iter_mut().rev() {
-                analyze_expr_liveness(arg, deps);
+                analyze_expr_liveness(&mut arg.value, deps);
             }
         }
         Expr::Lambda(l) => {
@@ -405,18 +405,18 @@ fn analyze_expr_liveness(expr: &mut Expr, deps: &mut HashSet<String>) {
         }
         Expr::Dict(entries) => {
             for (k, v) in entries.iter_mut().rev() {
-                analyze_expr_liveness(v, deps);
-                analyze_expr_liveness(k, deps);
+                analyze_expr_liveness(&mut v.value, deps);
+                analyze_expr_liveness(&mut k.value, deps);
             }
         }
         Expr::Array(elements) => {
             for e in elements.iter_mut().rev() {
-                analyze_expr_liveness(e, deps);
+                analyze_expr_liveness(&mut e.value, deps);
             }
         }
         Expr::GetIndex(lhs_expr, index_expr) => {
-            analyze_expr_liveness(lhs_expr, deps);
-            analyze_expr_liveness(index_expr, deps);
+            analyze_expr_liveness(&mut lhs_expr.value, deps);
+            analyze_expr_liveness(&mut index_expr.value, deps);
         }
         Expr::ForIn { var, iter, body } => {
             // TODO (I think) this doesn't account for the fact that variables declared in the loop (including the loop variable)
@@ -433,17 +433,17 @@ fn analyze_expr_liveness(expr: &mut Expr, deps: &mut HashSet<String>) {
             for dep in deps_other_loops {
                 deps.insert(dep);
             }
-            analyze_expr_liveness(iter, deps);
+            analyze_expr_liveness(&mut iter.value, deps);
             deps.remove(&var.name);
         }
         Expr::While { condition, body } => {
             // TODO: check this logic
             let mut deps_last_loop = deps.clone();
-            analyze_expr_liveness(body, &mut deps_last_loop);
-            analyze_expr_liveness(condition, deps);
+            analyze_expr_liveness(&mut body.value, &mut deps_last_loop);
+            analyze_expr_liveness(&mut condition.value, deps);
             let mut deps_other_loops = deps_last_loop.clone();
-            analyze_expr_liveness(body, &mut deps_other_loops);
-            analyze_expr_liveness(condition, deps);
+            analyze_expr_liveness(&mut body.value, &mut deps_other_loops);
+            analyze_expr_liveness(&mut condition.value, deps);
             // final dependency set is union of 0 loops, 1 loop, and >1 loops.
             for dep in deps_last_loop {
                 deps.insert(dep);

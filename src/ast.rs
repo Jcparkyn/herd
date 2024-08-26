@@ -239,22 +239,22 @@ pub enum Expr {
     },
     Match(Box<MatchExpr>),
     Call {
-        callee: Box<Expr>,
-        args: Vec<Expr>,
+        callee: Box<SpannedExpr>,
+        args: Vec<SpannedExpr>,
     },
     BuiltInFunction(BuiltInFunction),
     Lambda(LambdaExpr),
-    Dict(Vec<(Expr, Expr)>),
-    Array(Vec<Expr>),
-    GetIndex(Box<Expr>, Box<Expr>),
+    Dict(Vec<(SpannedExpr, SpannedExpr)>),
+    Array(Vec<SpannedExpr>),
+    GetIndex(Box<SpannedExpr>, Box<SpannedExpr>),
     ForIn {
-        iter: Box<Expr>,
+        iter: Box<SpannedExpr>,
         var: VarRef,
         body: Block,
     },
     While {
-        condition: Box<Expr>,
-        body: Box<Expr>,
+        condition: Box<SpannedExpr>,
+        body: Box<SpannedExpr>,
     },
 }
 

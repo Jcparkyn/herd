@@ -294,7 +294,7 @@ impl Interpreter {
                 let arg_count = args.len();
                 // self.arg_stack.clear();
                 for arg in args.iter() {
-                    match self.eval(arg) {
+                    match self.eval(&arg.value) {
                         Ok(v) => self.arg_stack.push(v),
                         Err(e) => {
                             self.arg_stack.truncate(arg_stack_len_before);
@@ -303,7 +303,7 @@ impl Interpreter {
                     };
                 }
 
-                let result = match self.eval(&callee)? {
+                let result = match self.eval(&callee.value)? {
                     Value::Builtin(c) => self.call_builtin(c, arg_count),
                     Value::Lambda(f) => self.call_lambda(&f, arg_count),
                     v => Err(WrongType {
@@ -320,13 +320,13 @@ impl Interpreter {
             Expr::Dict(entries) => {
                 let mut values = HashMap::new();
                 for (k, v) in entries.iter() {
-                    let key = self.eval(k)?;
+                    let key = self.eval(&k.value)?;
                     if !key.is_valid_dict_key() {
                         return Err(WrongType {
                             message: format!("Can't use {key} as a key in a dict. Valid keys are strings, numbers, booleans, and arrays.")
                         });
                     }
-                    let value = self.eval(v)?;
+                    let value = self.eval(&v.value)?;
                     values.insert(key, value);
                 }
                 Ok(Value::Dict(Rc::new(DictInstance { values })))
@@ -334,13 +334,13 @@ impl Interpreter {
             Expr::Array(elements) => {
                 let mut values = Vec::with_capacity(elements.len());
                 for e in elements.iter() {
-                    values.push(self.eval(e)?);
+                    values.push(self.eval(&e.value)?);
                 }
                 Ok(Value::Array(Rc::new(ArrayInstance::new(values))))
             }
             Expr::GetIndex(lhs_expr, index_expr) => {
-                let index = self.eval(&index_expr)?;
-                let lhs = self.eval(&lhs_expr)?;
+                let index = self.eval(&index_expr.value)?;
+                let lhs = self.eval(&lhs_expr.value)?;
                 match lhs {
                     Value::Dict(d) => {
                         return Ok(d.values.get(&index).cloned().unwrap_or(NIL));
@@ -369,7 +369,7 @@ impl Interpreter {
                 }
             }
             Expr::ForIn { iter, var, body } => {
-                let iter_value = self.eval(&iter)?;
+                let iter_value = self.eval(&iter.value)?;
                 match iter_value {
                     Value::Array(a) => {
                         for v in a.values.iter() {
@@ -384,8 +384,8 @@ impl Interpreter {
                 }
             }
             Expr::While { condition, body } => {
-                while self.eval(&condition)?.truthy() {
-                    self.eval(body)?;
+                while self.eval(&condition.value)?.truthy() {
+                    self.eval(&body.value)?;
                 }
                 return Ok(NIL);
             }

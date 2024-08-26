@@ -44,7 +44,7 @@ Expr = {
 
 ExprWithoutBlock = {
     LogicExpr,
-    <lhs:Expr> "|" <callee:Term> <mut args:Term*> => {
+    <lhs:SpExpr> "|" <callee:Sp<Term>> <mut args:Sp<Term>*> => {
         args.insert(0, lhs);
         Expr::Call { callee: Box::new(callee), args }
     },
@@ -54,9 +54,9 @@ ExprWithoutBlock = {
 ExprWithBlock: Expr = {
     IfExpr,
     MatchExpr,
-    "for" <var:Identifier> "in" <iter:Box<Expr>> "do" <body:BlockExpr> =>
+    "for" <var:Identifier> "in" <iter:Box<SpExpr>> "do" <body:BlockExpr> =>
         Expr::ForIn { var: VarRef::new(var), iter, body },
-    "while" <condition:Box<Expr>> "do" <body:Box<Term>> =>
+    "while" <condition:Box<SpExpr>> "do" <body:Box<Sp<Term>>> =>
         Expr::While { condition, body },
     // No blocks here at the moment, because they conflict with using block expression as terms
     // <BlockExpr> => Box::new(Expr::Block(<>)),
@@ -67,7 +67,7 @@ LogicExpr = Tier<LogicOp, ComparisonExpr>;
 ComparisonExpr = Tier<ComparisonOp, AddSubCallExpr>;
 
 AddSubCallExpr: Expr = {
-    <callee:Box<Term>> <args:Term+> => Expr::Call { callee, args },
+    <callee:Box<Sp<Term>>> <args:Sp<Term>+> => Expr::Call { callee, args },
     AddSubExpr,
 }
 
@@ -85,7 +85,7 @@ Term: Expr = {
     DictLiteral,
     ArrayLiteral,
     <BlockExpr> => Expr::Block(<>),
-    <lhs:Term> <index:ValueIndex> => Expr::GetIndex(Box::new(lhs), Box::new(index)),
+    <lhs:Sp<Term>> <index:Sp<ValueIndex>> => Expr::GetIndex(Box::new(lhs), Box::new(index)),
 };
 
 ValueIndex: Expr = {
@@ -168,9 +168,9 @@ LambdaExpr: Expr = {
     "{" "{" <body:BlockBody> "}" "}" => make_implicit_lambda(body),
 }
 
-DictEntry: (Expr, Expr) = {
-    <key:Identifier> ":" <val:Expr> => (Expr::from_string(key), val),
-    "[" <key:Expr> "]" ":" <val:Expr> => (key, val),
+DictEntry: (ast::SpannedExpr, ast::SpannedExpr) = {
+    <key:SpIdentifier> ":" <val:SpExpr> => (key, val),
+    "[" <key:SpExpr> "]" ":" <val:SpExpr> => (key, val),
 }
 
 DictLiteral: Expr = {
@@ -179,13 +179,15 @@ DictLiteral: Expr = {
 }
 
 ArrayLiteral: Expr = {
-    "[" <elements:Comma<Expr>> "]" => Expr::Array(elements),
+    "[" <elements:Comma<SpExpr>> "]" => Expr::Array(elements),
 }
 
 Identifier: String = {
     <r"[a-zA-Z]\w*"> => <>.to_string(),
     "_" => <>.to_string(),
 }
+
+SpIdentifier: ast::SpannedExpr = Sp<Identifier> => <>.map(Expr::from_string);
 
 LogicOp: Opcode = {
     "and" => Opcode::And,
