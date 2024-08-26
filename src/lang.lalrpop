@@ -52,7 +52,7 @@ ExprWithoutBlock = {
 
 // Expressions that don't need a trailing semicolon
 ExprWithBlock: Expr = {
-    IfExpression,
+    IfExpr,
     MatchExpr,
     "for" <var:Identifier> "in" <iter:Box<Expr>> "do" <body:BlockExpr> =>
         Expr::ForIn { var: VarRef::new(var), iter, body },
@@ -118,7 +118,7 @@ MatchArrayPart: (MatchPattern, bool) = {
     ".." => (MatchPattern::Discard, true),
 }
 
-IfExpression: Expr =
+IfExpr: Expr =
     "if " <cond:SpExpr> "then" <b1:Sp<Term>> <b2:("else" <Box<Sp<Term>>>)?> =>
         Expr::If {
             condition: Box::new(cond),
