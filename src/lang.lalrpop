@@ -24,15 +24,16 @@ pub Program: Vec<ast::SpannedStatement> = {
 
 Statement: Statement = {
     StatementWithSemicolon,
-    <ExprWithBlock> => Statement::Expression(<>),
+    <ExprWithBlock> => Statement::Expression(Box::new(<>)),
 }
 
 StatementWithSemicolon: Statement = {
-    <ExprWithoutBlock> ";" => Statement::Expression(<>),
+    <ExprWithoutBlock> ";" => Statement::Expression(Box::new(<>)),
     <name:Identifier> "=" <e:Expr> ";" => process_declaration(name, e),
-    "set" <target:AssignmentTarget> "=" <e:Expr> ";" => Statement::PatternAssignment(MatchPattern::Assignment(target), e),
-    "!" <pattern:MatchPattern> "=" <e:Expr> ";" => Statement::PatternAssignment(pattern, e),
-    "return" <e:Expr> ";" => Statement::Return(e),
+    "set" <target:AssignmentTarget> "=" <e:Box<Expr>> ";" =>
+        Statement::PatternAssignment(MatchPattern::Assignment(target), e),
+    "!" <pattern:MatchPattern> "=" <e:Expr> ";" => Statement::PatternAssignment(pattern, Box::new(e)),
+    "return" <e:Expr> ";" => Statement::Return(Box::new(e)),
     "return" ";" => Statement::Return(Box::new(Expr::Nil)),
 }
 
@@ -45,16 +46,18 @@ ExprWithoutBlock = {
     LogicExpr,
     <lhs:Expr> "|" <callee:Term> <mut args:Term*> => {
         args.insert(0, lhs);
-        Box::new(Expr::Call { callee, args })
+        Expr::Call { callee: Box::new(callee), args }
     },
 }
 
 // Expressions that don't need a trailing semicolon
-ExprWithBlock: Box<Expr> = {
+ExprWithBlock: Expr = {
     IfExpression,
     MatchExpr,
-    "for" <var:Identifier> "in" <iter:Expr> "do" <body:BlockExpr> => Box::new(Expr::ForIn { var: VarRef::new(var), iter, body }),
-    "while" <condition:Expr> "do" <body:Term> => Box::new(Expr::While { condition, body }),
+    "for" <var:Identifier> "in" <iter:Box<Expr>> "do" <body:BlockExpr> =>
+        Expr::ForIn { var: VarRef::new(var), iter, body },
+    "while" <condition:Box<Expr>> "do" <body:Box<Term>> =>
+        Expr::While { condition, body },
     // No blocks here at the moment, because they conflict with using block expression as terms
     // <BlockExpr> => Box::new(Expr::Block(<>)),
 }
@@ -63,33 +66,34 @@ LogicExpr = Tier<LogicOp, ComparisonExpr>;
 
 ComparisonExpr = Tier<ComparisonOp, AddSubCallExpr>;
 
-AddSubCallExpr: Box<Expr> = {
-    <callee:Term> <args:Term+> => Box::new(Expr::Call { callee, args }),
+AddSubCallExpr: Expr = {
+    <callee:Box<Term>> <args:Term+> => Expr::Call { callee, args },
     AddSubExpr,
 }
 
-AddSubExpr: Box<Expr> = {
-    <lhs:AddSubExpr> <op:AddSubOp> <rhs:Factor> => Box::new(Expr::Op { op, lhs, rhs }),
+AddSubExpr: Expr = {
+    <lhs:AddSubExpr> <op:AddSubOp> <rhs:Factor> =>
+        Expr::Op { op, lhs: Box::new(lhs), rhs: Box::new(rhs) },
     Factor,
 }
 
 Factor = Tier<FactorOp, Term>;
 
-Term: Box<Expr> = {
-    NumLiteral => Box::new(Expr::Number(<>)),
-    BoolLiteral => Box::new(Expr::Bool(<>)),
-    "nil" => Box::new(Expr::Nil),
-    StringLiteral => Box::new(Expr::from_string(<>)),
-    Identifier => Box::new(Expr::Variable(VarRef::new(<>))),
+Term: Expr = {
+    NumLiteral => Expr::Number(<>),
+    BoolLiteral => Expr::Bool(<>),
+    "nil" => Expr::Nil,
+    StringLiteral => Expr::from_string(<>),
+    Identifier => Expr::Variable(VarRef::new(<>)),
     LambdaExpr,
     DictLiteral,
     ArrayLiteral,
-    <BlockExpr> => Box::new(Expr::Block(<>)),
-    <lhs:Term> <index:ValueIndex> => Box::new(Expr::GetIndex(lhs, index)),
+    <BlockExpr> => Expr::Block(<>),
+    <lhs:Term> <index:ValueIndex> => Expr::GetIndex(Box::new(lhs), Box::new(index)),
 };
 
-ValueIndex: Box<Expr> = {
-    "." <field:Identifier> => Box::new(Expr::from_string(field)),
+ValueIndex: Expr = {
+    "." <field:Identifier> => Expr::from_string(field),
     ".[" <index:Expr> "]" => index,
 } 
 
@@ -118,21 +122,20 @@ MatchArrayPart: (MatchPattern, bool) = {
     ".." => (MatchPattern::Discard, true),
 }
 
-IfExpression: Box<Expr> = {
-    "if " <cond:Expr> "then" <b1:Term> <b2:("else" <Term>)?> => Box::new(
-        Expr::If { condition: cond, then_branch: b1, else_branch: b2 }
-    )
-}
+IfExpression: Expr =
+    "if " <cond:Expr> "then" <b1:Term> <b2:("else" <Box<Term>>)?> =>
+        Expr::If {
+            condition: Box::new(cond),
+            then_branch: Box::new(b1),
+            else_branch: b2,
+        };
 
-MatchExpr: Box<Expr> = {
-    "match" <condition:Expr> "with" "{" <branches:CommaNonEmpty<MatchExprBranch>> "}" => Box::new(
-        Expr::Match(MatchExpr { condition, branches })
-    )
-}
+MatchExpr: Expr =
+    "match" <condition:Expr> "with" "{" <branches:CommaNonEmpty<MatchExprBranch>> "}" =>
+        Expr::Match(Box::new(MatchExpr { condition, branches }));
 
-MatchExprBranch: (MatchPattern, Box<Expr>) = {
-    <p:MatchPattern> "=>" <e:Expr> => (p, e),
-}
+MatchExprBranch: (MatchPattern, Expr) =
+    <p:MatchPattern> "=>" <e:Expr> => (p, e);
 
 BlockExpr: Block = {
     "(" <b:BlockBody> ")" => b
@@ -142,7 +145,7 @@ BlockBody: Block = {
     => Block { statements: vec![], expression: None },
     // separate patterns to remove ambiguity.
     // If there's no trailing semicolon it should always be an Expr.
-    <s:SpStatement*> <e:Expr> => Block { statements: s, expression: Some(e) },
+    <s:SpStatement*> <e:Expr> => Block { statements: s, expression: Some(Box::new(e)) },
     <mut s1:SpStatement*> <s2:Sp<StatementWithSemicolon>> => Block {
         statements: { s1.push(s2); s1 },
         expression: None,
@@ -162,25 +165,25 @@ StringLiteral: String = {
     r"'[^']*'" => parse_string_literal(<>),
 }
 
-LambdaExpr: Box<Expr> = {
-    "{" <params:MatchPattern*> "->" <body:BlockBody> "}" => Box::new(Expr::Lambda(
+LambdaExpr: Expr = {
+    "{" <params:MatchPattern*> "->" <body:BlockBody> "}" => Expr::Lambda(
         LambdaExpr::new(params, Rc::new(Expr::Block(body)))
-    )),
+    ),
     "{" "{" <body:BlockBody> "}" "}" => make_implicit_lambda(body),
 }
 
-DictEntry: (Box<Expr>, Box<Expr>) = {
-    <key:Identifier> ":" <val:Expr> => (Box::new(Expr::from_string(key)), val),
+DictEntry: (Expr, Expr) = {
+    <key:Identifier> ":" <val:Expr> => (Expr::from_string(key), val),
     "[" <key:Expr> "]" ":" <val:Expr> => (key, val),
 }
 
-DictLiteral: Box<Expr> = {
-    "[" <entries:CommaNonEmpty<DictEntry>> "]" => Box::new(Expr::Dict(entries)),
-    "[:]" => Box::new(Expr::Dict(vec![])),
+DictLiteral: Expr = {
+    "[" <entries:CommaNonEmpty<DictEntry>> "]" => Expr::Dict(entries),
+    "[:]" => Expr::Dict(vec![]),
 }
 
-ArrayLiteral: Box<Expr> = {
-    "[" <elements:Comma<Expr>> "]" => Box::new(Expr::Array(elements)),
+ArrayLiteral: Expr = {
+    "[" <elements:Comma<Expr>> "]" => Expr::Array(elements),
 }
 
 Identifier: String = {
@@ -212,8 +215,9 @@ FactorOp: Opcode = {
     "/" => Opcode::Div,
 };
 
-Tier<Op,NextTier>: Box<Expr> = {
-    <lhs:Tier<Op,NextTier>> <op:Op> <rhs:NextTier> => Box::new(Expr::Op { op, lhs, rhs }),
+Tier<Op,NextTier>: Expr = {
+    <lhs:Tier<Op,NextTier>> <op:Op> <rhs:NextTier> =>
+        Expr::Op { op, lhs: Box::new(lhs), rhs: Box::new(rhs) },
     NextTier
 };
 
@@ -224,6 +228,8 @@ Sp<Rule>: pos::Spanned<Rule> =
     );
 
 SpStatement: ast::SpannedStatement = Sp<Statement>;
+
+Box<T>: Box<T> = T => Box::new(<>);
 
 #[inline]
 CommaNonEmpty<T>: Vec<T> = {

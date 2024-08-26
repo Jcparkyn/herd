@@ -32,17 +32,17 @@ pub fn process_array_match(parts: Vec<(MatchPattern, bool)>) -> Result<MatchPatt
     }
 }
 
-pub fn process_declaration(name: String, mut rhs: Box<Expr>) -> Statement {
-    if let Expr::Lambda(lambda) = rhs.as_mut() {
+pub fn process_declaration(name: String, mut rhs: Expr) -> Statement {
+    if let Expr::Lambda(lambda) = &mut rhs {
         lambda.name = Some(name.clone());
     }
-    return Statement::PatternAssignment(MatchPattern::Declaration(VarRef::new(name)), rhs);
+    return Statement::PatternAssignment(
+        MatchPattern::Declaration(VarRef::new(name)),
+        Box::new(rhs),
+    );
 }
 
-pub fn make_implicit_lambda(body: Block) -> Box<Expr> {
+pub fn make_implicit_lambda(body: Block) -> Expr {
     let param = MatchPattern::Declaration(VarRef::new("_".to_string()));
-    Box::new(Expr::Lambda(LambdaExpr::new(
-        vec![param],
-        Rc::new(Expr::Block(body)),
-    )))
+    Expr::Lambda(LambdaExpr::new(vec![param], Rc::new(Expr::Block(body))))
 }

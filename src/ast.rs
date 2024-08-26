@@ -103,7 +103,7 @@ impl Debug for Block {
 #[derive(PartialEq, Debug)]
 pub struct AssignmentTarget {
     pub var: VarRef,
-    pub path: Vec<Box<Expr>>,
+    pub path: Vec<Expr>,
 }
 
 #[derive(PartialEq, Debug)]
@@ -215,8 +215,8 @@ impl LambdaExpr {
 
 #[derive(PartialEq, Debug)]
 pub struct MatchExpr {
-    pub condition: Box<Expr>,
-    pub branches: Vec<(MatchPattern, Box<Expr>)>,
+    pub condition: Expr,
+    pub branches: Vec<(MatchPattern, Expr)>,
 }
 
 #[derive(PartialEq)]
@@ -237,15 +237,15 @@ pub enum Expr {
         then_branch: Box<Expr>,
         else_branch: Option<Box<Expr>>,
     },
-    Match(MatchExpr),
+    Match(Box<MatchExpr>),
     Call {
         callee: Box<Expr>,
-        args: Vec<Box<Expr>>,
+        args: Vec<Expr>,
     },
     BuiltInFunction(BuiltInFunction),
     Lambda(LambdaExpr),
-    Dict(Vec<(Box<Expr>, Box<Expr>)>),
-    Array(Vec<Box<Expr>>),
+    Dict(Vec<(Expr, Expr)>),
+    Array(Vec<Expr>),
     GetIndex(Box<Expr>, Box<Expr>),
     ForIn {
         iter: Box<Expr>,

@@ -1,8 +1,6 @@
 use std::{collections::HashSet, fmt::Display, rc::Rc};
 
-use crate::ast::{
-    Block, BuiltInFunction, Expr, MatchExpr, MatchPattern, SpannedStatement, Statement, VarRef,
-};
+use crate::ast::{Block, BuiltInFunction, Expr, MatchPattern, SpannedStatement, Statement, VarRef};
 
 pub enum AnalysisError {
     VariableAlreadyDefined(String),
@@ -362,12 +360,9 @@ fn analyze_expr_liveness(expr: &mut Expr, deps: &mut HashSet<String>) {
             }
             analyze_expr_liveness(condition, deps);
         }
-        Expr::Match(MatchExpr {
-            condition,
-            branches,
-        }) => {
+        Expr::Match(m) => {
             let deps_original = deps.clone();
-            for (pattern, body) in branches.iter_mut() {
+            for (pattern, body) in m.branches.iter_mut() {
                 let mut deps_branch = deps_original.clone();
                 analyze_expr_liveness(body, &mut deps_branch);
                 analyze_pattern_liveness(pattern, &mut deps_branch);
@@ -375,7 +370,7 @@ fn analyze_expr_liveness(expr: &mut Expr, deps: &mut HashSet<String>) {
                     deps.insert(dep);
                 }
             }
-            analyze_expr_liveness(condition, deps);
+            analyze_expr_liveness(&mut m.condition, deps);
         }
         Expr::Op { op: _, lhs, rhs } => {
             analyze_expr_liveness(rhs, deps);

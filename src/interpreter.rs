@@ -7,8 +7,8 @@ use std::{
 
 use crate::{
     ast::{
-        AssignmentTarget, Block, BuiltInFunction, Expr, LambdaExpr, MatchConstant, MatchExpr,
-        MatchPattern, Opcode, SpreadArrayPattern, Statement,
+        AssignmentTarget, Block, BuiltInFunction, Expr, LambdaExpr, MatchConstant, MatchPattern,
+        Opcode, SpreadArrayPattern, Statement,
     },
     value::{ArrayInstance, Callable, DictInstance, LambdaFunction, Value, NIL},
 };
@@ -274,12 +274,9 @@ impl Interpreter {
                 }
                 Ok(NIL)
             }
-            Expr::Match(MatchExpr {
-                condition,
-                branches,
-            }) => {
-                let cond = self.eval(&condition)?;
-                for (pattern, body) in branches {
+            Expr::Match(m) => {
+                let cond = self.eval(&m.condition)?;
+                for (pattern, body) in &m.branches {
                     if Interpreter::matches_pattern(pattern, &cond) {
                         self.match_pattern(pattern, cond)?;
                         return self.eval(body);
