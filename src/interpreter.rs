@@ -432,8 +432,14 @@ impl Interpreter {
             Opcode::Gt => Ok(Bool(
                 self.eval(&lhs)?.as_number()? > self.eval(&rhs)?.as_number()?,
             )),
+            Opcode::Gte => Ok(Bool(
+                self.eval(&lhs)?.as_number()? >= self.eval(&rhs)?.as_number()?,
+            )),
             Opcode::Lt => Ok(Bool(
                 self.eval(&lhs)?.as_number()? < self.eval(&rhs)?.as_number()?,
+            )),
+            Opcode::Lte => Ok(Bool(
+                self.eval(&lhs)?.as_number()? <= self.eval(&rhs)?.as_number()?,
             )),
             Opcode::Eq => Ok(Bool(self.eval(&lhs)? == self.eval(&rhs)?)),
             Opcode::Neq => Ok(Bool(self.eval(&lhs)? != self.eval(&rhs)?)),

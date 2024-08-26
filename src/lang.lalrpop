@@ -194,7 +194,9 @@ LogicOp: Opcode = {
 
 ComparisonOp: Opcode = {
     ">" => Opcode::Gt,
+    ">=" => Opcode::Gte,
     "<" => Opcode::Lt,
+    "<=" => Opcode::Lte,
     "==" => Opcode::Eq,
     "!=" => Opcode::Neq,
 }
