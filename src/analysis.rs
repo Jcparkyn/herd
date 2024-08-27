@@ -95,10 +95,10 @@ impl VariableAnalyzer {
         match stmt {
             Statement::PatternAssignment(pattern, rhs) => {
                 self.analyze_pattern(pattern);
-                self.analyze_expr(rhs);
+                self.analyze_expr(&mut rhs.value);
             }
-            Statement::Expression(expr) => self.analyze_expr(expr),
-            Statement::Return(expr) => self.analyze_expr(expr),
+            Statement::Expression(expr) => self.analyze_expr(&mut expr.value),
+            Statement::Return(expr) => self.analyze_expr(&mut expr.value),
         }
     }
 
@@ -118,7 +118,7 @@ impl VariableAnalyzer {
                         .push(VariableNotDefined(target.var.name.clone()));
                 }
                 for index in target.path.iter_mut() {
-                    self.analyze_expr(index);
+                    self.analyze_expr(&mut index.value);
                 }
             }
             MatchPattern::SimpleArray(parts) => {
@@ -164,7 +164,7 @@ impl VariableAnalyzer {
                 self.analyze_expr(&mut m.condition.value);
                 for (pattern, body) in m.branches.iter_mut() {
                     self.push_scope();
-                    self.analyze_pattern(pattern);
+                    self.analyze_pattern(&mut pattern.value);
                     self.analyze_expr(&mut body.value);
                     self.pop_scope();
                 }
@@ -280,12 +280,12 @@ fn analyze_statement_liveness(stmt: &mut Statement, deps: &mut HashSet<String>) 
     match stmt {
         Statement::PatternAssignment(pattern, rhs) => {
             analyze_pattern_liveness(pattern, deps);
-            analyze_expr_liveness(rhs, deps)
+            analyze_expr_liveness(&mut rhs.value, deps)
         }
         Statement::Expression(expr) => {
-            analyze_expr_liveness(expr, deps);
+            analyze_expr_liveness(&mut expr.value, deps);
         }
-        Statement::Return(expr) => analyze_expr_liveness(expr, deps),
+        Statement::Return(expr) => analyze_expr_liveness(&mut expr.value, deps),
     }
 }
 
@@ -299,7 +299,7 @@ fn analyze_pattern_liveness(pattern: &mut MatchPattern, deps: &mut HashSet<Strin
                 deps.remove(&target.var.name);
             } else {
                 for index in target.path.iter_mut().rev() {
-                    analyze_expr_liveness(index, deps);
+                    analyze_expr_liveness(&mut index.value, deps);
                 }
             }
         }
@@ -365,7 +365,7 @@ fn analyze_expr_liveness(expr: &mut Expr, deps: &mut HashSet<String>) {
             for (pattern, body) in m.branches.iter_mut() {
                 let mut deps_branch = deps_original.clone();
                 analyze_expr_liveness(&mut body.value, &mut deps_branch);
-                analyze_pattern_liveness(pattern, &mut deps_branch);
+                analyze_pattern_liveness(&mut pattern.value, &mut deps_branch);
                 for dep in deps_branch {
                     deps.insert(dep);
                 }

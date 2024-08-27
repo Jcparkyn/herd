@@ -8,7 +8,7 @@ use std::{
 use crate::{
     ast::{
         AssignmentTarget, Block, BuiltInFunction, Expr, LambdaExpr, MatchConstant, MatchPattern,
-        Opcode, SpannedStatement, SpreadArrayPattern, Statement,
+        Opcode, SpannedExpr, SpannedStatement, SpreadArrayPattern, Statement,
     },
     pos::{Span, Spanned},
     value::{ArrayInstance, Callable, DictInstance, LambdaFunction, Value, NIL},
@@ -30,19 +30,46 @@ pub struct Environment {
 pub enum InterpreterError {
     Return(Value), // Implemented as an error to simplify implementation.
     KeyNotExists(Value),
-    IndexOutOfRange { array_len: usize, accessed: usize },
-    WrongArgumentCount { expected: usize, supplied: usize },
-    WrongType { message: String },
-    PatternMatchFailed { message: String },
+    IndexOutOfRange {
+        array_len: usize,
+        accessed: usize,
+    },
+    WrongArgumentCount {
+        expected: usize,
+        supplied: usize,
+    },
+    WrongType {
+        message: String,
+    },
+    PatternMatchFailed {
+        message: String,
+    },
+    FunctionCallFailed {
+        function: Callable,
+        inner: Box<Spanned<InterpreterError>>,
+    },
 }
 
 type IResult<T> = Result<T, InterpreterError>;
 type SpannedResult<T> = Result<T, Spanned<InterpreterError>>;
 
+trait SpannableResult<T> {
+    fn with_span(self, span: &Span) -> SpannedResult<T>
+    where
+        Self: Sized;
+}
+
+impl<T> SpannableResult<T> for IResult<T> {
+    fn with_span(self, span: &Span) -> SpannedResult<T> {
+        self.map_err(|e| Spanned::new(*span, e))
+    }
+}
+
 fn spanify<T>(result: IResult<T>, span: &Span) -> SpannedResult<T> {
     result.map_err(|e| Spanned::new(*span, e))
 }
 
+// TODO remove usages of this
 fn unspanify<T>(result: SpannedResult<T>) -> IResult<T> {
     result.map_err(|Spanned { value, span: _ }| value)
 }
@@ -68,7 +95,17 @@ impl Display for InterpreterError {
             WrongType { message } => f.write_str(&message),
             Return(_) => write!(f, "You can only use return statements inside a function"),
             PatternMatchFailed { message } => write!(f, "Unsuccessful pattern match: {}", message),
+            FunctionCallFailed { function, inner } => {
+                write!(f, "Error while calling function {}:\n", function)?;
+                write!(f, "\t[At {}] {}", inner.span.start, inner.value)
+            }
         }
+    }
+}
+
+impl InterpreterError {
+    fn with_span(self, span: &Span) -> Spanned<InterpreterError> {
+        Spanned::new(*span, self)
     }
 }
 
@@ -231,35 +268,35 @@ impl Interpreter {
         let span = &statement.span;
         match &statement.value {
             Statement::PatternAssignment(pattern, expr) => {
-                let value = spanify(self.eval(&expr), span)?; // TODO
+                let value = self.eval(&expr)?;
                 spanify(self.match_pattern(pattern, value), span)?;
                 Ok(())
             }
             Statement::Expression(expr) => {
-                spanify(self.eval(&expr), span)?;
+                self.eval(&expr)?;
                 Ok(())
             }
             Statement::Return(expr) => {
-                let value = spanify(self.eval(&expr), span)?;
+                let value = self.eval(&expr)?;
                 Err(Spanned::new(*span, Return(value)))
             }
         }
     }
 
-    pub fn eval_block(&mut self, block: &Block) -> Result<Value, InterpreterError> {
+    pub fn eval_block(&mut self, block: &Block) -> SpannedResult<Value> {
         for stmt in block.statements.iter() {
-            unspanify(self.execute(&stmt))?;
+            self.execute(&stmt)?;
         }
         if let Some(expr) = &block.expression {
-            self.eval(&expr.value)
+            self.eval(&expr)
         } else {
             Ok(NIL)
         }
     }
 
-    pub fn eval(&mut self, expr: &Expr) -> Result<Value, InterpreterError> {
+    pub fn eval(&mut self, expr: &SpannedExpr) -> SpannedResult<Value> {
         use Value::*;
-        match expr {
+        match &expr.value {
             Expr::Number(num) => Ok(Number(*num)),
             Expr::Bool(b) => Ok(Bool(*b)),
             Expr::String(s) => Ok(String(s.clone())),
@@ -276,28 +313,29 @@ impl Interpreter {
                 then_branch,
                 else_branch,
             } => {
-                let cond = self.eval(&condition.value)?;
+                let cond = self.eval(condition)?;
                 if cond.truthy() {
-                    return self.eval(&then_branch.value);
+                    return self.eval(then_branch);
                 }
                 if let Some(else_branch2) = else_branch {
-                    return self.eval(&else_branch2.value);
+                    return self.eval(else_branch2);
                 }
                 Ok(NIL)
             }
             Expr::Match(m) => {
-                let cond = self.eval(&m.condition.value)?;
+                let cond = self.eval(&m.condition)?;
                 for (pattern, body) in &m.branches {
-                    if Interpreter::matches_pattern(pattern, &cond) {
-                        self.match_pattern(pattern, cond)?;
-                        return self.eval(&body.value);
+                    if Interpreter::matches_pattern(&pattern.value, &cond) {
+                        self.match_pattern(&pattern.value, cond).unwrap();
+                        return self.eval(&body);
                     }
                 }
                 Err(PatternMatchFailed {
                     message: format!("No branches matched successfully"),
-                })
+                }
+                .with_span(&expr.span))
             }
-            Expr::Op { op, lhs, rhs } => self.eval_binary_op(&lhs.value, &rhs.value, op),
+            Expr::Op { op, lhs, rhs } => self.eval_binary_op(lhs, rhs, op),
             Expr::Block(block) => self.eval_block(block),
             Expr::BuiltInFunction(f) => Ok(Builtin(f.clone())),
             Expr::Call { callee, args } => {
@@ -305,7 +343,7 @@ impl Interpreter {
                 let arg_count = args.len();
                 // self.arg_stack.clear();
                 for arg in args.iter() {
-                    match self.eval(&arg.value) {
+                    match self.eval(arg) {
                         Ok(v) => self.arg_stack.push(v),
                         Err(e) => {
                             self.arg_stack.truncate(arg_stack_len_before);
@@ -314,7 +352,7 @@ impl Interpreter {
                     };
                 }
 
-                let result = match self.eval(&callee.value)? {
+                let result = match self.eval(callee)? {
                     Value::Builtin(c) => self.call_builtin(c, arg_count),
                     Value::Lambda(f) => self.call_lambda(&f, arg_count),
                     v => Err(WrongType {
@@ -322,7 +360,7 @@ impl Interpreter {
                     }),
                 };
                 self.arg_stack.truncate(arg_stack_len_before);
-                return result;
+                return result.with_span(&callee.span);
             }
             Expr::Lambda(l) => {
                 let f = self.eval_lambda_definition(l);
@@ -331,13 +369,13 @@ impl Interpreter {
             Expr::Dict(entries) => {
                 let mut values = HashMap::new();
                 for (k, v) in entries.iter() {
-                    let key = self.eval(&k.value)?;
+                    let key = self.eval(k)?;
                     if !key.is_valid_dict_key() {
                         return Err(WrongType {
                             message: format!("Can't use {key} as a key in a dict. Valid keys are strings, numbers, booleans, and arrays.")
-                        });
+                        }.with_span(&k.span));
                     }
-                    let value = self.eval(&v.value)?;
+                    let value = self.eval(v)?;
                     values.insert(key, value);
                 }
                 Ok(Value::Dict(Rc::new(DictInstance { values })))
@@ -345,42 +383,43 @@ impl Interpreter {
             Expr::Array(elements) => {
                 let mut values = Vec::with_capacity(elements.len());
                 for e in elements.iter() {
-                    values.push(self.eval(&e.value)?);
+                    values.push(self.eval(e)?);
                 }
                 Ok(Value::Array(Rc::new(ArrayInstance::new(values))))
             }
             Expr::GetIndex(lhs_expr, index_expr) => {
-                let index = self.eval(&index_expr.value)?;
-                let lhs = self.eval(&lhs_expr.value)?;
+                let index = self.eval(index_expr)?;
+                let lhs = self.eval(lhs_expr)?;
                 match lhs {
                     Value::Dict(d) => {
                         return Ok(d.values.get(&index).cloned().unwrap_or(NIL));
                     }
                     Value::Array(a) => {
-                        let idx_int =
-                            index
-                                .as_number()
-                                .and_then(try_into_int)
-                                .map_err(|_| WrongType {
-                                    message: format!(
-                                        "Arrays can only be indexed with integers, found {index}"
-                                    ),
-                                })?;
+                        let idx_int = index.as_number().and_then(try_into_int).map_err(|_| {
+                            WrongType {
+                                message: format!(
+                                    "Arrays can only be indexed with integers, found {index}"
+                                ),
+                            }
+                            .with_span(&index_expr.span)
+                        })?;
                         return match a.values.get(idx_int) {
                             Some(v) => Ok(v.clone()),
                             None => Err(InterpreterError::IndexOutOfRange {
                                 array_len: a.values.len(),
                                 accessed: idx_int,
-                            }),
+                            }
+                            .with_span(&index_expr.span)),
                         };
                     }
                     v => Err(WrongType {
                         message: format!("Can't index {v} (trying to get key {index})"),
-                    }),
+                    }
+                    .with_span(&lhs_expr.span)),
                 }
             }
             Expr::ForIn { iter, var, body } => {
-                let iter_value = self.eval(&iter.value)?;
+                let iter_value = self.eval(iter)?;
                 match iter_value {
                     Value::Array(a) => {
                         for v in a.values.iter() {
@@ -391,12 +430,13 @@ impl Interpreter {
                     }
                     _ => Err(WrongType {
                         message: format!("Expected an array, found {iter_value}"),
-                    }),
+                    }
+                    .with_span(&iter.span)),
                 }
             }
             Expr::While { condition, body } => {
-                while self.eval(&condition.value)?.truthy() {
-                    self.eval(&body.value)?;
+                while self.eval(condition)?.truthy() {
+                    self.eval(body)?;
                 }
                 return Ok(NIL);
             }
@@ -421,34 +461,23 @@ impl Interpreter {
 
     fn eval_binary_op(
         &mut self,
-        lhs: &Expr,
-        rhs: &Expr,
+        lhs: &SpannedExpr,
+        rhs: &SpannedExpr,
         op: &Opcode,
-    ) -> Result<Value, InterpreterError> {
+    ) -> SpannedResult<Value> {
         use Value::*;
+        let mut try_num = |expr: &SpannedExpr| -> SpannedResult<f64> {
+            self.eval(expr)?.as_number().with_span(&expr.span)
+        };
         match op {
-            Opcode::Add => Value::add(self.eval(lhs)?, self.eval(rhs)?),
-            Opcode::Sub => Ok(Number(
-                self.eval(&lhs)?.as_number()? - self.eval(&rhs)?.as_number()?,
-            )),
-            Opcode::Mul => Ok(Number(
-                self.eval(&lhs)?.as_number()? * self.eval(&rhs)?.as_number()?,
-            )),
-            Opcode::Div => Ok(Number(
-                self.eval(&lhs)?.as_number()? / self.eval(&rhs)?.as_number()?,
-            )),
-            Opcode::Gt => Ok(Bool(
-                self.eval(&lhs)?.as_number()? > self.eval(&rhs)?.as_number()?,
-            )),
-            Opcode::Gte => Ok(Bool(
-                self.eval(&lhs)?.as_number()? >= self.eval(&rhs)?.as_number()?,
-            )),
-            Opcode::Lt => Ok(Bool(
-                self.eval(&lhs)?.as_number()? < self.eval(&rhs)?.as_number()?,
-            )),
-            Opcode::Lte => Ok(Bool(
-                self.eval(&lhs)?.as_number()? <= self.eval(&rhs)?.as_number()?,
-            )),
+            Opcode::Add => Value::add(self.eval(lhs)?, self.eval(rhs)?).with_span(&lhs.span),
+            Opcode::Sub => Ok(Number(try_num(lhs)? - try_num(rhs)?)),
+            Opcode::Mul => Ok(Number(try_num(lhs)? * try_num(rhs)?)),
+            Opcode::Div => Ok(Number(try_num(lhs)? / try_num(rhs)?)),
+            Opcode::Gt => Ok(Bool(try_num(lhs)? > try_num(rhs)?)),
+            Opcode::Gte => Ok(Bool(try_num(lhs)? >= try_num(rhs)?)),
+            Opcode::Lt => Ok(Bool(try_num(lhs)? < try_num(rhs)?)),
+            Opcode::Lte => Ok(Bool(try_num(lhs)? <= try_num(rhs)?)),
             Opcode::Eq => Ok(Bool(self.eval(&lhs)? == self.eval(&rhs)?)),
             Opcode::Neq => Ok(Bool(self.eval(&lhs)? != self.eval(&rhs)?)),
             Opcode::And => Ok(Bool(self.eval(&lhs)?.truthy() && self.eval(&rhs)?.truthy())),
@@ -456,7 +485,7 @@ impl Interpreter {
         }
     }
 
-    fn call(&mut self, callable: &Callable, arg_count: usize) -> Result<Value, InterpreterError> {
+    fn call(&mut self, callable: &Callable, arg_count: usize) -> IResult<Value> {
         match callable {
             Callable::Lambda(f) => self.call_lambda(f, arg_count),
             Callable::Builtin(f) => self.call_builtin(*f, arg_count),
@@ -475,11 +504,7 @@ impl Interpreter {
         result
     }
 
-    fn call_builtin(
-        &mut self,
-        builtin: BuiltInFunction,
-        arg_count: usize,
-    ) -> Result<Value, InterpreterError> {
+    fn call_builtin(&mut self, builtin: BuiltInFunction, arg_count: usize) -> IResult<Value> {
         match builtin {
             BuiltInFunction::Print => {
                 for arg in Self::pop_args(&mut self.arg_stack, arg_count) {
@@ -627,16 +652,12 @@ impl Interpreter {
         }
     }
 
-    fn call_lambda(
-        &mut self,
-        function: &Rc<LambdaFunction>,
-        arg_count: usize,
-    ) -> Result<Value, InterpreterError> {
+    fn call_lambda(&mut self, function: &Rc<LambdaFunction>, arg_count: usize) -> IResult<Value> {
         if function.params.len() != arg_count {
             return Err(WrongArgumentCount {
                 expected: function.params.len(),
                 supplied: arg_count,
-            });
+            }); // TODO
         }
         let old_frame = self.environment.cur_frame;
         self.environment.cur_frame = self.environment.slots.len();
@@ -655,10 +676,16 @@ impl Interpreter {
             // }
         }
 
-        let result = match self.eval(&function.body.value) {
-            Ok(val) => Ok(val),
-            Err(InterpreterError::Return(v)) => Ok(v),
-            Err(e) => Err(e),
+        let result = match self.eval(&function.body) {
+            Ok(v) => Ok(v),
+            Err(Spanned {
+                value: InterpreterError::Return(v),
+                span: _,
+            }) => Ok(v),
+            Err(e) => Err(InterpreterError::FunctionCallFailed {
+                function: Callable::Lambda(function.clone()),
+                inner: Box::new(e),
+            }),
         };
         self.environment.slots.truncate(self.environment.cur_frame);
         self.environment.cur_frame = old_frame;
@@ -854,7 +881,8 @@ impl Interpreter {
     fn assign(&mut self, target: &AssignmentTarget, value: Value) -> Result<(), InterpreterError> {
         let mut path_values = vec![];
         for index in &target.path {
-            path_values.push(self.eval(index)?);
+            let value = unspanify(self.eval(index))?;
+            path_values.push(value);
         }
         self.environment
             .assign(target.var.slot, &path_values, value)?;

@@ -103,7 +103,7 @@ impl Debug for Block {
 #[derive(PartialEq, Debug)]
 pub struct AssignmentTarget {
     pub var: VarRef,
-    pub path: Vec<Expr>,
+    pub path: Vec<SpannedExpr>,
 }
 
 #[derive(PartialEq, Debug)]
@@ -157,9 +157,9 @@ impl Display for MatchConstant {
 
 #[derive(PartialEq, Debug)]
 pub enum Statement {
-    PatternAssignment(MatchPattern, Box<Expr>),
-    Expression(Box<Expr>),
-    Return(Box<Expr>),
+    PatternAssignment(MatchPattern, SpannedExpr),
+    Expression(SpannedExpr),
+    Return(SpannedExpr),
 }
 
 #[derive(PartialEq, Clone)]
@@ -216,7 +216,7 @@ impl LambdaExpr {
 #[derive(PartialEq, Debug)]
 pub struct MatchExpr {
     pub condition: SpannedExpr,
-    pub branches: Vec<(MatchPattern, SpannedExpr)>,
+    pub branches: Vec<(Spanned<MatchPattern>, SpannedExpr)>,
 }
 
 #[derive(PartialEq)]
@@ -226,7 +226,7 @@ pub enum Expr {
     String(Rc<String>),
     Nil,
     Op {
-        op: Opcode,
+        op: Opcode, // TODO spanned
         lhs: Box<SpannedExpr>,
         rhs: Box<SpannedExpr>,
     },

@@ -21,9 +21,19 @@ pub enum Value {
 
 pub const NIL: Value = Value::Nil;
 
+#[derive(Debug, Clone)]
 pub enum Callable {
     Lambda(Rc<LambdaFunction>),
     Builtin(BuiltInFunction),
+}
+
+impl Display for Callable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Callable::Builtin(b) => write!(f, "{}", b.to_string()),
+            Callable::Lambda(l) => write!(f, "{}", l),
+        }
+    }
 }
 
 impl Value {

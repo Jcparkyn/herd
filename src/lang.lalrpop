@@ -24,17 +24,18 @@ pub Program: Vec<ast::SpannedStatement> = {
 
 Statement: Statement = {
     StatementWithSemicolon,
-    <ExprWithBlock> => Statement::Expression(Box::new(<>)),
+    Sp<ExprWithBlock> => Statement::Expression(<>),
 }
 
 StatementWithSemicolon: Statement = {
-    <ExprWithoutBlock> ";" => Statement::Expression(Box::new(<>)),
-    <name:Identifier> "=" <e:Expr> ";" => process_declaration(name, e),
-    "set" <target:AssignmentTarget> "=" <e:Box<Expr>> ";" =>
+    <e:Sp<ExprWithoutBlock>> ";" => Statement::Expression(e),
+    <name:Identifier> "=" <e:SpExpr> ";" => process_declaration(name, e),
+    "set" <target:AssignmentTarget> "=" <e:SpExpr> ";" =>
         Statement::PatternAssignment(MatchPattern::Assignment(target), e),
-    "!" <pattern:MatchPattern> "=" <e:Expr> ";" => Statement::PatternAssignment(pattern, Box::new(e)),
-    "return" <e:Expr> ";" => Statement::Return(Box::new(e)),
-    "return" ";" => Statement::Return(Box::new(Expr::Nil)),
+    "!" <pattern:MatchPattern> "=" <e:SpExpr> ";" =>
+        Statement::PatternAssignment(pattern, e),
+    "return" <e:SpExpr> ";" => Statement::Return(e),
+    <span:Sp<"return">> ";" => Statement::Return(pos::Spanned::new(span.span, Expr::Nil)),
 }
 
 Expr = {
@@ -94,7 +95,7 @@ ValueIndex: Expr = {
 } 
 
 AssignmentTarget: AssignmentTarget = {
-    <var:Identifier> <path:ValueIndex*> => AssignmentTarget { var: VarRef::new(var), path },
+    <var:Identifier> <path:Sp<ValueIndex>*> => AssignmentTarget { var: VarRef::new(var), path },
 }
 
 MatchPattern: MatchPattern = {
@@ -130,8 +131,8 @@ MatchExpr: Expr =
     "match" <condition:SpExpr> "with" "{" <branches:CommaNonEmpty<MatchExprBranch>> "}" =>
         Expr::Match(Box::new(MatchExpr { condition, branches }));
 
-MatchExprBranch: (MatchPattern, ast::SpannedExpr) =
-    <p:MatchPattern> "=>" <e:SpExpr> => (p, e);
+MatchExprBranch: (pos::Spanned<MatchPattern>, ast::SpannedExpr) =
+    <p:Sp<MatchPattern>> "=>" <e:SpExpr> => (p, e);
 
 BlockExpr: Block = {
     "(" <b:BlockBody> ")" => b
