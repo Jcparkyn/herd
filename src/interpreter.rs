@@ -8,8 +8,9 @@ use std::{
 use crate::{
     ast::{
         AssignmentTarget, Block, BuiltInFunction, Expr, LambdaExpr, MatchConstant, MatchPattern,
-        Opcode, SpreadArrayPattern, Statement,
+        Opcode, SpannedStatement, SpreadArrayPattern, Statement,
     },
+    pos::{Span, Spanned},
     value::{ArrayInstance, Callable, DictInstance, LambdaFunction, Value, NIL},
 };
 
@@ -36,6 +37,15 @@ pub enum InterpreterError {
 }
 
 type IResult<T> = Result<T, InterpreterError>;
+type SpannedResult<T> = Result<T, Spanned<InterpreterError>>;
+
+fn spanify<T>(result: IResult<T>, span: &Span) -> SpannedResult<T> {
+    result.map_err(|e| Spanned::new(*span, e))
+}
+
+fn unspanify<T>(result: SpannedResult<T>) -> IResult<T> {
+    result.map_err(|Spanned { value, span: _ }| value)
+}
 
 impl Display for InterpreterError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -56,7 +66,7 @@ impl Display for InterpreterError {
                 )
             }
             WrongType { message } => f.write_str(&message),
-            Return(val) => write!(f, "Returning {val}"),
+            Return(_) => write!(f, "You can only use return statements inside a function"),
             PatternMatchFailed { message } => write!(f, "Unsuccessful pattern match: {}", message),
         }
     }
@@ -217,27 +227,28 @@ impl Interpreter {
         }
     }
 
-    pub fn execute(&mut self, statement: &Statement) -> Result<(), InterpreterError> {
-        match statement {
+    pub fn execute(&mut self, statement: &SpannedStatement) -> SpannedResult<()> {
+        let span = &statement.span;
+        match &statement.value {
             Statement::PatternAssignment(pattern, expr) => {
-                let value = self.eval(&expr)?;
-                self.match_pattern(pattern, value)?;
+                let value = spanify(self.eval(&expr), span)?; // TODO
+                spanify(self.match_pattern(pattern, value), span)?;
                 Ok(())
             }
             Statement::Expression(expr) => {
-                self.eval(&expr)?;
+                spanify(self.eval(&expr), span)?;
                 Ok(())
             }
             Statement::Return(expr) => {
-                let value = self.eval(&expr)?;
-                Err(Return(value))
+                let value = spanify(self.eval(&expr), span)?;
+                Err(Spanned::new(*span, Return(value)))
             }
         }
     }
 
     pub fn eval_block(&mut self, block: &Block) -> Result<Value, InterpreterError> {
         for stmt in block.statements.iter() {
-            self.execute(&stmt.value)?;
+            unspanify(self.execute(&stmt))?;
         }
         if let Some(expr) = &block.expression {
             self.eval(&expr.value)

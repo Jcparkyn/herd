@@ -1,6 +1,6 @@
 use analysis::Analyzer;
 use clap::Parser;
-use interpreter::{Interpreter, InterpreterError};
+use interpreter::Interpreter;
 use lalrpop_util::{lalrpop_mod, ParseError};
 use rustyline::error::ReadlineError;
 use rustyline::highlight::MatchingBracketHighlighter;
@@ -65,14 +65,12 @@ fn main() {
                     }
                 }
                 for statement in program {
-                    match interpreter.execute(&statement.value) {
+                    match interpreter.execute(&statement) {
                         Ok(()) => {}
-                        Err(InterpreterError::Return(_)) => {
-                            return println!(
-                                "Error: You can only use return statements inside a function."
-                            )
+                        Err(err) => {
+                            println!("Error while evaluating (at {:?}): {}", err.span, err.value);
+                            return;
                         }
-                        Err(err) => return println!("Error while evaluating: {}", err),
                     }
                 }
             }
@@ -132,10 +130,12 @@ fn run_repl(args: Args) {
         }
 
         for statement in statements {
-            match interpreter.execute(&statement.value) {
+            match interpreter.execute(&statement) {
                 Ok(()) => {}
-                Err(InterpreterError::Return(value)) => return println!("Return value: {value}"),
-                Err(err) => println!("Error while evaluating: {}", err),
+                Err(err) => {
+                    println!("Error while evaluating (at {:?}): {}", err.span, err.value);
+                    return;
+                }
             }
         }
     }
