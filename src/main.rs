@@ -2,6 +2,7 @@ use analysis::Analyzer;
 use clap::Parser;
 use interpreter::Interpreter;
 use lalrpop_util::{lalrpop_mod, ParseError};
+use lines::Lines;
 use rustyline::error::ReadlineError;
 use rustyline::highlight::MatchingBracketHighlighter;
 use rustyline::validate::{ValidationContext, ValidationResult, Validator};
@@ -13,6 +14,7 @@ use rustyline::{
 mod analysis;
 mod ast;
 mod interpreter;
+mod lines;
 mod parse_helpers;
 mod pos;
 mod value;
@@ -47,6 +49,7 @@ fn main() {
         let parser = lang::ProgramParser::new();
         let mut interpreter = Interpreter::new();
         let program_ast = parser.parse(&program);
+        let lines = Lines::new(program.clone().into_bytes());
         match program_ast {
             Err(err) => {
                 println!("Error while parsing: {}", err);
@@ -68,7 +71,11 @@ fn main() {
                     match interpreter.execute(&statement) {
                         Ok(()) => {}
                         Err(err) => {
-                            println!("Error while evaluating (at {:?}): {}", err.span, err.value);
+                            println!(
+                                "Error while evaluating (at {}): {}",
+                                lines.location(err.span.start).unwrap(),
+                                err.value
+                            );
                             return;
                         }
                     }
@@ -110,6 +117,7 @@ fn run_repl(args: Args) {
         };
 
         let ast_result = parser.parse(&input);
+        let lines = Lines::new(input.clone().into_bytes());
         let mut statements = match ast_result {
             Err(err) => {
                 println!("Error while parsing: {}", err);
@@ -133,7 +141,11 @@ fn run_repl(args: Args) {
             match interpreter.execute(&statement) {
                 Ok(()) => {}
                 Err(err) => {
-                    println!("Error while evaluating (at {:?}): {}", err.span, err.value);
+                    println!(
+                        "Error while evaluating (at {:?}): {}",
+                        lines.location(err.span.start),
+                        err.value
+                    );
                     return;
                 }
             }
