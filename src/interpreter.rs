@@ -1,9 +1,4 @@
-use std::{
-    collections::HashMap,
-    fmt::{Debug, Display},
-    rc::Rc,
-    vec,
-};
+use std::{collections::HashMap, fmt::Debug, rc::Rc, vec};
 
 use crate::{
     ast::{
@@ -72,35 +67,6 @@ fn spanify<T>(result: IResult<T>, span: &Span) -> SpannedResult<T> {
 // TODO remove usages of this
 fn unspanify<T>(result: SpannedResult<T>) -> IResult<T> {
     result.map_err(|Spanned { value, span: _ }| value)
-}
-
-impl Display for InterpreterError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            KeyNotExists(name) => write!(f, "Field {} doesn't exist", name),
-            IndexOutOfRange {
-                array_len,
-                accessed,
-            } => write!(
-                f,
-                "Cant access index {} of an array with {} elements",
-                accessed, array_len
-            ),
-            WrongArgumentCount { expected, supplied } => {
-                write!(
-                    f,
-                    "Wrong number of arguments for function. Expected {expected}, got {supplied}"
-                )
-            }
-            WrongType { message } => f.write_str(&message),
-            Return(_) => write!(f, "You can only use return statements inside a function"),
-            PatternMatchFailed { message } => write!(f, "Unsuccessful pattern match: {}", message),
-            FunctionCallFailed { function, inner } => {
-                write!(f, "Error while calling function {}:\n", function)?;
-                write!(f, "\t[At {}] {}", inner.span.start, inner.value)
-            }
-        }
-    }
 }
 
 impl InterpreterError {
