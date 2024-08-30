@@ -318,12 +318,9 @@ impl Interpreter {
                     };
                 }
 
-                let result = match self.eval(callee)? {
-                    Value::Builtin(c) => self.call_builtin(c, arg_count),
-                    Value::Lambda(f) => self.call_lambda(&f, arg_count),
-                    v => Err(WrongType {
-                        message: format!("Expected a function, found {v}"),
-                    }),
+                let result = match self.eval(callee)?.as_callable() {
+                    Ok(c) => self.call(&c, arg_count),
+                    Err(e) => Err(e),
                 };
                 self.arg_stack.truncate(arg_stack_len_before);
                 return result.with_span(&callee.span);
@@ -452,10 +449,14 @@ impl Interpreter {
     }
 
     fn call(&mut self, callable: &Callable, arg_count: usize) -> IResult<Value> {
-        match callable {
+        let result = match callable {
             Callable::Lambda(f) => self.call_lambda(f, arg_count),
-            Callable::Builtin(f) => self.call_builtin(*f, arg_count),
-        }
+            Callable::Builtin(f) => self.call_builtin(*f, arg_count).with_span(&Span::new(0, 0)),
+        };
+        result.map_err(|e| FunctionCallFailed {
+            function: callable.clone(),
+            inner: Box::new(e),
+        })
     }
 
     fn call_internal<const N: usize>(
@@ -618,40 +619,40 @@ impl Interpreter {
         }
     }
 
-    fn call_lambda(&mut self, function: &Rc<LambdaFunction>, arg_count: usize) -> IResult<Value> {
+    fn call_lambda(
+        &mut self,
+        function: &Rc<LambdaFunction>,
+        arg_count: usize,
+    ) -> SpannedResult<Value> {
         if function.params.len() != arg_count {
             return Err(WrongArgumentCount {
                 expected: function.params.len(),
                 supplied: arg_count,
-            }); // TODO
+            }
+            // TODO use params span
+            .with_span(&function.body.span));
         }
         let old_frame = self.environment.cur_frame;
         self.environment.cur_frame = self.environment.slots.len();
         for param_idx in (0..arg_count).rev() {
             let arg = self.arg_stack.pop().unwrap();
             let pattern = &function.params[param_idx];
-            self.match_pattern(pattern, arg)?;
+            self.match_pattern(pattern, arg)
+                .with_span(&function.body.span)?;
         }
         for val in &function.closure {
             self.environment.slots.push(val.clone());
         }
         if let Some(_) = &function.self_name {
             self.environment.slots.push(Value::Lambda(function.clone()));
-            // // Optimization: don't add self unless we need to.
-            // if function.recursive {
-            // }
         }
 
         let result = match self.eval(&function.body) {
-            Ok(v) => Ok(v),
             Err(Spanned {
                 value: InterpreterError::Return(v),
                 span: _,
             }) => Ok(v),
-            Err(e) => Err(InterpreterError::FunctionCallFailed {
-                function: Callable::Lambda(function.clone()),
-                inner: Box::new(e),
-            }),
+            r => r,
         };
         self.environment.slots.truncate(self.environment.cur_frame);
         self.environment.cur_frame = old_frame;
