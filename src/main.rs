@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-use analysis::Analyzer;
+use analysis::{AnalysisError, Analyzer};
 use clap::Parser;
 use interpreter::{Interpreter, InterpreterError};
 use lalrpop_util::{lalrpop_mod, ParseError};
@@ -67,7 +67,7 @@ fn main() {
                 match analyze_result {
                     Ok(()) => {}
                     Err(errs) => {
-                        print_errors(errs);
+                        print_analysis_errors(errs, lines);
                         return;
                     }
                 }
@@ -136,7 +136,7 @@ fn run_repl(args: Args) {
         match analyze_result {
             Ok(()) => {}
             Err(errs) => {
-                print_errors(errs);
+                print_analysis_errors(errs, lines);
                 continue;
             }
         }
@@ -157,10 +157,11 @@ fn run_repl(args: Args) {
     }
 }
 
-fn print_errors(errs: Vec<analysis::AnalysisError>) {
+fn print_analysis_errors(errs: Vec<Spanned<AnalysisError>>, lines: Lines) {
     println!("Errors while analyzing:");
     for err in errs {
-        println!("\t{}", err);
+        let location = lines.location(err.span.start).unwrap();
+        println!("\t{} (at {})", err.value, location);
     }
 }
 

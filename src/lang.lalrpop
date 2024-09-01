@@ -1,6 +1,6 @@
 use std::{str::FromStr,rc::Rc};
 use crate::ast;
-use crate::pos;
+use crate::pos::{Span, Spanned};
 use crate::ast::{Expr, Opcode, Statement, Block, AssignmentTarget, VarRef, LambdaExpr, MatchPattern, MatchExpr};
 use crate::parse_helpers::{
     parse_string_literal,
@@ -29,14 +29,14 @@ Statement: Statement = {
 
 StatementWithSemicolon: Statement = {
     <e:Sp<ExprWithoutBlock>> ";" => Statement::Expression(e),
-    <decl_type:DeclarationType> <name:Identifier> "=" <e:SpExpr> ";" =>
+    <decl_type:DeclarationType> <name:Sp<Identifier>> "=" <e:SpExpr> ";" =>
         process_declaration(name, decl_type, e),
-    "set" <target:AssignmentTarget> "=" <e:SpExpr> ";" =>
-        Statement::PatternAssignment(MatchPattern::Assignment(target), e),
-    "!" <pattern:MatchPattern> "=" <e:SpExpr> ";" =>
+    "set" <target:Sp<AssignmentTarget>> "=" <e:SpExpr> ";" =>
+        Statement::PatternAssignment(target.map(MatchPattern::Assignment), e),
+    "!" <pattern:Sp<MatchPattern>> "=" <e:SpExpr> ";" =>
         Statement::PatternAssignment(pattern, e),
     "return" <e:SpExpr> ";" => Statement::Return(e),
-    <span:Sp<"return">> ";" => Statement::Return(pos::Spanned::new(span.span, Expr::Nil)),
+    <span:Sp<"return">> ";" => Statement::Return(Spanned::new(span.span, Expr::Nil)),
 }
 
 Expr = {
@@ -138,7 +138,7 @@ MatchExpr: Expr =
     "match" <condition:SpExpr> "with" "{" <branches:CommaNonEmpty<MatchExprBranch>> "}" =>
         Expr::Match(Box::new(MatchExpr { condition, branches }));
 
-MatchExprBranch: (pos::Spanned<MatchPattern>, ast::SpannedExpr) =
+MatchExprBranch: (Spanned<MatchPattern>, ast::SpannedExpr) =
     <p:Sp<MatchPattern>> "=>" <e:SpExpr> => (p, e);
 
 BlockExpr: Block = {
@@ -170,7 +170,7 @@ StringLiteral: String = {
 }
 
 LambdaExpr: Expr = {
-    "{" <params:MatchPattern*> "->" <body:Sp<BlockBody>> "}" => Expr::Lambda(
+    "{" <params:Sp<MatchPattern>*> "->" <body:Sp<BlockBody>> "}" => Expr::Lambda(
         LambdaExpr::new(params, Rc::new(body.map(Expr::Block)))
     ),
     "{" "{" <body:Sp<BlockBody>> "}" "}" => make_implicit_lambda(body),
@@ -227,9 +227,9 @@ Tier<Op,NextTier>: Expr = {
     NextTier
 };
 
-Sp<Rule>: pos::Spanned<Rule> =
-    <l: @L> <rule: Rule> <r: @R> => pos::Spanned::new(
-        pos::Span::new(l, r),
+Sp<Rule>: Spanned<Rule> =
+    <l: @L> <rule: Rule> <r: @R> => Spanned::new(
+        Span::new(l, r),
         rule,
     );
 

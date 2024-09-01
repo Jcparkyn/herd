@@ -39,20 +39,21 @@ pub fn process_array_match(parts: Vec<(MatchPattern, bool)>) -> Result<MatchPatt
 }
 
 pub fn process_declaration(
-    name: String,
+    name: Spanned<String>,
     decl_type: DeclarationType,
     mut rhs: SpannedExpr,
 ) -> Statement {
     if let Expr::Lambda(lambda) = &mut rhs.value {
-        lambda.name = Some(name.clone());
+        lambda.name = Some(name.value.clone());
     }
-    return Statement::PatternAssignment(
-        MatchPattern::Declaration(VarRef::new(name), decl_type),
-        rhs,
-    );
+    let pattern = MatchPattern::Declaration(VarRef::new(name.value), decl_type);
+    return Statement::PatternAssignment(Spanned::new(name.span, pattern), rhs);
 }
 
 pub fn make_implicit_lambda(body: Spanned<Block>) -> Expr {
     let param = MatchPattern::Declaration(VarRef::new("_".to_string()), DeclarationType::Mutable);
-    Expr::Lambda(LambdaExpr::new(vec![param], Rc::new(body.map(Expr::Block))))
+    Expr::Lambda(LambdaExpr::new(
+        vec![Spanned::new(body.span, param)],
+        Rc::new(body.map(Expr::Block)),
+    ))
 }

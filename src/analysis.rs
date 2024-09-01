@@ -1,8 +1,11 @@
 use std::{collections::HashSet, fmt::Display, rc::Rc};
 
-use crate::ast::{
-    Block, BuiltInFunction, DeclarationType, Expr, MatchPattern, SpannedStatement, Statement,
-    VarRef,
+use crate::{
+    ast::{
+        Block, BuiltInFunction, DeclarationType, Expr, MatchPattern, SpannedExpr, SpannedStatement,
+        Statement, VarRef,
+    },
+    pos::{Span, Spanned},
 };
 
 pub enum AnalysisError {
@@ -10,6 +13,8 @@ pub enum AnalysisError {
     VariableNotDefined(String),
     AssignToConst(String),
 }
+
+type SpError = Spanned<AnalysisError>;
 
 use AnalysisError::*;
 
@@ -47,7 +52,7 @@ impl Analyzer {
     pub fn analyze_statements(
         &mut self,
         stmts: &mut [SpannedStatement],
-    ) -> Result<(), Vec<AnalysisError>> {
+    ) -> Result<(), Vec<SpError>> {
         let initial_var_count = self.var_analyzer.vars.len();
         // Make sure we don't drop any current globals
         let mut deps = HashSet::from_iter(self.var_analyzer.list_vars().cloned());
@@ -73,7 +78,7 @@ struct LocalVar {
 struct VariableAnalyzer {
     vars: Vec<LocalVar>,
     depth: usize,
-    errors: Vec<AnalysisError>,
+    errors: Vec<SpError>,
 }
 
 impl VariableAnalyzer {
@@ -98,6 +103,10 @@ impl VariableAnalyzer {
         });
     }
 
+    fn push_err(&mut self, err: AnalysisError, span: Span) {
+        self.errors.push(Spanned::new(span, err));
+    }
+
     fn analyze_stamements(&mut self, stmts: &mut [SpannedStatement]) {
         for stmt in stmts {
             self.analyze_statement(&mut stmt.value);
@@ -107,19 +116,19 @@ impl VariableAnalyzer {
     fn analyze_statement(&mut self, stmt: &mut Statement) {
         match stmt {
             Statement::PatternAssignment(pattern, rhs) => {
-                self.analyze_pattern(&mut pattern.value);
-                self.analyze_expr(&mut rhs.value);
+                self.analyze_pattern(&mut pattern.value, pattern.span);
+                self.analyze_expr(rhs);
             }
-            Statement::Expression(expr) => self.analyze_expr(&mut expr.value),
-            Statement::Return(expr) => self.analyze_expr(&mut expr.value),
+            Statement::Expression(expr) => self.analyze_expr(expr),
+            Statement::Return(expr) => self.analyze_expr(expr),
         }
     }
 
-    fn analyze_pattern(&mut self, pattern: &mut MatchPattern) {
+    fn analyze_pattern(&mut self, pattern: &mut MatchPattern, span: Span) {
         match pattern {
             MatchPattern::Declaration(var, decl_type) => {
                 if let Some(_) = self.get_slot(&var.name) {
-                    self.errors.push(VariableAlreadyDefined(var.name.clone()));
+                    self.push_err(VariableAlreadyDefined(var.name.clone()), span);
                 }
                 self.push_var(var, *decl_type == DeclarationType::Mutable);
             }
@@ -127,24 +136,23 @@ impl VariableAnalyzer {
                 if let Some(slot) = self.get_slot(&target.var.name) {
                     target.var.slot = slot;
                     if !self.vars[slot as usize].mutable {
-                        self.errors.push(AssignToConst(target.var.name.clone()));
+                        self.push_err(AssignToConst(target.var.name.clone()), span);
                     }
                 } else {
-                    self.errors
-                        .push(VariableNotDefined(target.var.name.clone()));
+                    self.push_err(VariableNotDefined(target.var.name.clone()), span);
                 }
                 for index in target.path.iter_mut() {
-                    self.analyze_expr(&mut index.value);
+                    self.analyze_expr(index);
                 }
             }
             MatchPattern::SimpleArray(parts) => {
                 for part in parts {
-                    self.analyze_pattern(part);
+                    self.analyze_pattern(part, span);
                 }
             }
             MatchPattern::SpreadArray(pattern) => {
                 for part in pattern.all_parts_mut() {
-                    self.analyze_pattern(part);
+                    self.analyze_pattern(part, span);
                 }
             }
             MatchPattern::Discard => {}
@@ -152,8 +160,9 @@ impl VariableAnalyzer {
         }
     }
 
-    fn analyze_expr(&mut self, expr: &mut Expr) {
-        match expr {
+    fn analyze_expr(&mut self, expr: &mut SpannedExpr) {
+        let span = expr.span;
+        match &mut expr.value {
             Expr::Number(_) => {}
             Expr::Bool(_) => {}
             Expr::String(_) => {}
@@ -162,7 +171,7 @@ impl VariableAnalyzer {
                 if let Some(var_slot) = self.get_slot(&v.name) {
                     v.slot = var_slot;
                 } else {
-                    self.errors.push(VariableNotDefined(v.name.clone()));
+                    self.push_err(VariableNotDefined(v.name.clone()), span);
                 }
             }
             Expr::If {
@@ -170,43 +179,43 @@ impl VariableAnalyzer {
                 then_branch,
                 else_branch,
             } => {
-                self.analyze_expr(&mut condition.value);
-                self.analyze_expr(&mut then_branch.value);
+                self.analyze_expr(condition);
+                self.analyze_expr(then_branch);
                 if let Some(else_branch) = else_branch {
-                    self.analyze_expr(&mut else_branch.value);
+                    self.analyze_expr(else_branch);
                 }
             }
             Expr::Match(m) => {
-                self.analyze_expr(&mut m.condition.value);
+                self.analyze_expr(&mut m.condition);
                 for (pattern, body) in m.branches.iter_mut() {
                     self.push_scope();
-                    self.analyze_pattern(&mut pattern.value);
-                    self.analyze_expr(&mut body.value);
+                    self.analyze_pattern(&mut pattern.value, span);
+                    self.analyze_expr(body);
                     self.pop_scope();
                 }
             }
             Expr::Op { op: _, lhs, rhs } => {
-                self.analyze_expr(&mut lhs.value);
-                self.analyze_expr(&mut rhs.value);
+                self.analyze_expr(lhs);
+                self.analyze_expr(rhs);
             }
             Expr::Block(b) => self.analyze_block(b),
             Expr::Call { callee, args } => {
                 for arg in args {
-                    self.analyze_expr(&mut arg.value);
+                    self.analyze_expr(arg);
                 }
-                self.analyze_expr(&mut callee.value);
+                self.analyze_expr(callee);
             }
             Expr::BuiltInFunction(_) => {}
             Expr::Lambda(l) => {
                 let mut lambda_analyzer = VariableAnalyzer::new();
                 for param in Rc::get_mut(&mut l.params).unwrap() {
-                    lambda_analyzer.analyze_pattern(&mut param.value)
+                    lambda_analyzer.analyze_pattern(&mut param.value, span)
                 }
                 for capture in &mut l.potential_captures {
                     if let Some(slot) = self.get_slot(&capture.name) {
                         capture.slot = slot;
                     } else {
-                        self.errors.push(VariableNotDefined(capture.name.clone()));
+                        self.push_err(VariableNotDefined(capture.name.clone()), span);
                     }
                     lambda_analyzer.vars.push(LocalVar {
                         name: capture.name.to_string(),
@@ -221,35 +230,35 @@ impl VariableAnalyzer {
                         mutable: false,
                     });
                 }
-                lambda_analyzer.analyze_expr(&mut Rc::get_mut(&mut l.body).unwrap().value);
+                lambda_analyzer.analyze_expr(&mut Rc::get_mut(&mut l.body).unwrap());
                 for err in lambda_analyzer.errors {
                     self.errors.push(err);
                 }
             }
             Expr::Dict(entries) => {
                 for (key, value) in entries {
-                    self.analyze_expr(&mut key.value);
-                    self.analyze_expr(&mut value.value);
+                    self.analyze_expr(key);
+                    self.analyze_expr(value);
                 }
             }
             Expr::Array(entries) => {
                 for entry in entries {
-                    self.analyze_expr(&mut entry.value);
+                    self.analyze_expr(entry);
                 }
             }
             Expr::GetIndex(lhs, index) => {
-                self.analyze_expr(&mut index.value);
-                self.analyze_expr(&mut lhs.value);
+                self.analyze_expr(index);
+                self.analyze_expr(lhs);
             }
             Expr::ForIn { iter, var, body } => {
-                self.analyze_expr(&mut iter.value);
+                self.analyze_expr(iter);
                 self.push_var(var, false);
                 self.analyze_block(body);
                 self.vars.pop();
             }
             Expr::While { condition, body } => {
-                self.analyze_expr(&mut condition.value);
-                self.analyze_expr(&mut body.value)
+                self.analyze_expr(condition);
+                self.analyze_expr(body)
             }
         }
     }
@@ -260,7 +269,7 @@ impl VariableAnalyzer {
             self.analyze_statement(&mut stmt.value);
         }
         if let Some(expr) = &mut block.expression {
-            self.analyze_expr(&mut expr.value);
+            self.analyze_expr(expr);
         }
         self.pop_scope();
     }
