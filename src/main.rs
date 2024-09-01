@@ -13,6 +13,7 @@ use rustyline::{
     Cmd, Completer, Config, Editor, EventHandler, Helper, Highlighter, Hinter, KeyCode, KeyEvent,
     Modifiers, Movement, Result,
 };
+use value::Callable;
 
 mod analysis;
 mod ast;
@@ -218,7 +219,16 @@ fn fmt_runtime_error(
         FunctionCallFailed { function, inner } => {
             fmt_runtime_error(f, &inner, lines, false)?;
             let inner_location = lines.location(inner.span.start).unwrap();
-            writeln!(f, "\tat {} ({})", function, inner_location)
+            write!(f, "\tat ")?;
+            match function {
+                Callable::Lambda(l) => writeln!(
+                    f,
+                    "{} ({})",
+                    l.self_name.as_deref().unwrap_or("<lambda>"),
+                    inner_location
+                ),
+                Callable::Builtin(b) => writeln!(f, "{} (built-in function)", b),
+            }
         }
     }?;
     if outer {
