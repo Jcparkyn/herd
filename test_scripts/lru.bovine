@@ -15,7 +15,7 @@ newLRU = { size -> [
   items: [:],
 ]};
 
-removeOldest = { lru ->
+removeOldest = { var lru ->
   if len lru.items == 0 then (
     return lru;
   )
@@ -28,7 +28,7 @@ removeOldest = { lru ->
   lru
 };
 
-get = { lru key ->
+get = { var lru key ->
   if len lru.items == 0 then (
     return [lru, nil];
   )
@@ -53,7 +53,7 @@ get = { lru key ->
   [lru, val.[0]]
 };
 
-put = { lru key value ->
+put = { var lru key value ->
   // empty LRU
   if len lru.items == 0 then (
     set lru.oldest = key;

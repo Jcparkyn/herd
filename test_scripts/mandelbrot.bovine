@@ -1,21 +1,20 @@
 
 mandelbrot = {size ->
-  sum = 0;
-  byteAcc = 0;
-  bitNum = 0;
-  y = 0;
-  while y < size do (
+  var sum = 0;
+  var byteAcc = 0;
+  var bitNum = 0;
+  for y in range 0 size do (
     ci = (2 * y / size) - 1;
-    x = 0;
-    while x < size do (
-      zrzr = 0;
-      zizi = 0;
-      zi = 0;
+    var x = 0;
+    for x in range 0 size do (
+      var zrzr = 0;
+      var zizi = 0;
+      var zi = 0;
       cr = (2.0 * x / size) - 1.5;
 
-      z = 0;
-      done = false;
-      escape = 0;
+      var z = 0;
+      var done = false;
+      var escape = 0;
       while not done and z < 50 do (
         zr = zrzr - zizi + cr;
         set zi = 2.0 * zr * zi + ci;
@@ -45,9 +44,7 @@ mandelbrot = {size ->
           set bitNum  = 0;
         )
       )
-      set x = x + 1;
     )
-    set y = y + 1;
   )
 
   return sum;
