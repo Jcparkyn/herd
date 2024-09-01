@@ -60,15 +60,6 @@ impl<T> SpannableResult<T> for IResult<T> {
     }
 }
 
-fn spanify<T>(result: IResult<T>, span: &Span) -> SpannedResult<T> {
-    result.map_err(|e| Spanned::new(*span, e))
-}
-
-// TODO remove usages of this
-fn unspanify<T>(result: SpannedResult<T>) -> IResult<T> {
-    result.map_err(|Spanned { value, span: _ }| value)
-}
-
 impl InterpreterError {
     fn with_span(self, span: &Span) -> Spanned<InterpreterError> {
         Spanned::new(*span, self)
@@ -235,7 +226,8 @@ impl Interpreter {
         match &statement.value {
             Statement::PatternAssignment(pattern, expr) => {
                 let value = self.eval(&expr)?;
-                spanify(self.match_pattern(pattern, value), span)?;
+                self.match_pattern(&pattern.value, value)
+                    .with_span(&pattern.span)?;
                 Ok(())
             }
             Statement::Expression(expr) => {
@@ -637,8 +629,8 @@ impl Interpreter {
         for param_idx in (0..arg_count).rev() {
             let arg = self.arg_stack.pop().unwrap();
             let pattern = &function.params[param_idx];
-            self.match_pattern(pattern, arg)
-                .with_span(&function.body.span)?;
+            self.match_pattern(&pattern.value, arg)
+                .with_span(&pattern.span)?;
         }
         for val in &function.closure {
             self.environment.slots.push(val.clone());
@@ -848,7 +840,9 @@ impl Interpreter {
     fn assign(&mut self, target: &AssignmentTarget, value: Value) -> Result<(), InterpreterError> {
         let mut path_values = vec![];
         for index in &target.path {
-            let value = unspanify(self.eval(index))?;
+            let result = self.eval(index);
+            // Ignore the span, we'll use the one from the whole pattern for simplicity
+            let value = result.map_err(|s| s.value)?;
             path_values.push(value);
         }
         self.environment

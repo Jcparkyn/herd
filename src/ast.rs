@@ -142,6 +142,8 @@ pub enum MatchPattern {
     Constant(MatchConstant),
 }
 
+type SpannedPattern = Spanned<MatchPattern>;
+
 #[derive(PartialEq, Debug)]
 pub enum MatchConstant {
     Number(f64),
@@ -163,7 +165,7 @@ impl Display for MatchConstant {
 
 #[derive(PartialEq, Debug)]
 pub enum Statement {
-    PatternAssignment(MatchPattern, SpannedExpr),
+    PatternAssignment(SpannedPattern, SpannedExpr),
     Expression(SpannedExpr),
     Return(SpannedExpr),
 }
@@ -202,14 +204,14 @@ impl Debug for VarRef {
 
 #[derive(PartialEq, Debug)]
 pub struct LambdaExpr {
-    pub params: Rc<Vec<MatchPattern>>,
+    pub params: Rc<Vec<SpannedPattern>>,
     pub body: Rc<SpannedExpr>,
     pub potential_captures: Vec<VarRef>,
     pub name: Option<String>,
 }
 
 impl LambdaExpr {
-    pub fn new(params: Vec<MatchPattern>, body: Rc<SpannedExpr>) -> LambdaExpr {
+    pub fn new(params: Vec<SpannedPattern>, body: Rc<SpannedExpr>) -> LambdaExpr {
         LambdaExpr {
             params: Rc::new(params),
             body,
@@ -222,7 +224,7 @@ impl LambdaExpr {
 #[derive(PartialEq, Debug)]
 pub struct MatchExpr {
     pub condition: SpannedExpr,
-    pub branches: Vec<(Spanned<MatchPattern>, SpannedExpr)>,
+    pub branches: Vec<(SpannedPattern, SpannedExpr)>,
 }
 
 #[derive(PartialEq)]

@@ -107,7 +107,7 @@ impl VariableAnalyzer {
     fn analyze_statement(&mut self, stmt: &mut Statement) {
         match stmt {
             Statement::PatternAssignment(pattern, rhs) => {
-                self.analyze_pattern(pattern);
+                self.analyze_pattern(&mut pattern.value);
                 self.analyze_expr(&mut rhs.value);
             }
             Statement::Expression(expr) => self.analyze_expr(&mut expr.value),
@@ -200,11 +200,7 @@ impl VariableAnalyzer {
             Expr::Lambda(l) => {
                 let mut lambda_analyzer = VariableAnalyzer::new();
                 for param in Rc::get_mut(&mut l.params).unwrap() {
-                    // lambda_analyzer.vars.push(LocalVar {
-                    //     name: param.to_string(),
-                    //     depth: 0,
-                    // });
-                    lambda_analyzer.analyze_pattern(param)
+                    lambda_analyzer.analyze_pattern(&mut param.value)
                 }
                 for capture in &mut l.potential_captures {
                     if let Some(slot) = self.get_slot(&capture.name) {
@@ -297,7 +293,7 @@ fn analyze_statements_liveness(stmts: &mut [SpannedStatement], deps: &mut HashSe
 fn analyze_statement_liveness(stmt: &mut Statement, deps: &mut HashSet<String>) {
     match stmt {
         Statement::PatternAssignment(pattern, rhs) => {
-            analyze_pattern_liveness(pattern, deps);
+            analyze_pattern_liveness(&mut pattern.value, deps);
             analyze_expr_liveness(&mut rhs.value, deps)
         }
         Statement::Expression(expr) => {
@@ -411,7 +407,7 @@ fn analyze_expr_liveness(expr: &mut Expr, deps: &mut HashSet<String>) {
             let mut lambda_deps = HashSet::new();
             analyze_expr_liveness(&mut mut_body.value, &mut lambda_deps);
             for pattern in Rc::get_mut(&mut l.params).unwrap().iter_mut().rev() {
-                analyze_pattern_liveness(pattern, &mut lambda_deps)
+                analyze_pattern_liveness(&mut pattern.value, &mut lambda_deps)
             }
             if let Some(name) = &l.name {
                 lambda_deps.remove(name);
