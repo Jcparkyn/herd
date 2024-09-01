@@ -1,6 +1,6 @@
 (
   x = [:];
-  y = x;
+  var y = x;
   set y.a = 'a';
   print x;
   print y;
@@ -11,17 +11,24 @@
     status: [ dispatched: false ],
     name: 'ignored',
   ];
-  order2 = order1;
+  var order2 = order1;
   set order2.status.dispatched = true;
 
-  dispatch = { order ->
+  dispatch = { var order ->
     set order.status.dispatched = true;
     set order.status.dispatched_at = '2024-07-20';
     order
   };
   order3 = dispatch order1;
 
+  order4 = order1 | {{
+    set _.status.dispatched = true;
+    set _.status.dispatched_at = '2024-07-20';
+    _
+  }};
+
   print order1;
   print order2;
   print order3;
+  print order4;
 );

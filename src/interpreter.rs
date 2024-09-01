@@ -709,7 +709,7 @@ impl Interpreter {
         }
         match pattern {
             MatchPattern::Discard => Ok(()),
-            MatchPattern::Declaration(var) => {
+            MatchPattern::Declaration(var, _) => {
                 self.environment.set(var.slot, to_value_array(values));
                 Ok(())
             }
@@ -741,7 +741,7 @@ impl Interpreter {
     fn match_pattern(&mut self, pattern: &MatchPattern, value: Value) -> IResult<()> {
         match pattern {
             MatchPattern::Discard => Ok(()),
-            MatchPattern::Declaration(var) => {
+            MatchPattern::Declaration(var, _) => {
                 self.environment.set(var.slot, value);
                 Ok(())
             }
@@ -800,7 +800,7 @@ impl Interpreter {
         fn matches_array_spread(pattern: &MatchPattern, values: &[Value]) -> bool {
             match pattern {
                 MatchPattern::Discard => true,
-                MatchPattern::Declaration(_) => true,
+                MatchPattern::Declaration(_, _) => true,
                 MatchPattern::Assignment(_) => true,
                 MatchPattern::SimpleArray(parts) => matches_slice(parts, values),
                 MatchPattern::SpreadArray(pattern) => matches_spread_array(pattern, values),
@@ -821,7 +821,7 @@ impl Interpreter {
 
         match pattern {
             MatchPattern::Discard => true,
-            MatchPattern::Declaration(_) => true,
+            MatchPattern::Declaration(_, _) => true,
             MatchPattern::Assignment(_) => true,
             MatchPattern::SimpleArray(parts) => match value {
                 Value::Array(a) => matches_slice(parts, &a.values),

@@ -2,7 +2,8 @@ use std::rc::Rc;
 
 use crate::{
     ast::{
-        Block, Expr, LambdaExpr, MatchPattern, SpannedExpr, SpreadArrayPattern, Statement, VarRef,
+        Block, DeclarationType, Expr, LambdaExpr, MatchPattern, SpannedExpr, SpreadArrayPattern,
+        Statement, VarRef,
     },
     pos::Spanned,
 };
@@ -37,14 +38,21 @@ pub fn process_array_match(parts: Vec<(MatchPattern, bool)>) -> Result<MatchPatt
     }
 }
 
-pub fn process_declaration(name: String, mut rhs: SpannedExpr) -> Statement {
+pub fn process_declaration(
+    name: String,
+    decl_type: DeclarationType,
+    mut rhs: SpannedExpr,
+) -> Statement {
     if let Expr::Lambda(lambda) = &mut rhs.value {
         lambda.name = Some(name.clone());
     }
-    return Statement::PatternAssignment(MatchPattern::Declaration(VarRef::new(name)), rhs);
+    return Statement::PatternAssignment(
+        MatchPattern::Declaration(VarRef::new(name), decl_type),
+        rhs,
+    );
 }
 
 pub fn make_implicit_lambda(body: Spanned<Block>) -> Expr {
-    let param = MatchPattern::Declaration(VarRef::new("_".to_string()));
+    let param = MatchPattern::Declaration(VarRef::new("_".to_string()), DeclarationType::Mutable);
     Expr::Lambda(LambdaExpr::new(vec![param], Rc::new(body.map(Expr::Block))))
 }

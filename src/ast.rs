@@ -127,10 +127,16 @@ impl SpreadArrayPattern {
 }
 
 #[derive(PartialEq, Debug)]
+pub enum DeclarationType {
+    Const,
+    Mutable,
+}
+
+#[derive(PartialEq, Debug)]
 pub enum MatchPattern {
     SimpleArray(Vec<MatchPattern>),
     SpreadArray(SpreadArrayPattern),
-    Declaration(VarRef),
+    Declaration(VarRef, DeclarationType),
     Assignment(AssignmentTarget),
     Discard,
     Constant(MatchConstant),

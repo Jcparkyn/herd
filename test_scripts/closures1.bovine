@@ -1,4 +1,4 @@
-a = 'global';
+var a = 'global';
 (
   showA = { x -> print a };
   showA 0;

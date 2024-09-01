@@ -29,7 +29,8 @@ Statement: Statement = {
 
 StatementWithSemicolon: Statement = {
     <e:Sp<ExprWithoutBlock>> ";" => Statement::Expression(e),
-    <name:Identifier> "=" <e:SpExpr> ";" => process_declaration(name, e),
+    <decl_type:DeclarationType> <name:Identifier> "=" <e:SpExpr> ";" =>
+        process_declaration(name, decl_type, e),
     "set" <target:AssignmentTarget> "=" <e:SpExpr> ";" =>
         Statement::PatternAssignment(MatchPattern::Assignment(target), e),
     "!" <pattern:MatchPattern> "=" <e:SpExpr> ";" =>
@@ -99,11 +100,11 @@ AssignmentTarget: AssignmentTarget = {
 }
 
 MatchPattern: MatchPattern = {
-    <var:Identifier> => {
+    <decl_type:DeclarationType> <var:Identifier> => {
         if var == "_" {
             MatchPattern::Discard
         } else {
-            MatchPattern::Declaration(VarRef::new(var))
+            MatchPattern::Declaration(VarRef::new(var), decl_type)
         }
     },
     "set" <target:AssignmentTarget> => MatchPattern::Assignment(target),
@@ -112,6 +113,12 @@ MatchPattern: MatchPattern = {
     BoolLiteral => MatchPattern::Constant(ast::MatchConstant::Bool(<>)),
     StringLiteral => MatchPattern::Constant(ast::MatchConstant::String(<>)),
     "nil" => MatchPattern::Constant(ast::MatchConstant::Nil),
+}
+
+#[inline]
+DeclarationType: ast::DeclarationType = {
+    "var" => ast::DeclarationType::Mutable,
+    () => ast::DeclarationType::Const,
 }
 
 MatchArrayPart: (MatchPattern, bool) = {

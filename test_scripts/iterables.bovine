@@ -6,8 +6,8 @@ iterRange = { start stop -> [
 ]};
 
 iterToArray = { iter ->
-  arr = [];
-  state = iter.init;
+  var arr = [];
+  var state = iter.init;
   getCurrent = iter.current;
   getNext = iter.next;
   for _ in range 0 20 do (
@@ -20,9 +20,9 @@ iterToArray = { iter ->
   return arr;
 };
 
-iterStep = { iter n ->
+iterStep = { var iter n ->
   next = iter.next;
-  set iter.next = {state ->
+  set iter.next = { var state ->
     for _ in range 0 n do (
       set state = next state;
       if state == nil then (
@@ -34,7 +34,7 @@ iterStep = { iter n ->
   iter
 };
 
-iterMap = { iter f ->
+iterMap = { var iter f ->
   getCurrent = iter.current;
   set iter.current = {state -> f (getCurrent state)};
   iter
@@ -44,8 +44,8 @@ iterRepeat = { iter iterations ->
   [
     init: [1, iter.init],
     current: {[_, i] -> iter.current i},
-    next: { state ->
-      ![iteration, innerState] = state;
+    next: { var state ->
+      ![iteration, var innerState] = state;
       set innerState = iter.next innerState;
       if innerState == nil then (
         if iteration < iterations then (

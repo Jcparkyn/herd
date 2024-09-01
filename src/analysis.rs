@@ -1,10 +1,14 @@
 use std::{collections::HashSet, fmt::Display, rc::Rc};
 
-use crate::ast::{Block, BuiltInFunction, Expr, MatchPattern, SpannedStatement, Statement, VarRef};
+use crate::ast::{
+    Block, BuiltInFunction, DeclarationType, Expr, MatchPattern, SpannedStatement, Statement,
+    VarRef,
+};
 
 pub enum AnalysisError {
     VariableAlreadyDefined(String),
     VariableNotDefined(String),
+    AssignToConst(String),
 }
 
 use AnalysisError::*;
@@ -17,6 +21,13 @@ impl Display for AnalysisError {
             }
             VariableNotDefined(name) => {
                 write!(f, "Variable {} is not defined", name)
+            }
+            AssignToConst(name) => {
+                write!(
+                    f,
+                    "Cannot modify variable \"{}\", because it's a constant. Try declaring it with \"var\" to make it mutable (e.g. var {} = ...).",
+                    name, name
+                )
             }
         }
     }
@@ -56,6 +67,7 @@ impl Analyzer {
 struct LocalVar {
     name: String,
     depth: usize,
+    mutable: bool,
 }
 
 struct VariableAnalyzer {
@@ -77,11 +89,12 @@ impl VariableAnalyzer {
         self.vars.iter().map(|v| &v.name)
     }
 
-    fn push_var(&mut self, var: &mut VarRef) {
+    fn push_var(&mut self, var: &mut VarRef, mutable: bool) {
         var.slot = self.vars.len() as u32;
         self.vars.push(LocalVar {
             name: var.name.clone(),
             depth: self.depth,
+            mutable,
         });
     }
 
@@ -104,15 +117,18 @@ impl VariableAnalyzer {
 
     fn analyze_pattern(&mut self, pattern: &mut MatchPattern) {
         match pattern {
-            MatchPattern::Declaration(var) => {
+            MatchPattern::Declaration(var, decl_type) => {
                 if let Some(_) = self.get_slot(&var.name) {
                     self.errors.push(VariableAlreadyDefined(var.name.clone()));
                 }
-                self.push_var(var);
+                self.push_var(var, *decl_type == DeclarationType::Mutable);
             }
             MatchPattern::Assignment(target) => {
                 if let Some(slot) = self.get_slot(&target.var.name) {
                     target.var.slot = slot;
+                    if !self.vars[slot as usize].mutable {
+                        self.errors.push(AssignToConst(target.var.name.clone()));
+                    }
                 } else {
                     self.errors
                         .push(VariableNotDefined(target.var.name.clone()));
@@ -199,12 +215,14 @@ impl VariableAnalyzer {
                     lambda_analyzer.vars.push(LocalVar {
                         name: capture.name.to_string(),
                         depth: 0,
+                        mutable: false,
                     });
                 }
                 if let Some(name) = &l.name {
                     lambda_analyzer.vars.push(LocalVar {
                         name: name.to_string(),
                         depth: 0,
+                        mutable: false,
                     });
                 }
                 lambda_analyzer.analyze_expr(&mut Rc::get_mut(&mut l.body).unwrap().value);
@@ -229,7 +247,7 @@ impl VariableAnalyzer {
             }
             Expr::ForIn { iter, var, body } => {
                 self.analyze_expr(&mut iter.value);
-                self.push_var(var);
+                self.push_var(var, false);
                 self.analyze_block(body);
                 self.vars.pop();
             }
@@ -291,7 +309,7 @@ fn analyze_statement_liveness(stmt: &mut Statement, deps: &mut HashSet<String>) 
 
 fn analyze_pattern_liveness(pattern: &mut MatchPattern, deps: &mut HashSet<String>) {
     match pattern {
-        MatchPattern::Declaration(var) => {
+        MatchPattern::Declaration(var, _) => {
             deps.remove(&var.name);
         }
         MatchPattern::Assignment(target) => {

@@ -26,7 +26,7 @@ main = { n ->
   mmd = maxDepth + minDepth;
   for d in range minDepth stretchDepth do (
     i = shiftLeft 1 (mmd - d);
-    cs = 0;
+    var cs = 0;
     for ignored in range 0 i do (
       set cs = cs + (makeCheck d);
     )
