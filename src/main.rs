@@ -22,6 +22,7 @@ mod lines;
 mod parse_helpers;
 mod pos;
 mod value;
+mod value64;
 
 lalrpop_mod!(
     #[allow(clippy::ptr_arg)]
