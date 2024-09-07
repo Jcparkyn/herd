@@ -252,7 +252,7 @@ impl VariableAnalyzer {
             }
             Expr::ForIn { iter, var, body } => {
                 self.analyze_expr(iter);
-                self.push_var(var, false);
+                self.analyze_pattern(&mut var.value, span);
                 self.analyze_block(body);
                 self.vars.pop();
             }
@@ -447,7 +447,7 @@ fn analyze_expr_liveness(expr: &mut Expr, deps: &mut HashSet<String>) {
             let mut deps_last_loop = deps.clone();
             analyze_block_liveness(body, &mut deps_last_loop);
             let mut deps_other_loops = deps_last_loop.clone();
-            deps_other_loops.remove(&var.name); // var can't persist between loops.
+            analyze_pattern_liveness(&mut var.value, &mut deps_other_loops); // var can't persist between loops.
             analyze_block_liveness(body, &mut deps_other_loops);
             // final dependency set is union of 0 loops, 1 loop, and >1 loops.
             for dep in deps_last_loop {
@@ -457,7 +457,7 @@ fn analyze_expr_liveness(expr: &mut Expr, deps: &mut HashSet<String>) {
                 deps.insert(dep);
             }
             analyze_expr_liveness(&mut iter.value, deps);
-            deps.remove(&var.name);
+            analyze_pattern_liveness(&mut var.value, deps);
         }
         Expr::While { condition, body } => {
             // TODO: check this logic

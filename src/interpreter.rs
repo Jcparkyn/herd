@@ -378,7 +378,8 @@ impl Interpreter {
                 match iter_value {
                     Value::Array(a) => {
                         for v in a.values.iter() {
-                            self.environment.set(var.slot, v.clone());
+                            self.match_pattern(&var.value, v.clone())
+                                .with_span(&var.span)?;
                             self.eval_block(body)?;
                         }
                         Ok(NIL)

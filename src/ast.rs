@@ -257,7 +257,7 @@ pub enum Expr {
     GetIndex(Box<SpannedExpr>, Box<SpannedExpr>),
     ForIn {
         iter: Box<SpannedExpr>,
-        var: VarRef,
+        var: SpannedPattern,
         body: Block,
     },
     While {
