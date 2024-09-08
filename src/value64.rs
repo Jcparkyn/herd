@@ -1,15 +1,22 @@
 #![allow(dead_code)]
 
-use std::rc::Rc;
+use std::{
+    fmt::{Debug, Display},
+    rc::Rc,
+};
 
-use crate::value::{ArrayInstance, DictInstance, Value as FatValue};
+use crate::{
+    ast::{BuiltInFunction, MatchPattern, SpannedExpr},
+    pos::Spanned,
+    value::{ArrayInstance, DictInstance, Value as FatValue},
+};
 
 #[derive(PartialEq, Debug, Clone, Copy)]
 enum PointerTag {
     String,
     Dict,
     Array,
-    // Lambda,
+    Lambda,
 }
 
 const fn pointer_mask(tag: PointerTag) -> u64 {
@@ -29,7 +36,7 @@ const fn try_get_ptr_tag(value: u64) -> Option<PointerTag> {
         0 => Some(PointerTag::String),
         1 => Some(PointerTag::Dict),
         2 => Some(PointerTag::Array),
-        // 3 => Some(PointerTag::Lambda),
+        3 => Some(PointerTag::Lambda),
         _ => unreachable!(),
     };
 }
@@ -40,6 +47,10 @@ const fn is_ptr(value: u64) -> bool {
 
 const fn is_ptr_type(value: u64, tag: PointerTag) -> bool {
     (value & NANISH_MASK) == pointer_mask(tag)
+}
+
+const fn is_safe_addr(ptr: u64) -> bool {
+    (ptr & TAG_MASK) == 0
 }
 
 const QNAN: u64 = 0x7FF8000000000000;
@@ -105,6 +116,27 @@ impl Value64 {
     //         }
     //     }
     // }
+
+    pub fn truthy(&self) -> bool {
+        // TODO
+        match try_get_ptr_tag(self.bits) {
+            Some(PointerTag::String) => true,
+            Some(PointerTag::Dict) => true,
+            Some(PointerTag::Array) => true,
+            Some(PointerTag::Lambda) => true,
+            None => {
+                if self.bits == TRUE_VALUE {
+                    true
+                } else if self.bits == FALSE_VALUE {
+                    false
+                } else if self.bits == NIL_VALUE {
+                    false
+                } else {
+                    self.as_f64().unwrap() != 0.0
+                }
+            }
+        }
+    }
 
     // FLOATS
 
@@ -193,10 +225,51 @@ impl Value64 {
     pub fn try_into_array(self) -> Option<Rc<ArrayInstance>> {
         unsafe { self.into_rc(PointerTag::Array) }
     }
+
+    // LAMBDAS
+
+    pub fn from_lambda(value: Rc<LambdaFunction>) -> Self {
+        let ptr = Rc::into_raw(value);
+        Self::from_ptr(ptr, PointerTag::Lambda)
+    }
 }
 
-const fn is_safe_addr(ptr: u64) -> bool {
-    (ptr & TAG_MASK) == 0
+impl PartialEq for Value64 {
+    fn eq(&self, other: &Self) -> bool {
+        // TODO value equality, etc
+        self.bits == other.bits
+    }
+}
+
+impl Debug for Value64 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Value64").field("bits", &self.bits).finish()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum Callable {
+    Lambda(Rc<LambdaFunction>),
+    Builtin(BuiltInFunction),
+}
+
+#[derive(PartialEq, Debug)]
+pub struct LambdaFunction {
+    pub params: Rc<Vec<Spanned<MatchPattern>>>,
+    pub body: Rc<SpannedExpr>,
+    pub closure: Vec<Value64>,
+    pub self_name: Option<String>,
+    pub recursive: bool,
+}
+
+impl Display for LambdaFunction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(self_name) = &self.self_name {
+            write!(f, "<lambda: {}>", self_name)
+        } else {
+            write!(f, "<lambda>")
+        }
+    }
 }
 
 #[cfg(test)]
