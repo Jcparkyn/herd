@@ -2,14 +2,14 @@
 
 use std::rc::Rc;
 
-use crate::value::ArrayInstance;
+use crate::value::{ArrayInstance, DictInstance, Value as FatValue};
 
 #[derive(PartialEq, Debug, Clone, Copy)]
 enum PointerTag {
     String,
-    Lambda,
     Dict,
     Array,
+    // Lambda,
 }
 
 const fn pointer_mask(tag: PointerTag) -> u64 {
@@ -19,6 +19,27 @@ const fn pointer_mask(tag: PointerTag) -> u64 {
 const fn extract_ptr<T>(value: u64) -> *const T {
     assert!((value & 0xFFFC000000000000) == 0xFFFC000000000000);
     (value & 0x0000FFFFFFFFFFFF) as usize as *const T
+}
+
+const fn try_get_ptr_tag(value: u64) -> Option<PointerTag> {
+    if is_ptr(value) {
+        return None;
+    }
+    return match (value >> 48) & 0b11 {
+        0 => Some(PointerTag::String),
+        1 => Some(PointerTag::Dict),
+        2 => Some(PointerTag::Array),
+        // 3 => Some(PointerTag::Lambda),
+        _ => unreachable!(),
+    };
+}
+
+const fn is_ptr(value: u64) -> bool {
+    (value & 0xFFFC000000000000) == 0xFFFC000000000000
+}
+
+const fn is_ptr_type(value: u64, tag: PointerTag) -> bool {
+    (value & NANISH_MASK) == pointer_mask(tag)
 }
 
 const QNAN: u64 = 0x7FF8000000000000;
@@ -32,29 +53,17 @@ const BOOL_MASK: u64 = 0x7FFE000000000002;
 const TAG_MASK: u64 = 0xFFFF000000000000;
 const REF_TAG: u64 = 0x7FFA000000000000;
 
-const TRUE_VALUE: u64 = BOOL_MASK | 3;
-const FALSE_VALUE: u64 = BOOL_MASK | 2;
-
-// #[derive(PartialEq, Debug)]
-// pub enum RefValue {
-//     String(String),
-//     Lambda(LambdaFunction),
-//     Dict(DictInstance),
-//     Array(ArrayInstance),
-//     // Nil,
-// }
-
-// pub enum InlineValue {
-//     Nil,
-//     Builtin(BuiltInFunction),
-//     Bool(bool),
-// }
+const TRUE_VALUE: u64 = 0x7FFE000000000003;
+const FALSE_VALUE: u64 = 0x7FFE000000000002;
+const NIL_VALUE: u64 = 0x7FFC000000000000;
 
 pub struct Value64 {
     bits: u64,
 }
 
 impl Value64 {
+    const NIL: Value64 = Value64::from_bits(NIL_VALUE);
+
     const fn from_bits(bits: u64) -> Self {
         Value64 { bits }
     }
@@ -68,6 +77,34 @@ impl Value64 {
         assert!(is_safe_addr(addr));
         Self::from_bits(addr | pointer_mask(tag))
     }
+
+    unsafe fn into_rc<T>(self, tag: PointerTag) -> Option<Rc<T>> {
+        if is_ptr_type(self.bits, tag) {
+            let ptr = extract_ptr::<T>(self.bits);
+            unsafe { Some(Rc::from_raw(ptr)) }
+        } else {
+            None
+        }
+    }
+
+    // fn into_fat_value(self) -> FatValue {
+    //     match try_get_ptr_tag(self.bits) {
+    //         Some(PointerTag::String) => FatValue::String(self.try_into_string().unwrap()),
+    //         Some(PointerTag::Dict) => FatValue::Dict(self.try_into_dict().unwrap()),
+    //         Some(PointerTag::Array) => FatValue::Array(self.try_into_array().unwrap()),
+    //         None => {
+    //             if self.bits == TRUE_VALUE {
+    //                 FatValue::Bool(true)
+    //             } else if self.bits == FALSE_VALUE {
+    //                 FatValue::Bool(false)
+    //             } else if self.bits == NIL_VALUE {
+    //                 FatValue::Nil
+    //             } else {
+    //                 FatValue::Number(self.as_f64().unwrap())
+    //             }
+    //         }
+    //     }
+    // }
 
     // FLOATS
 
@@ -112,6 +149,36 @@ impl Value64 {
         }
     }
 
+    // STRINGS
+
+    pub fn from_string(value: Rc<String>) -> Self {
+        let ptr = Rc::into_raw(value);
+        Self::from_ptr(ptr, PointerTag::String)
+    }
+
+    pub const fn is_string(&self) -> bool {
+        is_ptr_type(self.bits, PointerTag::String)
+    }
+
+    pub fn try_into_string(self) -> Option<Rc<String>> {
+        unsafe { self.into_rc(PointerTag::String) }
+    }
+
+    // DICTS
+
+    pub fn from_dict(value: Rc<DictInstance>) -> Self {
+        let ptr = Rc::into_raw(value);
+        Self::from_ptr(ptr, PointerTag::Dict)
+    }
+
+    pub const fn is_dict(&self) -> bool {
+        is_ptr_type(self.bits, PointerTag::Dict)
+    }
+
+    pub fn try_into_dict(self) -> Option<Rc<DictInstance>> {
+        unsafe { self.into_rc(PointerTag::Dict) }
+    }
+
     // ARRAYS
 
     pub fn from_array(value: Rc<ArrayInstance>) -> Self {
@@ -120,16 +187,11 @@ impl Value64 {
     }
 
     pub const fn is_array(&self) -> bool {
-        (self.bits & NANISH_MASK) == ARRAY_MASK
+        is_ptr_type(self.bits, PointerTag::Array)
     }
 
-    pub fn into_array(self) -> Option<Rc<ArrayInstance>> {
-        if self.is_array() {
-            let ptr = extract_ptr::<ArrayInstance>(self.bits);
-            unsafe { Some(Rc::from_raw(ptr)) }
-        } else {
-            None
-        }
+    pub fn try_into_array(self) -> Option<Rc<ArrayInstance>> {
+        unsafe { self.into_rc(PointerTag::Array) }
     }
 }
 
@@ -139,6 +201,8 @@ const fn is_safe_addr(ptr: u64) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use super::*;
 
     #[test]
@@ -169,12 +233,43 @@ mod tests {
     }
 
     #[test]
+    fn dict_round_trip() {
+        let mut dict_values = HashMap::new();
+        dict_values.insert(
+            FatValue::String(Rc::new("a".to_string())),
+            FatValue::Number(1.0),
+        );
+        let dict = Rc::new(DictInstance {
+            values: dict_values,
+        });
+        let val = Value64::from_dict(dict.clone());
+        assert!(val.is_dict());
+        assert!(val.is_ptr());
+        let dict2 = val.try_into_dict();
+        assert_eq!(dict2, Some(dict));
+    }
+
+    #[test]
     fn array_round_trip() {
-        let arr = Rc::new(ArrayInstance::new(vec![]));
+        let arr = Rc::new(ArrayInstance::new(vec![
+            FatValue::Nil,
+            FatValue::Bool(true),
+            FatValue::Number(1.0),
+        ]));
         let val = Value64::from_array(arr.clone());
         assert!(val.is_array());
         assert!(val.is_ptr());
-        let arr2 = val.into_array();
+        let arr2 = val.try_into_array();
         assert_eq!(arr2, Some(arr));
+    }
+
+    #[test]
+    fn string_round_trip() {
+        let s = Rc::new("test".to_string());
+        let val = Value64::from_string(s.clone());
+        assert!(val.is_string());
+        assert!(val.is_ptr());
+        let s2 = val.try_into_string();
+        assert_eq!(s2, Some(s));
     }
 }
