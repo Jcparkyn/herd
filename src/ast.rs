@@ -26,7 +26,7 @@ pub enum BuiltInFunction {
     XOR,
     #[strum(serialize = "floor")]
     Floor,
-    // arrays
+    // lists
     #[strum(serialize = "range")]
     Range,
     #[strum(serialize = "push")]
@@ -83,13 +83,13 @@ pub struct AssignmentTarget {
 }
 
 #[derive(PartialEq, Debug)]
-pub struct SpreadArrayPattern {
+pub struct SpreadListPattern {
     pub before: Vec<MatchPattern>,
     pub spread: Box<MatchPattern>,
     pub after: Vec<MatchPattern>,
 }
 
-impl SpreadArrayPattern {
+impl SpreadListPattern {
     pub fn all_parts_mut(&mut self) -> impl Iterator<Item = &mut MatchPattern> {
         self.before
             .iter_mut()
@@ -110,8 +110,8 @@ pub enum DeclarationType {
 
 #[derive(PartialEq, Debug)]
 pub enum MatchPattern {
-    SimpleArray(Vec<MatchPattern>),
-    SpreadArray(SpreadArrayPattern),
+    SimpleList(Vec<MatchPattern>),
+    SpreadList(SpreadListPattern),
     Declaration(VarRef, DeclarationType),
     Assignment(AssignmentTarget),
     Discard,
@@ -229,7 +229,7 @@ pub enum Expr {
     BuiltInFunction(BuiltInFunction),
     Lambda(LambdaExpr),
     Dict(Vec<(SpannedExpr, SpannedExpr)>),
-    Array(Vec<SpannedExpr>),
+    List(Vec<SpannedExpr>),
     GetIndex(Box<SpannedExpr>, Box<SpannedExpr>),
     ForIn {
         iter: Box<SpannedExpr>,
@@ -295,8 +295,8 @@ impl Debug for Expr {
                 f.write_str("Dict")?;
                 f.debug_list().entries(entries.iter()).finish()
             }
-            Expr::Array(elements) => {
-                f.write_str("Array")?;
+            Expr::List(elements) => {
+                f.write_str("List")?;
                 f.debug_list().entries(elements.iter()).finish()
             }
             Expr::GetIndex(lhs, index) => write!(f, "GetIndex({:?}, {:?})", lhs, index),

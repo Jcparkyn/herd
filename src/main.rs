@@ -203,12 +203,12 @@ fn fmt_runtime_error(
     match &err.value {
         KeyNotExists(name) => writeln!(f, "Field {} doesn't exist", name),
         IndexOutOfRange {
-            array_len,
+            list_len,
             accessed,
         } => writeln!(
             f,
-            "Cant access index {} of an array with {} elements",
-            accessed, array_len
+            "Cant access index {} of an list with {} elements",
+            accessed, list_len
         ),
         WrongArgumentCount { expected, supplied } => writeln!(
             f,

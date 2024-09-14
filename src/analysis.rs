@@ -145,12 +145,12 @@ impl VariableAnalyzer {
                     self.analyze_expr(index);
                 }
             }
-            MatchPattern::SimpleArray(parts) => {
+            MatchPattern::SimpleList(parts) => {
                 for part in parts {
                     self.analyze_pattern(part, span);
                 }
             }
-            MatchPattern::SpreadArray(pattern) => {
+            MatchPattern::SpreadList(pattern) => {
                 for part in pattern.all_parts_mut() {
                     self.analyze_pattern(part, span);
                 }
@@ -241,7 +241,7 @@ impl VariableAnalyzer {
                     self.analyze_expr(value);
                 }
             }
-            Expr::Array(entries) => {
+            Expr::List(entries) => {
                 for entry in entries {
                     self.analyze_expr(entry);
                 }
@@ -326,12 +326,12 @@ fn analyze_pattern_liveness(pattern: &mut MatchPattern, deps: &mut HashSet<Strin
                 }
             }
         }
-        MatchPattern::SimpleArray(parts) => {
+        MatchPattern::SimpleList(parts) => {
             for part in parts {
                 analyze_pattern_liveness(part, deps);
             }
         }
-        MatchPattern::SpreadArray(pattern) => {
+        MatchPattern::SpreadList(pattern) => {
             for part in pattern.all_parts_mut() {
                 analyze_pattern_liveness(part, deps);
             }
@@ -432,7 +432,7 @@ fn analyze_expr_liveness(expr: &mut Expr, deps: &mut HashSet<String>) {
                 analyze_expr_liveness(&mut k.value, deps);
             }
         }
-        Expr::Array(elements) => {
+        Expr::List(elements) => {
             for e in elements.iter_mut().rev() {
                 analyze_expr_liveness(&mut e.value, deps);
             }

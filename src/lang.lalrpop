@@ -4,7 +4,7 @@ use crate::pos::{Span, Spanned};
 use crate::ast::{Expr, Opcode, Statement, Block, AssignmentTarget, VarRef, LambdaExpr, MatchPattern, MatchExpr};
 use crate::parse_helpers::{
     parse_string_literal,
-    process_array_match,
+    process_list_match,
     process_declaration,
     make_implicit_lambda,
 };
@@ -85,7 +85,7 @@ Term: Expr = {
     Identifier => Expr::Variable(VarRef::new(<>)),
     LambdaExpr,
     DictLiteral,
-    ArrayLiteral,
+    ListLiteral,
     <BlockExpr> => Expr::Block(<>),
     <lhs:Sp<Term>> <index:Sp<ValueIndex>> => Expr::GetIndex(Box::new(lhs), Box::new(index)),
 };
@@ -108,7 +108,7 @@ MatchPattern: MatchPattern = {
         }
     },
     "set" <target:AssignmentTarget> => MatchPattern::Assignment(target),
-    "[" <parts:Comma<MatchArrayPart>> "]" =>? Ok(process_array_match(parts)?),
+    "[" <parts:Comma<MatchListPart>> "]" =>? Ok(process_list_match(parts)?),
     NumLiteral => MatchPattern::Constant(ast::MatchConstant::Number(<>)),
     BoolLiteral => MatchPattern::Constant(ast::MatchConstant::Bool(<>)),
     StringLiteral => MatchPattern::Constant(ast::MatchConstant::String(<>)),
@@ -121,7 +121,7 @@ DeclarationType: ast::DeclarationType = {
     () => ast::DeclarationType::Const,
 }
 
-MatchArrayPart: (MatchPattern, bool) = {
+MatchListPart: (MatchPattern, bool) = {
     <spread:".."?> <pattern:MatchPattern> => (pattern, spread != None),
     ".." => (MatchPattern::Discard, true),
 }
@@ -186,8 +186,8 @@ DictLiteral: Expr = {
     "[:]" => Expr::Dict(vec![]),
 }
 
-ArrayLiteral: Expr = {
-    "[" <elements:Comma<SpExpr>> "]" => Expr::Array(elements),
+ListLiteral: Expr = {
+    "[" <elements:Comma<SpExpr>> "]" => Expr::List(elements),
 }
 
 Identifier: String = {

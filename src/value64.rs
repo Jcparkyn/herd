@@ -28,7 +28,7 @@ Inline layout:
 pub enum PointerTag {
     String,
     Dict,
-    Array,
+    List,
     Lambda,
 }
 
@@ -49,7 +49,7 @@ const fn try_get_ptr_tag(value: u64) -> Option<PointerTag> {
     return match (value >> 48) & 0b11 {
         0 => Some(PointerTag::String),
         1 => Some(PointerTag::Dict),
-        2 => Some(PointerTag::Array),
+        2 => Some(PointerTag::List),
         3 => Some(PointerTag::Lambda),
         _ => unreachable!(),
     };
@@ -85,8 +85,8 @@ impl Boxable for String {
     const TAG: PointerTag = PointerTag::String;
 }
 
-impl Boxable for ArrayInstance {
-    const TAG: PointerTag = PointerTag::Array;
+impl Boxable for ListInstance {
+    const TAG: PointerTag = PointerTag::List;
 }
 
 impl Boxable for DictInstance {
@@ -151,7 +151,7 @@ impl Value64 {
         match try_get_ptr_tag(self.bits) {
             Some(PointerTag::String) => !self.as_string().unwrap().is_empty(),
             Some(PointerTag::Dict) => true,
-            Some(PointerTag::Array) => !self.as_array().unwrap().values.is_empty(),
+            Some(PointerTag::List) => !self.as_list().unwrap().values.is_empty(),
             Some(PointerTag::Lambda) => true,
             None => {
                 if let Some(float) = self.as_f64() {
@@ -176,7 +176,7 @@ impl Value64 {
         if let Some(x) = self.as_f64() {
             return !x.is_nan();
         }
-        if let Some(a) = self.as_array() {
+        if let Some(a) = self.as_list() {
             return a.values.iter().all(Self::is_valid_dict_key);
         }
         return true;
@@ -262,21 +262,21 @@ impl Value64 {
         self.as_ref()
     }
 
-    // ARRAYS
+    // LISTS
 
-    pub fn from_array(value: Rc<ArrayInstance>) -> Self {
+    pub fn from_list(value: Rc<ListInstance>) -> Self {
         Self::from_rc(value)
     }
 
-    pub const fn is_array(&self) -> bool {
-        is_ptr_type(self.bits, PointerTag::Array)
+    pub const fn is_list(&self) -> bool {
+        is_ptr_type(self.bits, PointerTag::List)
     }
 
-    pub fn try_into_array(self) -> Result<Rc<ArrayInstance>, Self> {
+    pub fn try_into_list(self) -> Result<Rc<ListInstance>, Self> {
         self.into_rc()
     }
 
-    pub fn as_array(&self) -> Option<&ArrayInstance> {
+    pub fn as_list(&self) -> Option<&ListInstance> {
         self.as_ref()
     }
 
@@ -332,8 +332,8 @@ impl PartialEq for Value64 {
                 Some(b) => self.as_string().unwrap() == b,
                 None => false,
             },
-            Some(PointerTag::Array) => match other.as_array() {
-                Some(b) => self.as_array().unwrap() == b,
+            Some(PointerTag::List) => match other.as_list() {
+                Some(b) => self.as_list().unwrap() == b,
                 None => false,
             },
             Some(PointerTag::Dict) => match other.as_dict() {
@@ -367,7 +367,7 @@ impl std::hash::Hash for Value64 {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         match try_get_ptr_tag(self.bits) {
             Some(PointerTag::String) => self.as_string().unwrap().hash(state),
-            Some(PointerTag::Array) => self.as_array().unwrap().hash(state),
+            Some(PointerTag::List) => self.as_list().unwrap().hash(state),
             Some(PointerTag::Dict) => panic!("Dicts cannot be used as keys inside dicts"),
             Some(PointerTag::Lambda) => {
                 panic!("Lambda functions cannot be used as keys inside dicts")
@@ -384,8 +384,8 @@ impl Clone for Value64 {
                 let ptr = extract_ptr::<String>(self.bits);
                 unsafe { Rc::increment_strong_count(ptr) };
             }
-            Some(PointerTag::Array) => {
-                let ptr = extract_ptr::<ArrayInstance>(self.bits);
+            Some(PointerTag::List) => {
+                let ptr = extract_ptr::<ListInstance>(self.bits);
                 unsafe { Rc::increment_strong_count(ptr) };
             }
             Some(PointerTag::Dict) => {
@@ -409,8 +409,8 @@ impl Drop for Value64 {
                 let ptr = extract_ptr::<String>(self.bits);
                 unsafe { Rc::decrement_strong_count(ptr) };
             }
-            Some(PointerTag::Array) => {
-                let ptr = extract_ptr::<ArrayInstance>(self.bits);
+            Some(PointerTag::List) => {
+                let ptr = extract_ptr::<ListInstance>(self.bits);
                 unsafe { Rc::decrement_strong_count(ptr) };
             }
             Some(PointerTag::Dict) => {
@@ -435,7 +435,7 @@ impl Drop for Value64 {
 //             Value::Builtin(b) => write!(f, "{}", b.to_string()),
 //             Value::Lambda(l) => write!(f, "{}", l),
 //             Value::Dict(d) => write!(f, "{}", d),
-//             Value::Array(a) => write!(f, "{}", a),
+//             Value::List(a) => write!(f, "{}", a),
 //             Value::Nil => write!(f, "nil"),
 //         }
 //     }
@@ -445,7 +445,7 @@ impl Display for Value64 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match try_get_ptr_tag(self.bits) {
             Some(PointerTag::String) => write!(f, "'{}'", self.as_string().unwrap()),
-            Some(PointerTag::Array) => write!(f, "{}", self.as_array().unwrap()),
+            Some(PointerTag::List) => write!(f, "{}", self.as_list().unwrap()),
             Some(PointerTag::Dict) => write!(f, "{}", self.as_dict().unwrap()),
             Some(PointerTag::Lambda) => write!(f, "{}", self.as_lambda().unwrap()),
             None => {
@@ -525,27 +525,27 @@ impl Display for DictInstance {
 }
 
 #[derive(PartialEq, Debug, Hash)]
-pub struct ArrayInstance {
+pub struct ListInstance {
     pub values: Vec<Value64>,
 }
 
-impl ArrayInstance {
+impl ListInstance {
     pub fn new(values: Vec<Value64>) -> Self {
-        ArrayInstance { values }
+        ListInstance { values }
     }
 }
 
-impl Clone for ArrayInstance {
+impl Clone for ListInstance {
     fn clone(&self) -> Self {
         #[cfg(debug_assertions)]
-        println!("Cloning array: {}", self);
-        ArrayInstance {
+        println!("Cloning list: {}", self);
+        ListInstance {
             values: self.values.clone(),
         }
     }
 }
 
-impl Display for ArrayInstance {
+impl Display for ListInstance {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let values: Vec<_> = self.values.iter().map(|v| v.to_string()).collect();
         write!(f, "[{}]", values.join(", "))
@@ -642,16 +642,16 @@ mod tests {
     }
 
     #[test]
-    fn array_round_trip() {
-        let arr = Rc::new(ArrayInstance::new(vec![
+    fn list_round_trip() {
+        let arr = Rc::new(ListInstance::new(vec![
             Value64::NIL,
             Value64::from_bool(true),
             Value64::from_f64(1.0),
         ]));
-        let val = Value64::from_array(arr.clone());
-        assert!(val.is_array());
+        let val = Value64::from_list(arr.clone());
+        assert!(val.is_list());
         assert!(val.is_ptr());
-        let arr2 = val.try_into_array();
+        let arr2 = val.try_into_list();
         assert_eq!(arr2, Ok(arr));
     }
 

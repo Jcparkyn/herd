@@ -3,10 +3,10 @@ use std::{collections::HashMap, fmt::Debug, rc::Rc, vec};
 use crate::{
     ast::{
         AssignmentTarget, Block, BuiltInFunction, Expr, LambdaExpr, MatchConstant, MatchPattern,
-        Opcode, SpannedExpr, SpannedStatement, SpreadArrayPattern, Statement,
+        Opcode, SpannedExpr, SpannedStatement, SpreadListPattern, Statement,
     },
     pos::{Span, Spanned},
-    value64::{ArrayInstance, Callable, DictInstance, LambdaFunction, Value64 as Value},
+    value64::{Callable, DictInstance, LambdaFunction, ListInstance, Value64 as Value},
 };
 
 pub const NIL: Value = Value::NIL;
@@ -28,7 +28,7 @@ pub enum InterpreterError {
     Return(Value), // Implemented as an error to simplify implementation.
     KeyNotExists(Value),
     IndexOutOfRange {
-        array_len: usize,
+        list_len: usize,
         accessed: usize,
     },
     WrongArgumentCount {
@@ -126,11 +126,11 @@ fn expect_i64(value: &Value) -> IResult<i64> {
     }
 }
 
-fn expect_array(value: Value) -> IResult<Rc<ArrayInstance>> {
-    match value.try_into_array() {
+fn expect_list(value: Value) -> IResult<Rc<ListInstance>> {
+    match value.try_into_list() {
         Ok(v) => Ok(v),
         Err(v) => Err(WrongType {
-            message: format!("Expected an array, found {}", &v),
+            message: format!("Expected an list, found {}", &v),
         }),
     }
 }
@@ -160,13 +160,13 @@ impl Environment {
         if old.is_dict() {
             let dict = old.try_into_dict().unwrap();
             Self::assign_dict_field(dict, rhs, index, path)
-        } else if old.is_array() {
-            let array = old.try_into_array().unwrap();
-            Self::assign_array_index(array, rhs, expect_usize(index)?, path)
+        } else if old.is_list() {
+            let list = old.try_into_list().unwrap();
+            Self::assign_list_index(list, rhs, expect_usize(index)?, path)
         } else {
             Err(WrongType {
                 message: format!(
-                    "Can't assign to index {index}, because {old} is neither a dict nor an array."
+                    "Can't assign to index {index}, because {old} is neither a dict nor an list."
                 ),
             })
         }
@@ -180,7 +180,7 @@ impl Environment {
     ) -> Result<Value, InterpreterError> {
         if !key.is_valid_dict_key() {
             return Err(WrongType {
-                message: format!("Can't use {key} as a key in a dict. Valid keys are strings, numbers, booleans, and arrays.")
+                message: format!("Can't use {key} as a key in a dict. Valid keys are strings, numbers, booleans, and lists.")
             });
         }
         let mut_dict = Rc::make_mut(&mut dict);
@@ -205,29 +205,29 @@ impl Environment {
         }
     }
 
-    fn assign_array_index(
-        mut array: Rc<ArrayInstance>,
+    fn assign_list_index(
+        mut list: Rc<ListInstance>,
         rhs: Value,
         index: usize,
         path: &[Value],
     ) -> Result<Value, InterpreterError> {
-        if index >= array.values.len() {
+        if index >= list.values.len() {
             return Err(InterpreterError::IndexOutOfRange {
-                array_len: array.values.len(),
+                list_len: list.values.len(),
                 accessed: index,
             });
         }
-        let mut_array = Rc::make_mut(&mut array);
+        let mut_list = Rc::make_mut(&mut list);
         match path {
             [] => {
-                mut_array.values[index] = rhs;
-                Ok(Value::from_array(array))
+                mut_list.values[index] = rhs;
+                Ok(Value::from_list(list))
             }
             [next_field, rest @ ..] => {
-                let old_value = std::mem::replace(&mut mut_array.values[index], NIL);
+                let old_value = std::mem::replace(&mut mut_list.values[index], NIL);
                 let new_value = Self::assign_part(old_value, rhs, next_field, rest)?;
-                mut_array.values[index] = new_value;
-                Ok(Value::from_array(array))
+                mut_list.values[index] = new_value;
+                Ok(Value::from_list(list))
             }
         }
     }
@@ -394,7 +394,7 @@ impl Interpreter {
                     let key = self.eval(k)?;
                     if !key.is_valid_dict_key() {
                         return Err(WrongType {
-                            message: format!("Can't use {key} as a key in a dict. Valid keys are strings, numbers, booleans, and arrays.")
+                            message: format!("Can't use {key} as a key in a dict. Valid keys are strings, numbers, booleans, and lists.")
                         }.with_span(&k.span));
                     }
                     let value = self.eval(v)?;
@@ -402,12 +402,12 @@ impl Interpreter {
                 }
                 Ok(Value::from_dict(Rc::new(DictInstance { values })))
             }
-            Expr::Array(elements) => {
+            Expr::List(elements) => {
                 let mut values = Vec::with_capacity(elements.len());
                 for e in elements.iter() {
                     values.push(self.eval(e)?);
                 }
-                Ok(Value::from_array(Rc::new(ArrayInstance::new(values))))
+                Ok(Value::from_list(Rc::new(ListInstance::new(values))))
             }
             Expr::GetIndex(lhs_expr, index_expr) => {
                 let index = self.eval(index_expr)?;
@@ -415,12 +415,12 @@ impl Interpreter {
                 if lhs.is_dict() {
                     let d = lhs.try_into_dict().unwrap();
                     return Ok(d.values.get(&index).cloned().unwrap_or(NIL));
-                } else if lhs.is_array() {
-                    let a = lhs.try_into_array().unwrap();
+                } else if lhs.is_list() {
+                    let a = lhs.try_into_list().unwrap();
                     let idx_int = expect_usize(&index).map_err(|_| {
                         WrongType {
                             message: format!(
-                                "Arrays can only be indexed with integers, found {index}"
+                                "Lists can only be indexed with integers, found {index}"
                             ),
                         }
                         .with_span(&index_expr.span)
@@ -428,7 +428,7 @@ impl Interpreter {
                     return match a.values.get(idx_int) {
                         Some(v) => Ok(v.clone()),
                         None => Err(InterpreterError::IndexOutOfRange {
-                            array_len: a.values.len(),
+                            list_len: a.values.len(),
                             accessed: idx_int,
                         }
                         .with_span(&index_expr.span)),
@@ -442,7 +442,7 @@ impl Interpreter {
             }
             Expr::ForIn { iter, var, body } => {
                 let iter_value = self.eval(iter)?;
-                match iter_value.try_into_array() {
+                match iter_value.try_into_list() {
                     Ok(a) => {
                         for v in a.values.iter() {
                             self.match_pattern(&var.value, v.clone())
@@ -453,7 +453,7 @@ impl Interpreter {
                     }
                     Err(v) => {
                         return Err(WrongType {
-                            message: format!("Expected an array, found {v}"),
+                            message: format!("Expected an list, found {v}"),
                         }
                         .with_span(&iter.span))
                     }
@@ -581,93 +581,93 @@ impl Interpreter {
                 for i in start_int..stop_int {
                     values.push(Value::from_f64(i as f64));
                 }
-                return Ok(Value::from_array(Rc::new(ArrayInstance::new(values))));
+                return Ok(Value::from_list(Rc::new(ListInstance::new(values))));
             }
             BuiltInFunction::Len => {
                 let [arg] = self.destructure_args(arg_count)?;
-                if let Some(a) = arg.as_array() {
+                if let Some(a) = arg.as_list() {
                     Ok(Value::from_f64(a.values.len() as f64))
                 } else if let Some(d) = arg.as_dict() {
                     Ok(Value::from_f64(d.values.len() as f64))
                 } else {
                     Err(WrongType {
-                        message: format!("Expected an array or dict, found {arg}"),
+                        message: format!("Expected an list or dict, found {arg}"),
                     })
                 }
             }
             BuiltInFunction::Push => {
-                let [array_val, new_value] = self.destructure_args(arg_count)?;
-                let mut array = expect_array(array_val)?;
-                let mut_array = Rc::make_mut(&mut array);
-                mut_array.values.push(new_value);
-                return Ok(Value::from_array(array));
+                let [list_val, new_value] = self.destructure_args(arg_count)?;
+                let mut list = expect_list(list_val)?;
+                let mut_list = Rc::make_mut(&mut list);
+                mut_list.values.push(new_value);
+                return Ok(Value::from_list(list));
             }
             BuiltInFunction::Pop => {
-                let [array_val] = self.destructure_args(arg_count)?;
-                let mut array = expect_array(array_val)?;
-                let mut_array = Rc::make_mut(&mut array);
-                mut_array.values.pop();
+                let [list_val] = self.destructure_args(arg_count)?;
+                let mut list = expect_list(list_val)?;
+                let mut_list = Rc::make_mut(&mut list);
+                mut_list.values.pop();
                 // TODO this should really return the value as well.
-                return Ok(Value::from_array(array));
+                return Ok(Value::from_list(list));
             }
             BuiltInFunction::Sort => {
-                let [array_val] = self.destructure_args(arg_count)?;
-                let mut array = expect_array(array_val)?;
-                match (*array).values.as_slice() {
-                    [] => Ok(Value::from_array(array)),
+                let [list_val] = self.destructure_args(arg_count)?;
+                let mut list = expect_list(list_val)?;
+                match (*list).values.as_slice() {
+                    [] => Ok(Value::from_list(list)),
                     [first, rest @ ..] => {
                         if first.is_f64() {
                             if let Some(bad_val) = rest.iter().find(|v| !v.is_f64()) {
                                 return Err(WrongType {
                                     message: format!(
-                                    "Expected all values in array to be numbers, found {bad_val}"
+                                    "Expected all values in list to be numbers, found {bad_val}"
                                 ),
                                 });
                             }
-                            Rc::make_mut(&mut array).values.sort_by(|a, b| {
+                            Rc::make_mut(&mut list).values.sort_by(|a, b| {
                                 a.as_f64().unwrap().total_cmp(&b.as_f64().unwrap())
                             });
-                            return Ok(Value::from_array(array));
+                            return Ok(Value::from_list(list));
                         } else if first.is_string() {
                             if let Some(bad_val) = rest.iter().find(|v| !v.is_string()) {
                                 return Err(WrongType {
                                     message: format!(
-                                    "Expected all values in array to be strings, found {bad_val}"
+                                    "Expected all values in list to be strings, found {bad_val}"
                                 ),
                                 });
                             }
-                            Rc::make_mut(&mut array).values.sort_by(|a, b| {
+                            Rc::make_mut(&mut list).values.sort_by(|a, b| {
                                 a.as_string().unwrap().cmp(&b.as_string().unwrap())
                             });
-                            return Ok(Value::from_array(array));
+                            return Ok(Value::from_list(list));
                         }
                         return Err(WrongType {
                             message: format!(
-                                "Can only sort arrays of numbers or strings, found {first}"
+                                "Can only sort lists of numbers or strings, found {first}"
                             ),
                         });
                     }
                 }
             }
             BuiltInFunction::Map => {
-                let [array_val, f_val] = self.destructure_args(arg_count)?;
-                let mut array = expect_array(array_val)?;
+                let [list_val, f_val] = self.destructure_args(arg_count)?;
+                let mut list = expect_list(list_val)?;
                 let f = expect_into_callable(f_val)?;
-                let mut_array = Rc::make_mut(&mut array);
-                for v in mut_array.values.iter_mut() {
+                let mut_list = Rc::make_mut(&mut list);
+                for v in mut_list.values.iter_mut() {
                     let v2 = std::mem::replace(v, NIL);
                     *v = self.call_internal(&f, [v2])?;
                 }
-                return Ok(Value::from_array(array));
+                return Ok(Value::from_list(list));
             }
             BuiltInFunction::Filter => {
-                let [array_val, f_val] = self.destructure_args(arg_count)?;
-                let mut array = expect_array(array_val)?;
+                let [list_val, f_val] = self.destructure_args(arg_count)?;
+                let mut list = expect_list(list_val)?;
                 let f = expect_into_callable(f_val)?;
-                let mut_array = Rc::make_mut(&mut array);
+                let mut_list = Rc::make_mut(&mut list);
 
                 let mut err = None;
-                mut_array.values.retain(|x| -> bool {
+                mut_list.values.retain(|x| -> bool {
                     match self.call_internal(&f, [x.clone()]) {
                         Ok(v) => v.truthy(),
                         Err(e) => {
@@ -679,7 +679,7 @@ impl Interpreter {
 
                 return match err {
                     Some(e) => Err(e),
-                    None => Ok(Value::from_array(array)),
+                    None => Ok(Value::from_list(list)),
                 };
             }
             BuiltInFunction::RemoveKey => {
@@ -791,41 +791,41 @@ impl Interpreter {
         return Ok(());
     }
 
-    fn match_array_spread(&mut self, pattern: &MatchPattern, values: &mut [Value]) -> IResult<()> {
-        fn to_value_array(values: &mut [Value]) -> Value {
+    fn match_list_spread(&mut self, pattern: &MatchPattern, values: &mut [Value]) -> IResult<()> {
+        fn to_value_list(values: &mut [Value]) -> Value {
             let mut vec = Vec::with_capacity(values.len());
             for value in values {
                 vec.push(std::mem::replace(value, NIL));
             }
-            Value::from_array(Rc::new(ArrayInstance::new(vec)))
+            Value::from_list(Rc::new(ListInstance::new(vec)))
         }
         match pattern {
             MatchPattern::Discard => Ok(()),
             MatchPattern::Declaration(var, _) => {
-                self.environment.set(var.slot, to_value_array(values));
+                self.environment.set(var.slot, to_value_list(values));
                 Ok(())
             }
             MatchPattern::Assignment(target) => {
-                self.assign(target, to_value_array(values))?;
+                self.assign(target, to_value_list(values))?;
                 Ok(())
             }
-            MatchPattern::SimpleArray(parts) => self.match_slice_replace(parts, values),
-            MatchPattern::SpreadArray(pattern) => self.match_spread_array(pattern, values),
+            MatchPattern::SimpleList(parts) => self.match_slice_replace(parts, values),
+            MatchPattern::SpreadList(pattern) => self.match_spread_list(pattern, values),
             MatchPattern::Constant(c) => Err(InterpreterError::PatternMatchFailed {
                 message: format!("Can't use a constant ({c}) as a spread parameter (..)"),
             }),
         }
     }
 
-    fn match_spread_array(
+    fn match_spread_list(
         &mut self,
-        pattern: &SpreadArrayPattern,
+        pattern: &SpreadListPattern,
         values: &mut [Value],
     ) -> IResult<()> {
         let (values_before, rest) = values.split_at_mut(pattern.before.len());
         let (values_spread, values_after) = rest.split_at_mut(rest.len() - pattern.after.len());
         self.match_slice_replace(&pattern.before, values_before)?;
-        self.match_array_spread(&pattern.spread, values_spread)?;
+        self.match_list_spread(&pattern.spread, values_spread)?;
         self.match_slice_replace(&pattern.after, values_after)?;
         return Ok(());
     }
@@ -841,31 +841,31 @@ impl Interpreter {
                 self.assign(target, value)?;
                 Ok(())
             }
-            MatchPattern::SimpleArray(parts) => match value.try_into_array() {
+            MatchPattern::SimpleList(parts) => match value.try_into_list() {
                 Ok(a) => match Rc::try_unwrap(a) {
                     Ok(mut arr) => self.match_slice_replace(&parts, &mut arr.values),
                     Err(rc) => self.match_slice_clone(&parts, &rc.values),
                 },
                 Err(v) => Err(PatternMatchFailed {
-                    message: format!("Expected an array, found {v}"),
+                    message: format!("Expected an list, found {v}"),
                 }),
             },
-            MatchPattern::SpreadArray(pattern) => match value.try_into_array() {
+            MatchPattern::SpreadList(pattern) => match value.try_into_list() {
                 Ok(mut a) => {
                     if a.values.len() < pattern.min_len() {
                         return Err(PatternMatchFailed {
                             message: format!(
-                                "Expected an array with length >= {}, but actual array had length = {}",
+                                "Expected an list with length >= {}, but actual list had length = {}",
                                 pattern.min_len(),
                                 a.values.len()
                             ),
                         });
                     }
                     let mut_values = &mut Rc::make_mut(&mut a).values;
-                    self.match_spread_array(pattern, mut_values)
+                    self.match_spread_list(pattern, mut_values)
                 }
                 Err(v) => Err(PatternMatchFailed {
-                    message: format!("Expected an array, found {v}"),
+                    message: format!("Expected an list, found {v}"),
                 }),
             },
             MatchPattern::Constant(c) => {
@@ -889,25 +889,25 @@ impl Interpreter {
             zip.all(|(p, v)| Interpreter::matches_pattern(&p, &v))
         }
 
-        fn matches_array_spread(pattern: &MatchPattern, values: &[Value]) -> bool {
+        fn matches_list_spread(pattern: &MatchPattern, values: &[Value]) -> bool {
             match pattern {
                 MatchPattern::Discard => true,
                 MatchPattern::Declaration(_, _) => true,
                 MatchPattern::Assignment(_) => true,
-                MatchPattern::SimpleArray(parts) => matches_slice(parts, values),
-                MatchPattern::SpreadArray(pattern) => matches_spread_array(pattern, values),
+                MatchPattern::SimpleList(parts) => matches_slice(parts, values),
+                MatchPattern::SpreadList(pattern) => matches_spread_list(pattern, values),
                 MatchPattern::Constant(_) => false,
             }
         }
 
-        fn matches_spread_array(pattern: &SpreadArrayPattern, values: &[Value]) -> bool {
+        fn matches_spread_list(pattern: &SpreadListPattern, values: &[Value]) -> bool {
             if values.len() < pattern.min_len() {
                 return false;
             }
             let (values_before, rest) = values.split_at(pattern.before.len());
             let (values_spread, values_after) = rest.split_at(rest.len() - pattern.after.len());
             return matches_slice(&pattern.before, values_before)
-                && matches_array_spread(&pattern.spread, values_spread)
+                && matches_list_spread(&pattern.spread, values_spread)
                 && matches_slice(&pattern.after, values_after);
         }
 
@@ -915,12 +915,12 @@ impl Interpreter {
             MatchPattern::Discard => true,
             MatchPattern::Declaration(_, _) => true,
             MatchPattern::Assignment(_) => true,
-            MatchPattern::SimpleArray(parts) => match value.as_array() {
+            MatchPattern::SimpleList(parts) => match value.as_list() {
                 Some(a) => matches_slice(parts, &a.values),
                 _ => false,
             },
-            MatchPattern::SpreadArray(pattern) => match value.as_array() {
-                Some(a) => matches_spread_array(pattern, &a.values),
+            MatchPattern::SpreadList(pattern) => match value.as_list() {
+                Some(a) => matches_spread_list(pattern, &a.values),
                 _ => false,
             },
             MatchPattern::Constant(c) => Self::matches_constant(c, value),
@@ -954,7 +954,7 @@ fn assert_slice_len(parts: &[MatchPattern], values: &[Value]) -> IResult<()> {
     if parts.len() != values.len() {
         return Err(PatternMatchFailed {
             message: format!(
-                "Expected an array with length={}, but actual array had length={}",
+                "Expected an list with length={}, but actual list had length={}",
                 parts.len(),
                 values.len()
             ),
