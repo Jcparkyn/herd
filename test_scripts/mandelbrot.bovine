@@ -5,7 +5,6 @@ mandelbrot = {size ->
   var bitNum = 0;
   for y in range 0 size do (
     ci = (2 * y / size) - 1;
-    var x = 0;
     for x in range 0 size do (
       var zrzr = 0;
       var zizi = 0;
