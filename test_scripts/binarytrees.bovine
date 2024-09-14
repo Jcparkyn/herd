@@ -1,21 +1,17 @@
 source = 'https://github.com/hanabi1224/Programming-Language-Benchmarks/blob/main/bench/algorithm/binarytrees/1.py';
 
-makeTree = \d\ (
-  if d > 0 then (
-    [makeTree (d - 1), makeTree (d - 1)]
-  ) else (
-    [(), ()]
-  )
+makeTree = \d\ if d > 0 then (
+  [makeTree (d - 1), makeTree (d - 1)]
+) else (
+  [(), ()]
 );
 
-checkTree = \node\ (
-  switch node {
-    [(), ()] => 1,
-    [l, r] => 1 + (checkTree l) + (checkTree r),
-  }
-);
+checkTree = \node\ switch node {
+  [(), ()] => 1,
+  [l, r] => 1 + (checkTree l) + (checkTree r),
+};
 
-makeCheck = \d\ ( checkTree (makeTree d) );
+makeCheck = \d\ checkTree (makeTree d);
 
 main = \n\ (
   minDepth = 4;

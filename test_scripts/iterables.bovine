@@ -40,27 +40,25 @@ iterMap = \var iter f\ (
   iter
 );
 
-iterRepeat = \iter iterations\ (
-  [
-    init: [1, iter.init],
-    current: \[_, i]\ iter.current i,
-    next: \var state\ (
-      ![iteration, var innerState] = state;
-      set innerState = iter.next innerState;
-      if innerState == () then (
-        if iteration < iterations then (
-          set state.[0] = iteration + 1;
-          set state.[1] = iter.init;
-          return state;
-        ) else (
-          return ();
-        )
+iterRepeat = \iter iterations\ [
+  init: [1, iter.init],
+  current: \[_, i]\ iter.current i,
+  next: \var state\ (
+    ![iteration, var innerState] = state;
+    set innerState = iter.next innerState;
+    if innerState == () then (
+      if iteration < iterations then (
+        set state.[0] = iteration + 1;
+        set state.[1] = iter.init;
+        return state;
+      ) else (
+        return ();
       )
-      set state.[1] = innerState;
-      state
     )
-  ]
-);
+    set state.[1] = innerState;
+    state
+  )
+];
 
 iter2 = iterRange 1 7
   | iterStep 2
