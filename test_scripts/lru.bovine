@@ -10,12 +10,12 @@ tmpLRU = [
   ],
 ];
 
-newLRU = { size -> [
+newLRU = \size\ [
   size: size,
   items: [:],
-]};
+];
 
-removeOldest = { var lru ->
+removeOldest = \var lru\ (
   if len lru.items == 0 then (
     return lru;
   )
@@ -26,9 +26,9 @@ removeOldest = { var lru ->
   set lru.oldest = new_oldest;
   set lru.[new_oldest].[1] = ();
   lru
-};
+);
 
-get = { var lru key ->
+get = \var lru key\ (
   if len lru.items == 0 then (
     return [lru, ()];
   )
@@ -51,9 +51,9 @@ get = { var lru key ->
   set lru.items.[key] = [val.[0], lru.newest, ()];
   set lru.newest = key;
   [lru, val.[0]]
-};
+);
 
-put = { var lru key value ->
+put = \var lru key value\ (
   // empty LRU
   if len lru.items == 0 then (
     set lru.oldest = key;
@@ -77,14 +77,14 @@ put = { var lru key value ->
   set lru.items.[lru.newest].[2] = key;
   set lru.newest = key;
   lru
-};
+);
 
-main = { _ ->
+main = \\ (
   lru = newLRU 10
     | put 'a' 69
     | put 'b' 420
     | put 'c' 7;
   print (get lru 'a');
-};
+);
 
 main 0;

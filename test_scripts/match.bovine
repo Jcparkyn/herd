@@ -6,11 +6,9 @@ foo = match arr with {
 };
 print foo;
 
-invert = { node ->
-  match node with {
-    [l, r] => [invert r, invert l],
-    x => x,
-  }
+invert = \node\ match node with {
+  [l, r] => [invert r, invert l],
+  x => x,
 };
 
 tree = [[0, 1], [2, 3]];

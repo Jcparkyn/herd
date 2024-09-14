@@ -46,10 +46,8 @@ Expr = {
 
 ExprWithoutBlock = {
     LogicExpr,
-    <lhs:SpExpr> "|" <callee:Sp<Term>> <mut args:Sp<Term>*> => {
-        args.insert(0, lhs);
-        Expr::Call { callee: Box::new(callee), args }
-    },
+    PipeExpr,
+    LambdaExpr,
 }
 
 // Expressions that don't need a trailing semicolon
@@ -82,12 +80,25 @@ Term: Expr = {
     BoolLiteral => Expr::Bool(<>),
     StringLiteral => Expr::from_string(<>),
     Identifier => Expr::Variable(VarRef::new(<>)),
-    LambdaExpr,
+    ImplicitLambdaExpr,
     DictLiteral,
     ListLiteral,
-    <BlockExpr> => Expr::Block(<>),
+    BlockExpr,
     <lhs:Sp<Term>> <index:Sp<ValueIndex>> => Expr::GetIndex(Box::new(lhs), Box::new(index)),
 };
+
+PipeLhs: Expr = {
+    PipeExpr,
+    LogicExpr,
+    IfExpr,
+    MatchExpr,
+}
+
+PipeExpr: Expr =
+    <lhs:Sp<PipeLhs>> "|" <callee:Sp<Term>> <mut args:Sp<Term>*> => {
+        args.insert(0, lhs);
+        Expr::Call { callee: Box::new(callee), args }
+    };
 
 ValueIndex: Expr = {
     "." <field:Identifier> => Expr::from_string(field),
@@ -140,12 +151,12 @@ MatchExpr: Expr =
 MatchExprBranch: (Spanned<MatchPattern>, ast::SpannedExpr) =
     <p:Sp<MatchPattern>> "=>" <e:SpExpr> => (p, e);
 
-BlockExpr: Block = {
-    "(" <b:BlockBody> ")" => b
+BlockExpr: Expr = {
+    "(" <b:BlockBodyNonEmpty> ")" => Expr::Block(b),
+    "(" ")" => Expr::Nil,
 }
 
-BlockBody: Block = {
-    => Block { statements: vec![], expression: None },
+BlockBodyNonEmpty: Block = {
     // separate patterns to remove ambiguity.
     // If there's no trailing semicolon it should always be an Expr.
     <s:SpStatement*> <e:SpExpr> => Block { statements: s, expression: Some(Box::new(e)) },
@@ -169,11 +180,19 @@ StringLiteral: String = {
 }
 
 LambdaExpr: Expr = {
-    "{" <params:Sp<MatchPattern>*> "->" <body:Sp<BlockBody>> "}" => Expr::Lambda(
-        LambdaExpr::new(params, Rc::new(body.map(Expr::Block)))
+    "\\" <params:Sp<MatchPattern>+> "\\" <body:SpExpr> => Expr::Lambda(
+        LambdaExpr::new(params, Rc::new(body))
     ),
-    "{" "{" <body:Sp<BlockBody>> "}" "}" => make_implicit_lambda(body),
+    "\\" <span:Sp<()>> "\\" <body:SpExpr> => {
+        let pattern = span.map(|_| MatchPattern::NIL);
+        Expr::Lambda(
+            LambdaExpr::new(vec![pattern], Rc::new(body))
+        )
+    },
 }
+
+ImplicitLambdaExpr: Expr =
+    "\\" "(" <body:Sp<BlockBodyNonEmpty>> ")" => make_implicit_lambda(body);
 
 DictEntry: (ast::SpannedExpr, ast::SpannedExpr) = {
     <key:SpIdentifier> ":" <val:SpExpr> => (key, val),

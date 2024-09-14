@@ -1,11 +1,11 @@
 
-iterRange = { start stop -> [
+iterRange = \start stop\ [
   init: start,
-  current: {{_}},
-  next: { state -> if state == stop - 1 then () else (state + 1) },
-]};
+  current: \(_),
+  next: \state\ if state == stop - 1 then () else (state + 1),
+];
 
-iterToArray = { iter ->
+iterToArray = \iter\ (
   var arr = [];
   var state = iter.init;
   getCurrent = iter.current;
@@ -18,11 +18,11 @@ iterToArray = { iter ->
     set state = getNext state;
   )
   return arr;
-};
+);
 
-iterStep = { var iter n ->
+iterStep = \var iter n\ (
   next = iter.next;
-  set iter.next = { var state ->
+  set iter.next = \var state\ (
     for _ in range 0 n do (
       set state = next state;
       if state == () then (
@@ -30,21 +30,21 @@ iterStep = { var iter n ->
       )
     )
     return state;
-  };
+  );
   iter
-};
+);
 
-iterMap = { var iter f ->
+iterMap = \var iter f\ (
   getCurrent = iter.current;
-  set iter.current = {state -> f (getCurrent state)};
+  set iter.current = \state\ f (getCurrent state);
   iter
-};
+);
 
-iterRepeat = { iter iterations ->
+iterRepeat = \iter iterations\ (
   [
     init: [1, iter.init],
-    current: {[_, i] -> iter.current i},
-    next: { var state ->
+    current: \[_, i]\ iter.current i,
+    next: \var state\ (
       ![iteration, var innerState] = state;
       set innerState = iter.next innerState;
       if innerState == () then (
@@ -58,12 +58,12 @@ iterRepeat = { iter iterations ->
       )
       set state.[1] = innerState;
       state
-    }
+    )
   ]
-};
+);
 
 iter2 = iterRange 1 7
   | iterStep 2
-  | iterMap {{0 - _}}
+  | iterMap \(0 - _)
   | iterRepeat 2;
 print (iterToArray iter2);

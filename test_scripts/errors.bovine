@@ -1,8 +1,8 @@
 
-test = {n -> n + 1};
+test = \n\ n + 1;
 
 // test 6 7 8;
 
 arr = [1, 2, 3];
 
-arr2 = arr | filter { a -> map a 2 };
+arr2 = arr | filter \(map _ 2);

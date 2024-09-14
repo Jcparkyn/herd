@@ -1,7 +1,7 @@
 var a = 'global';
 (
-  showA = { x -> print a };
-  showA 0;
+  showA = \\ print a;
+  showA ();
   set a = 'block';
-  showA 0;
+  showA ();
 );

@@ -118,6 +118,10 @@ pub enum MatchPattern {
     Constant(MatchConstant),
 }
 
+impl MatchPattern {
+    pub const NIL: MatchPattern = MatchPattern::Constant(MatchConstant::Nil);
+}
+
 type SpannedPattern = Spanned<MatchPattern>;
 
 #[derive(PartialEq, Debug)]

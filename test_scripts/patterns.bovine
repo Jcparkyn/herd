@@ -4,10 +4,10 @@ var x = 7;
 
 print [x: x, y: y];
 
-fn1 = { a ->
+fn1 = \a\ (
   var z = 0;
   ![n, set z] = push a 2;
   z + n
-};
+);
 
 print (fn1 [1]);

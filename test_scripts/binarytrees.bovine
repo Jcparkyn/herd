@@ -1,23 +1,23 @@
 source = 'https://github.com/hanabi1224/Programming-Language-Benchmarks/blob/main/bench/algorithm/binarytrees/1.py';
 
-makeTree = { d ->
+makeTree = \d\ (
   if d > 0 then (
     [makeTree (d - 1), makeTree (d - 1)]
   ) else (
     [(), ()]
   )
-};
+);
 
-checkTree = { node ->
+checkTree = \node\ (
   match node with {
     [(), ()] => 1,
     [l, r] => 1 + (checkTree l) + (checkTree r),
   }
-};
+);
 
-makeCheck = { d -> checkTree (makeTree d) };
+makeCheck = \d\ ( checkTree (makeTree d) );
 
-main = { n ->
+main = \n\ (
   minDepth = 4;
   maxDepth = n;
   stretchDepth = maxDepth + 1;
@@ -33,6 +33,6 @@ main = { n ->
     print i ' trees of depth ' d ' check: ' cs;
   )
   print 'long lived tree of depth ' maxDepth ' check: ' (checkTree longLivedTree);
-};
+);
 
 main 15;
