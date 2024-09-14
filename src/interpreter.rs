@@ -70,16 +70,6 @@ impl InterpreterError {
 
 use InterpreterError::*;
 
-// fn try_into_int(value: f64) -> Result<usize, InterpreterError> {
-//     let int = value as usize;
-//     if int as f64 != value {
-//         return Err(WrongType {
-//             message: format!("Expected a non-negative integer, found {value}"),
-//         });
-//     }
-//     Ok(int)
-// }
-
 fn expect_into_type<T>(
     value: Value,
     converter: impl FnOnce(Value) -> Result<T, Value>,
