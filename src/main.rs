@@ -5,6 +5,7 @@ use clap::Parser;
 use interpreter::{Interpreter, InterpreterError};
 use lalrpop_util::{lalrpop_mod, ParseError};
 use lines::Lines;
+use mimalloc::MiMalloc;
 use pos::Spanned;
 use rustyline::error::ReadlineError;
 use rustyline::highlight::MatchingBracketHighlighter;
@@ -22,6 +23,9 @@ mod lines;
 mod parse_helpers;
 mod pos;
 mod value64;
+
+#[global_allocator]
+static GLOBAL: MiMalloc = MiMalloc;
 
 lalrpop_mod!(
     #[allow(clippy::ptr_arg)]
@@ -202,10 +206,7 @@ fn fmt_runtime_error(
     use InterpreterError::*;
     match &err.value {
         KeyNotExists(name) => writeln!(f, "Field {} doesn't exist", name),
-        IndexOutOfRange {
-            list_len,
-            accessed,
-        } => writeln!(
+        IndexOutOfRange { list_len, accessed } => writeln!(
             f,
             "Cant access index {} of an list with {} elements",
             accessed, list_len
