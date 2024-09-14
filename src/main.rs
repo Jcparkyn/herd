@@ -13,7 +13,7 @@ use rustyline::{
     Cmd, Completer, Config, Editor, EventHandler, Helper, Highlighter, Hinter, KeyCode, KeyEvent,
     Modifiers, Movement, Result,
 };
-use value::Callable;
+use value64::Callable;
 
 mod analysis;
 mod ast;

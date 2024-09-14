@@ -6,8 +6,11 @@ use crate::{
         Opcode, SpannedExpr, SpannedStatement, SpreadArrayPattern, Statement,
     },
     pos::{Span, Spanned},
-    value::{ArrayInstance, Callable, DictInstance, LambdaFunction, Value, NIL},
+    // value::{Callable, , LambdaFunction, NIL},
+    value64::{ArrayInstance, Callable, DictInstance, LambdaFunction, Value64 as Value},
 };
+
+pub const NIL: Value = Value::NIL;
 
 pub struct Interpreter {
     environment: Environment,
@@ -68,14 +71,87 @@ impl InterpreterError {
 
 use InterpreterError::*;
 
-fn try_into_int(value: f64) -> Result<usize, InterpreterError> {
-    let int = value as usize;
-    if int as f64 != value {
-        return Err(WrongType {
-            message: format!("Expected a non-negative integer, found {value}"),
-        });
+// fn try_into_int(value: f64) -> Result<usize, InterpreterError> {
+//     let int = value as usize;
+//     if int as f64 != value {
+//         return Err(WrongType {
+//             message: format!("Expected a non-negative integer, found {value}"),
+//         });
+//     }
+//     Ok(int)
+// }
+
+fn expect_into_type<T>(
+    value: Value,
+    converter: impl FnOnce(Value) -> Result<T, Value>,
+    expected: &str,
+) -> IResult<T> {
+    match converter(value) {
+        Ok(v) => Ok(v),
+        Err(v) => Err(WrongType {
+            message: format!("Expected {}, found {}", expected, &v),
+        }),
     }
-    Ok(int)
+}
+
+fn expect_f64(value: &Value) -> IResult<f64> {
+    match value.as_f64() {
+        Some(v) => Ok(v),
+        None => Err(WrongType {
+            message: format!("Expected a number, found {}", &value),
+        }),
+    }
+}
+
+fn expect_usize(value: &Value) -> IResult<usize> {
+    let result = value.as_f64().and_then(|v| {
+        let int = v as usize;
+        if int as f64 != v {
+            None
+        } else {
+            Some(int)
+        }
+    });
+    match result {
+        Some(v) => Ok(v),
+        None => Err(WrongType {
+            message: format!("Expected a non-negative integer, found {}", &value),
+        }),
+    }
+}
+
+fn expect_i64(value: &Value) -> IResult<i64> {
+    let result = value.as_f64().and_then(|v| {
+        let int = v as i64;
+        if int as f64 != v {
+            None
+        } else {
+            Some(int)
+        }
+    });
+    match result {
+        Some(v) => Ok(v),
+        None => Err(WrongType {
+            message: format!("Expected an integer, found {}", &value),
+        }),
+    }
+}
+
+fn expect_array(value: Value) -> IResult<Rc<ArrayInstance>> {
+    match value.try_into_array() {
+        Ok(v) => Ok(v),
+        Err(v) => Err(WrongType {
+            message: format!("Expected an array, found {}", &v),
+        }),
+    }
+}
+
+fn expect_into_dict(value: Value) -> IResult<Rc<DictInstance>> {
+    expect_into_type(value, Value::try_into_dict, "a dict")
+}
+
+fn expect_into_callable(value: Value) -> IResult<Callable> {
+    expect_into_type(value, Value::try_into_callable, "a callable")
 }
 
 impl Environment {
@@ -92,16 +168,18 @@ impl Environment {
         index: &Value,
         path: &[Value],
     ) -> Result<Value, InterpreterError> {
-        match old {
-            Value::Dict(dict) => Self::assign_dict_field(dict, rhs, index, path),
-            Value::Array(array) => {
-                Self::assign_array_index(array, rhs, try_into_int(index.as_number()?)?, path)
-            }
-            _ => Err(WrongType {
+        if old.is_dict() {
+            let dict = old.try_into_dict().unwrap();
+            Self::assign_dict_field(dict, rhs, index, path)
+        } else if old.is_array() {
+            let array = old.try_into_array().unwrap();
+            Self::assign_array_index(array, rhs, expect_usize(index)?, path)
+        } else {
+            Err(WrongType {
                 message: format!(
                     "Can't assign to index {index}, because {old} is neither a dict nor an array."
                 ),
-            }),
+            })
         }
     }
 
@@ -120,7 +198,7 @@ impl Environment {
         match path {
             [] => {
                 mut_dict.values.insert(key.clone(), rhs);
-                Ok(Value::Dict(dict))
+                Ok(Value::from_dict(dict))
             }
             [next_field, rest @ ..] => {
                 match mut_dict.values.get_mut(key) {
@@ -128,7 +206,7 @@ impl Environment {
                         let old_value = std::mem::replace(entry, NIL);
                         let new_value = Self::assign_part(old_value, rhs, next_field, rest)?;
                         *entry = new_value;
-                        return Ok(Value::Dict(dict));
+                        return Ok(Value::from_dict(dict));
                     }
                     None => {
                         return Err(KeyNotExists(key.clone()));
@@ -154,13 +232,13 @@ impl Environment {
         match path {
             [] => {
                 mut_array.values[index] = rhs;
-                Ok(Value::Array(array))
+                Ok(Value::from_array(array))
             }
             [next_field, rest @ ..] => {
                 let old_value = std::mem::replace(&mut mut_array.values[index], NIL);
                 let new_value = Self::assign_part(old_value, rhs, next_field, rest)?;
                 mut_array.values[index] = new_value;
-                Ok(Value::Array(array))
+                Ok(Value::from_array(array))
             }
         }
     }
@@ -253,12 +331,11 @@ impl Interpreter {
     }
 
     pub fn eval(&mut self, expr: &SpannedExpr) -> SpannedResult<Value> {
-        use Value::*;
         match &expr.value {
-            Expr::Number(num) => Ok(Number(*num)),
-            Expr::Bool(b) => Ok(Bool(*b)),
-            Expr::String(s) => Ok(String(s.clone())),
-            Expr::Nil => Ok(Nil),
+            Expr::Number(num) => Ok(Value::from_f64(*num)),
+            Expr::Bool(b) => Ok(Value::from_bool(*b)),
+            Expr::String(s) => Ok(Value::from_string(s.clone())),
+            Expr::Nil => Ok(NIL),
             Expr::Variable(v) => {
                 if v.is_final {
                     Ok(self.environment.replace(v.slot, NIL))
@@ -295,7 +372,7 @@ impl Interpreter {
             }
             Expr::Op { op, lhs, rhs } => self.eval_binary_op(lhs, rhs, op),
             Expr::Block(block) => self.eval_block(block),
-            Expr::BuiltInFunction(f) => Ok(Builtin(f.clone())),
+            Expr::BuiltInFunction(f) => Ok(Value::from_builtin(f.clone())),
             Expr::Call { callee, args } => {
                 let arg_stack_len_before = self.arg_stack.len();
                 let arg_count = args.len();
@@ -310,7 +387,8 @@ impl Interpreter {
                     };
                 }
 
-                let result = match self.eval(callee)?.as_callable() {
+                let callee_val = self.eval(callee)?;
+                let result = match expect_into_callable(callee_val) {
                     Ok(c) => self.call(&c, arg_count),
                     Err(e) => Err(e),
                 };
@@ -319,7 +397,7 @@ impl Interpreter {
             }
             Expr::Lambda(l) => {
                 let f = self.eval_lambda_definition(l);
-                Ok(Value::Lambda(Rc::new(f)))
+                Ok(Value::from_lambda(Rc::new(f)))
             }
             Expr::Dict(entries) => {
                 let mut values = HashMap::new();
@@ -333,50 +411,50 @@ impl Interpreter {
                     let value = self.eval(v)?;
                     values.insert(key, value);
                 }
-                Ok(Value::Dict(Rc::new(DictInstance { values })))
+                Ok(Value::from_dict(Rc::new(DictInstance { values })))
             }
             Expr::Array(elements) => {
                 let mut values = Vec::with_capacity(elements.len());
                 for e in elements.iter() {
                     values.push(self.eval(e)?);
                 }
-                Ok(Value::Array(Rc::new(ArrayInstance::new(values))))
+                Ok(Value::from_array(Rc::new(ArrayInstance::new(values))))
             }
             Expr::GetIndex(lhs_expr, index_expr) => {
                 let index = self.eval(index_expr)?;
                 let lhs = self.eval(lhs_expr)?;
-                match lhs {
-                    Value::Dict(d) => {
-                        return Ok(d.values.get(&index).cloned().unwrap_or(NIL));
+                if lhs.is_dict() {
+                    let d = lhs.try_into_dict().unwrap();
+                    return Ok(d.values.get(&index).cloned().unwrap_or(NIL));
+                } else if lhs.is_array() {
+                    let a = lhs.try_into_array().unwrap();
+                    let idx_int = expect_usize(&index).map_err(|_| {
+                        WrongType {
+                            message: format!(
+                                "Arrays can only be indexed with integers, found {index}"
+                            ),
+                        }
+                        .with_span(&index_expr.span)
+                    })?;
+                    return match a.values.get(idx_int) {
+                        Some(v) => Ok(v.clone()),
+                        None => Err(InterpreterError::IndexOutOfRange {
+                            array_len: a.values.len(),
+                            accessed: idx_int,
+                        }
+                        .with_span(&index_expr.span)),
+                    };
+                } else {
+                    return Err(WrongType {
+                        message: format!("Can't index {lhs} (trying to get key {index})"),
                     }
-                    Value::Array(a) => {
-                        let idx_int = index.as_number().and_then(try_into_int).map_err(|_| {
-                            WrongType {
-                                message: format!(
-                                    "Arrays can only be indexed with integers, found {index}"
-                                ),
-                            }
-                            .with_span(&index_expr.span)
-                        })?;
-                        return match a.values.get(idx_int) {
-                            Some(v) => Ok(v.clone()),
-                            None => Err(InterpreterError::IndexOutOfRange {
-                                array_len: a.values.len(),
-                                accessed: idx_int,
-                            }
-                            .with_span(&index_expr.span)),
-                        };
-                    }
-                    v => Err(WrongType {
-                        message: format!("Can't index {v} (trying to get key {index})"),
-                    }
-                    .with_span(&lhs_expr.span)),
+                    .with_span(&lhs_expr.span));
                 }
             }
             Expr::ForIn { iter, var, body } => {
                 let iter_value = self.eval(iter)?;
-                match iter_value {
-                    Value::Array(a) => {
+                match iter_value.try_into_array() {
+                    Ok(a) => {
                         for v in a.values.iter() {
                             self.match_pattern(&var.value, v.clone())
                                 .with_span(&var.span)?;
@@ -384,10 +462,12 @@ impl Interpreter {
                         }
                         Ok(NIL)
                     }
-                    _ => Err(WrongType {
-                        message: format!("Expected an array, found {iter_value}"),
+                    Err(v) => {
+                        return Err(WrongType {
+                            message: format!("Expected an array, found {v}"),
+                        }
+                        .with_span(&iter.span))
                     }
-                    .with_span(&iter.span)),
                 }
             }
             Expr::While { condition, body } => {
@@ -415,29 +495,53 @@ impl Interpreter {
         }
     }
 
+    fn add(lhs: Value, rhs: Value) -> IResult<Value> {
+        fn get_err(lhs: &Value, rhs: &Value) -> IResult<Value> {
+            Err(WrongType {
+                message: format!("Can't add {lhs} to {rhs}"),
+            })
+        }
+        if let Some(n1) = lhs.as_f64() {
+            if let Some(n2) = rhs.as_f64() {
+                return Ok(Value::from_f64(n1 + n2));
+            }
+        } else if lhs.is_string() {
+            if let Some(s2) = rhs.as_string() {
+                let mut lhs_str = lhs.try_into_string().unwrap();
+                Rc::make_mut(&mut lhs_str).push_str(s2.as_ref());
+                return Ok(Value::from_string(lhs_str));
+            }
+        }
+        get_err(&lhs, &rhs)
+    }
+
     fn eval_binary_op(
         &mut self,
         lhs: &SpannedExpr,
         rhs: &SpannedExpr,
         op: &Opcode,
     ) -> SpannedResult<Value> {
-        use Value::*;
         let mut try_num = |expr: &SpannedExpr| -> SpannedResult<f64> {
-            self.eval(expr)?.as_number().with_span(&expr.span)
+            let value = self.eval(expr)?;
+            expect_f64(&value).with_span(&expr.span)
         };
         match op {
-            Opcode::Add => Value::add(self.eval(lhs)?, self.eval(rhs)?).with_span(&lhs.span),
-            Opcode::Sub => Ok(Number(try_num(lhs)? - try_num(rhs)?)),
-            Opcode::Mul => Ok(Number(try_num(lhs)? * try_num(rhs)?)),
-            Opcode::Div => Ok(Number(try_num(lhs)? / try_num(rhs)?)),
-            Opcode::Gt => Ok(Bool(try_num(lhs)? > try_num(rhs)?)),
-            Opcode::Gte => Ok(Bool(try_num(lhs)? >= try_num(rhs)?)),
-            Opcode::Lt => Ok(Bool(try_num(lhs)? < try_num(rhs)?)),
-            Opcode::Lte => Ok(Bool(try_num(lhs)? <= try_num(rhs)?)),
-            Opcode::Eq => Ok(Bool(self.eval(&lhs)? == self.eval(&rhs)?)),
-            Opcode::Neq => Ok(Bool(self.eval(&lhs)? != self.eval(&rhs)?)),
-            Opcode::And => Ok(Bool(self.eval(&lhs)?.truthy() && self.eval(&rhs)?.truthy())),
-            Opcode::Or => Ok(Bool(self.eval(&lhs)?.truthy() || self.eval(&rhs)?.truthy())),
+            Opcode::Add => Self::add(self.eval(lhs)?, self.eval(rhs)?).with_span(&lhs.span),
+            Opcode::Sub => Ok(Value::from_f64(try_num(lhs)? - try_num(rhs)?)),
+            Opcode::Mul => Ok(Value::from_f64(try_num(lhs)? * try_num(rhs)?)),
+            Opcode::Div => Ok(Value::from_f64(try_num(lhs)? / try_num(rhs)?)),
+            Opcode::Gt => Ok(Value::from_bool(try_num(lhs)? > try_num(rhs)?)),
+            Opcode::Gte => Ok(Value::from_bool(try_num(lhs)? >= try_num(rhs)?)),
+            Opcode::Lt => Ok(Value::from_bool(try_num(lhs)? < try_num(rhs)?)),
+            Opcode::Lte => Ok(Value::from_bool(try_num(lhs)? <= try_num(rhs)?)),
+            Opcode::Eq => Ok(Value::from_bool(self.eval(&lhs)? == self.eval(&rhs)?)),
+            Opcode::Neq => Ok(Value::from_bool(self.eval(&lhs)? != self.eval(&rhs)?)),
+            Opcode::And => Ok(Value::from_bool(
+                self.eval(&lhs)?.truthy() && self.eval(&rhs)?.truthy(),
+            )),
+            Opcode::Or => Ok(Value::from_bool(
+                self.eval(&lhs)?.truthy() || self.eval(&rhs)?.truthy(),
+            )),
         }
     }
 
@@ -468,9 +572,9 @@ impl Interpreter {
         match builtin {
             BuiltInFunction::Print => {
                 for arg in Self::pop_args(&mut self.arg_stack, arg_count) {
-                    match arg {
-                        Value::String(s) => print!("{s}"),
-                        v => print!("{v}"),
+                    match arg.try_into_string() {
+                        Ok(s) => print!("{s}"),
+                        Err(v) => print!("{v}"),
                     }
                 }
                 println!();
@@ -478,95 +582,99 @@ impl Interpreter {
             }
             BuiltInFunction::Not => {
                 let [arg] = self.destructure_args(arg_count)?;
-                return Ok(Value::Bool(!arg.truthy()));
+                return Ok(Value::from_bool(!arg.truthy()));
             }
             BuiltInFunction::Range => {
                 let [start, stop] = self.destructure_args(arg_count)?;
-                let start_int = try_into_int(start.as_number()?)?;
-                let stop_int = try_into_int(stop.as_number()?)?;
+                let start_int = expect_i64(&start)?;
+                let stop_int = expect_i64(&stop)?;
                 let mut values = Vec::new();
                 for i in start_int..stop_int {
-                    values.push(Value::Number(i as f64));
+                    values.push(Value::from_f64(i as f64));
                 }
-                return Ok(Value::Array(Rc::new(ArrayInstance::new(values))));
+                return Ok(Value::from_array(Rc::new(ArrayInstance::new(values))));
             }
-            BuiltInFunction::Len => match self.destructure_args(arg_count)? {
-                [Value::Array(a)] => Ok(Value::Number(a.values.len() as f64)),
-                [Value::Dict(d)] => Ok(Value::Number(d.values.len() as f64)),
-                [v] => Err(WrongType {
-                    message: format!("Expected an array or dict, found {v}"),
-                }),
-            },
+            BuiltInFunction::Len => {
+                let [arg] = self.destructure_args(arg_count)?;
+                if let Some(a) = arg.as_array() {
+                    Ok(Value::from_f64(a.values.len() as f64))
+                } else if let Some(d) = arg.as_dict() {
+                    Ok(Value::from_f64(d.values.len() as f64))
+                } else {
+                    Err(WrongType {
+                        message: format!("Expected an array or dict, found {arg}"),
+                    })
+                }
+            }
             BuiltInFunction::Push => {
                 let [array_val, new_value] = self.destructure_args(arg_count)?;
-                let mut array = array_val.to_array()?;
+                let mut array = expect_array(array_val)?;
                 let mut_array = Rc::make_mut(&mut array);
                 mut_array.values.push(new_value);
-                return Ok(Value::Array(array));
+                return Ok(Value::from_array(array));
             }
             BuiltInFunction::Pop => {
                 let [array_val] = self.destructure_args(arg_count)?;
-                let mut array = array_val.to_array()?;
+                let mut array = expect_array(array_val)?;
                 let mut_array = Rc::make_mut(&mut array);
                 mut_array.values.pop();
                 // TODO this should really return the value as well.
-                return Ok(Value::Array(array));
+                return Ok(Value::from_array(array));
             }
             BuiltInFunction::Sort => {
                 let [array_val] = self.destructure_args(arg_count)?;
-                let mut array = array_val.to_array()?;
+                let mut array = expect_array(array_val)?;
                 match (*array).values.as_slice() {
-                    [] => Ok(Value::Array(array)),
-                    [Value::Number(_), rest @ ..] => {
-                        if let Some(bad_val) = rest.iter().find(|v| !v.is_number()) {
-                            return Err(WrongType {
-                                message: format!(
+                    [] => Ok(Value::from_array(array)),
+                    [first, rest @ ..] => {
+                        if first.is_f64() {
+                            if let Some(bad_val) = rest.iter().find(|v| !v.is_f64()) {
+                                return Err(WrongType {
+                                    message: format!(
                                     "Expected all values in array to be numbers, found {bad_val}"
                                 ),
+                                });
+                            }
+                            Rc::make_mut(&mut array).values.sort_by(|a, b| {
+                                a.as_f64().unwrap().total_cmp(&b.as_f64().unwrap())
                             });
-                        }
-                        Rc::make_mut(&mut array).values.sort_by(|a, b| {
-                            a.as_number().unwrap().total_cmp(&b.as_number().unwrap())
-                        });
-                        return Ok(Value::Array(array));
-                    }
-                    [Value::String(_), rest @ ..] => {
-                        if let Some(bad_val) = rest.iter().find(|v| !v.is_string()) {
-                            return Err(WrongType {
-                                message: format!(
+                            return Ok(Value::from_array(array));
+                        } else if first.is_string() {
+                            if let Some(bad_val) = rest.iter().find(|v| !v.is_string()) {
+                                return Err(WrongType {
+                                    message: format!(
                                     "Expected all values in array to be strings, found {bad_val}"
                                 ),
+                                });
+                            }
+                            Rc::make_mut(&mut array).values.sort_by(|a, b| {
+                                a.as_string().unwrap().cmp(&b.as_string().unwrap())
                             });
+                            return Ok(Value::from_array(array));
                         }
-                        Rc::make_mut(&mut array)
-                            .values
-                            .sort_by(|a, b| a.as_string().unwrap().cmp(&b.as_string().unwrap()));
-                        return Ok(Value::Array(array));
-                    }
-                    [first, _rest @ ..] => {
                         return Err(WrongType {
                             message: format!(
                                 "Can only sort arrays of numbers or strings, found {first}"
                             ),
-                        })
+                        });
                     }
                 }
             }
             BuiltInFunction::Map => {
                 let [array_val, f_val] = self.destructure_args(arg_count)?;
-                let mut array = array_val.to_array()?;
-                let f = f_val.as_callable()?;
+                let mut array = expect_array(array_val)?;
+                let f = expect_into_callable(f_val)?;
                 let mut_array = Rc::make_mut(&mut array);
                 for v in mut_array.values.iter_mut() {
                     let v2 = std::mem::replace(v, NIL);
                     *v = self.call_internal(&f, [v2])?;
                 }
-                return Ok(Value::Array(array));
+                return Ok(Value::from_array(array));
             }
             BuiltInFunction::Filter => {
                 let [array_val, f_val] = self.destructure_args(arg_count)?;
-                let mut array = array_val.to_array()?;
-                let f = f_val.as_callable()?;
+                let mut array = expect_array(array_val)?;
+                let f = expect_into_callable(f_val)?;
                 let mut_array = Rc::make_mut(&mut array);
 
                 let mut err = None;
@@ -582,32 +690,32 @@ impl Interpreter {
 
                 return match err {
                     Some(e) => Err(e),
-                    None => Ok(Value::Array(array)),
+                    None => Ok(Value::from_array(array)),
                 };
             }
             BuiltInFunction::RemoveKey => {
                 let [dict_val, key] = self.destructure_args(arg_count)?;
-                let mut dict = dict_val.to_dict()?;
+                let mut dict = expect_into_dict(dict_val)?;
                 let mut_dict = Rc::make_mut(&mut dict);
                 mut_dict.values.remove(&key);
-                return Ok(Value::Dict(dict));
+                return Ok(Value::from_dict(dict));
             }
             BuiltInFunction::ShiftLeft => {
                 let [val, shift_by] = self.destructure_args(arg_count)?;
-                let val_int = try_into_int(val.as_number()?)?;
-                let shift_by_int = try_into_int(shift_by.as_number()?)?;
-                return Ok(Value::Number((val_int << shift_by_int) as f64));
+                let val_int = expect_i64(&val)?;
+                let shift_by_int = expect_i64(&shift_by)?;
+                return Ok(Value::from_f64((val_int << shift_by_int) as f64));
             }
             BuiltInFunction::XOR => {
                 let [lhs, rhs] = self.destructure_args(arg_count)?;
-                let lhs_int = try_into_int(lhs.as_number()?)?;
-                let rhs_int = try_into_int(rhs.as_number()?)?;
-                return Ok(Value::Number((lhs_int ^ rhs_int) as f64));
+                let lhs_int = expect_i64(&lhs)?;
+                let rhs_int = expect_i64(&rhs)?;
+                return Ok(Value::from_f64((lhs_int ^ rhs_int) as f64));
             }
             BuiltInFunction::Floor => {
                 let [val] = self.destructure_args(arg_count)?;
-                let val_num = val.as_number()?;
-                return Ok(Value::Number(val_num.floor()));
+                let val_num = expect_f64(&val)?;
+                return Ok(Value::from_f64(val_num.floor()));
             }
         }
     }
@@ -637,7 +745,9 @@ impl Interpreter {
             self.environment.slots.push(val.clone());
         }
         if let Some(_) = &function.self_name {
-            self.environment.slots.push(Value::Lambda(function.clone()));
+            self.environment
+                .slots
+                .push(Value::from_lambda(function.clone()));
         }
 
         let result = match self.eval(&function.body) {
@@ -698,7 +808,7 @@ impl Interpreter {
             for value in values {
                 vec.push(std::mem::replace(value, NIL));
             }
-            Value::Array(Rc::new(ArrayInstance::new(vec)))
+            Value::from_array(Rc::new(ArrayInstance::new(vec)))
         }
         match pattern {
             MatchPattern::Discard => Ok(()),
@@ -742,17 +852,17 @@ impl Interpreter {
                 self.assign(target, value)?;
                 Ok(())
             }
-            MatchPattern::SimpleArray(parts) => match value {
-                Value::Array(a) => match Rc::try_unwrap(a) {
+            MatchPattern::SimpleArray(parts) => match value.try_into_array() {
+                Ok(a) => match Rc::try_unwrap(a) {
                     Ok(mut arr) => self.match_slice_replace(&parts, &mut arr.values),
                     Err(rc) => self.match_slice_clone(&parts, &rc.values),
                 },
-                _ => Err(PatternMatchFailed {
-                    message: format!("Expected an array, found {value}"),
+                Err(v) => Err(PatternMatchFailed {
+                    message: format!("Expected an array, found {v}"),
                 }),
             },
-            MatchPattern::SpreadArray(pattern) => match value {
-                Value::Array(mut a) => {
+            MatchPattern::SpreadArray(pattern) => match value.try_into_array() {
+                Ok(mut a) => {
                     if a.values.len() < pattern.min_len() {
                         return Err(PatternMatchFailed {
                             message: format!(
@@ -765,8 +875,8 @@ impl Interpreter {
                     let mut_values = &mut Rc::make_mut(&mut a).values;
                     self.match_spread_array(pattern, mut_values)
                 }
-                _ => Err(PatternMatchFailed {
-                    message: format!("Expected an array, found {value}"),
+                Err(v) => Err(PatternMatchFailed {
+                    message: format!("Expected an array, found {v}"),
                 }),
             },
             MatchPattern::Constant(c) => {
@@ -816,12 +926,12 @@ impl Interpreter {
             MatchPattern::Discard => true,
             MatchPattern::Declaration(_, _) => true,
             MatchPattern::Assignment(_) => true,
-            MatchPattern::SimpleArray(parts) => match value {
-                Value::Array(a) => matches_slice(parts, &a.values),
+            MatchPattern::SimpleArray(parts) => match value.as_array() {
+                Some(a) => matches_slice(parts, &a.values),
                 _ => false,
             },
-            MatchPattern::SpreadArray(pattern) => match value {
-                Value::Array(a) => matches_spread_array(pattern, &a.values),
+            MatchPattern::SpreadArray(pattern) => match value.as_array() {
+                Some(a) => matches_spread_array(pattern, &a.values),
                 _ => false,
             },
             MatchPattern::Constant(c) => Self::matches_constant(c, value),
@@ -829,12 +939,11 @@ impl Interpreter {
     }
 
     fn matches_constant(constant: &MatchConstant, value: &Value) -> bool {
-        match (constant, value) {
-            (MatchConstant::Number(n), Value::Number(m)) => n == m,
-            (MatchConstant::String(s), Value::String(m)) => s == m.as_ref(),
-            (MatchConstant::Bool(b), Value::Bool(m)) => b == m,
-            (MatchConstant::Nil, Value::Nil) => true,
-            _ => false,
+        match constant {
+            MatchConstant::Number(n) => value.as_f64() == Some(*n), // Use NaN equality?
+            MatchConstant::String(s) => value.as_string() == Some(s),
+            MatchConstant::Bool(b) => value.as_bool() == Some(*b),
+            MatchConstant::Nil => value.is_nil(),
         }
     }
 

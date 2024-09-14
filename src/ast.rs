@@ -6,73 +6,49 @@ use std::fmt::Formatter;
 use std::iter;
 use std::rc::Rc;
 
+use strum::EnumString;
+use strum::FromRepr;
+
 use crate::pos::Spanned;
 
-#[derive(PartialEq, Debug, Clone, Copy, Hash)]
+#[repr(u8)]
+#[derive(PartialEq, Debug, Clone, Copy, Hash, FromRepr, EnumString)]
 pub enum BuiltInFunction {
     // general
+    #[strum(serialize = "print")]
     Print,
+    #[strum(serialize = "not")]
     Not,
     // numbers
+    #[strum(serialize = "shiftLeft")]
     ShiftLeft,
+    #[strum(serialize = "xor")]
     XOR,
+    #[strum(serialize = "floor")]
     Floor,
     // arrays
+    #[strum(serialize = "range")]
     Range,
+    #[strum(serialize = "push")]
     Push,
+    #[strum(serialize = "pop")]
     Pop,
+    #[strum(serialize = "len")]
     Len,
+    #[strum(serialize = "sort")]
     Sort,
+    #[strum(serialize = "map")]
     Map,
+    #[strum(serialize = "filter")]
     Filter,
     // dicts
+    #[strum(serialize = "removeKey")]
     RemoveKey,
-}
-
-impl BuiltInFunction {
-    pub const fn name(&self) -> &'static str {
-        use BuiltInFunction::*;
-        match self {
-            Print => "print",
-            Not => "not",
-            Range => "range",
-            Push => "push",
-            Pop => "pop",
-            Len => "len",
-            Sort => "sort",
-            Map => "map",
-            Filter => "filter",
-            ShiftLeft => "shiftLeft",
-            XOR => "xor",
-            Floor => "floor",
-            RemoveKey => "removeKey",
-        }
-    }
-
-    pub fn from_name(name: &str) -> Option<BuiltInFunction> {
-        use BuiltInFunction::*;
-        match name {
-            "print" => Some(Print),
-            "not" => Some(Not),
-            "range" => Some(Range),
-            "push" => Some(Push),
-            "pop" => Some(Pop),
-            "len" => Some(Len),
-            "sort" => Some(Sort),
-            "map" => Some(Map),
-            "filter" => Some(Filter),
-            "removeKey" => Some(RemoveKey),
-            "shiftLeft" => Some(ShiftLeft),
-            "xor" => Some(XOR),
-            "floor" => Some(Floor),
-            _ => None,
-        }
-    }
 }
 
 impl Display for BuiltInFunction {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        write!(f, "{}", self.name())
+        write!(f, "{}", self.to_string())
     }
 }
 

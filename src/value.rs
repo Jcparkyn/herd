@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::{collections::HashMap, fmt::Display, rc::Rc};
 
 use crate::{
@@ -124,7 +126,6 @@ impl Value {
         match self {
             Value::Dict(_) => false,
             Value::Lambda(_) => false,
-            Value::Builtin(_) => false,
             Value::Array(a) => a.as_ref().values.iter().all(Self::is_valid_dict_key),
             Value::Number(f) => !f.is_nan(),
             _ => true,
@@ -149,6 +150,7 @@ impl Display for Value {
 
 impl std::hash::Hash for Value {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        std::mem::discriminant(self).hash(state);
         match self {
             Value::Number(n) => n.to_bits().hash(state),
             Value::Bool(b) => b.hash(state),

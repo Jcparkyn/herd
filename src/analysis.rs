@@ -1,4 +1,4 @@
-use std::{collections::HashSet, fmt::Display, rc::Rc};
+use std::{collections::HashSet, fmt::Display, rc::Rc, str::FromStr};
 
 use crate::{
     ast::{
@@ -359,7 +359,7 @@ fn analyze_expr_liveness(expr: &mut Expr, deps: &mut HashSet<String>) {
         Expr::String(_) => {}
         Expr::Nil => {}
         Expr::Variable(v) => {
-            if let Some(builtin) = BuiltInFunction::from_name(&v.name) {
+            if let Ok(builtin) = BuiltInFunction::from_str(&v.name) {
                 *expr = Expr::BuiltInFunction(builtin);
                 return;
             }
