@@ -447,7 +447,7 @@ impl Interpreter {
                         for v in a.values.iter() {
                             self.match_pattern(&var.value, v.clone())
                                 .with_span(&var.span)?;
-                            self.eval_block(body)?;
+                            self.eval(body)?;
                         }
                         Ok(NIL)
                     }

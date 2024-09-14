@@ -56,7 +56,7 @@ ExprWithoutBlock = {
 ExprWithBlock: Expr = {
     IfExpr,
     MatchExpr,
-    "for" <var:Sp<MatchPattern>> "in" <iter:Box<SpExpr>> "do" <body:BlockExpr> =>
+    "for" <var:Sp<MatchPattern>> "in" <iter:Box<SpExpr>> "do" <body:Box<Sp<Term>>> =>
         Expr::ForIn { var, iter, body },
     "while" <condition:Box<SpExpr>> "do" <body:Box<Sp<Term>>> =>
         Expr::While { condition, body },

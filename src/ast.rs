@@ -234,7 +234,7 @@ pub enum Expr {
     ForIn {
         iter: Box<SpannedExpr>,
         var: SpannedPattern,
-        body: Block,
+        body: Box<SpannedExpr>,
     },
     While {
         condition: Box<SpannedExpr>,

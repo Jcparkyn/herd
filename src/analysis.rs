@@ -253,7 +253,7 @@ impl VariableAnalyzer {
             Expr::ForIn { iter, var, body } => {
                 self.analyze_expr(iter);
                 self.analyze_pattern(&mut var.value, span);
-                self.analyze_block(body);
+                self.analyze_expr(body);
                 self.vars.pop();
             }
             Expr::While { condition, body } => {
@@ -445,10 +445,10 @@ fn analyze_expr_liveness(expr: &mut Expr, deps: &mut HashSet<String>) {
             // TODO (I think) this doesn't account for the fact that variables declared in the loop (including the loop variable)
             // are cleared each loop. We could be a bit more aggressive here.
             let mut deps_last_loop = deps.clone();
-            analyze_block_liveness(body, &mut deps_last_loop);
+            analyze_expr_liveness(&mut body.value, &mut deps_last_loop);
             let mut deps_other_loops = deps_last_loop.clone();
             analyze_pattern_liveness(&mut var.value, &mut deps_other_loops); // var can't persist between loops.
-            analyze_block_liveness(body, &mut deps_other_loops);
+            analyze_expr_liveness(&mut body.value, &mut deps_other_loops);
             // final dependency set is union of 0 loops, 1 loop, and >1 loops.
             for dep in deps_last_loop {
                 deps.insert(dep);
