@@ -4,9 +4,9 @@ tmpLRU = [
   oldest: 'a',
   newest: 'c',
   items: [
-    a: [69, nil, 'b'],
+    a: [69, (), 'b'],
     b: [7, 'a', 'c'],
-    c: [420, 'b', nil],
+    c: [420, 'b', ()],
   ],
 ];
 
@@ -24,22 +24,22 @@ removeOldest = { var lru ->
   set lru.items = lru.items | removeKey lru.oldest;
   new_oldest = oldest_tuple.[2];
   set lru.oldest = new_oldest;
-  set lru.[new_oldest].[1] = nil;
+  set lru.[new_oldest].[1] = ();
   lru
 };
 
 get = { var lru key ->
   if len lru.items == 0 then (
-    return [lru, nil];
+    return [lru, ()];
   )
   val = lru.items.[key];
-  if val == nil then ( return [lru, nil]; )
+  if val == () then ( return [lru, ()]; )
   prev = val.[1];
   next = val.[2];
-  if prev != nil then (
+  if prev != () then (
     set lru.items.[prev].[2] = next;
   )
-  if next != nil then (
+  if next != () then (
     set lru.items.[next].[1] = prev;
   )
 
@@ -48,7 +48,7 @@ get = { var lru key ->
   )
 
   set lru.items.[lru.newest].[2] = key;
-  set lru.items.[key] = [val.[0], lru.newest, nil];
+  set lru.items.[key] = [val.[0], lru.newest, ()];
   set lru.newest = key;
   [lru, val.[0]]
 };
@@ -58,14 +58,14 @@ put = { var lru key value ->
   if len lru.items == 0 then (
     set lru.oldest = key;
     set lru.newest = key;
-    set lru.items.[key] = [value, nil, nil];
+    set lru.items.[key] = [value, (), ()];
     return lru;
   )
 
   ![set lru, val] = get lru key;
 
   // Key exists
-  if val != nil then (
+  if val != () then (
     set lru.items.[key].[0] = value;
     return lru;
   )
@@ -73,7 +73,7 @@ put = { var lru key value ->
   if len lru.items == lru.size then (
     set lru = lru | removeOldest;
   )
-  set lru.items.[key] = [value, lru.newest, nil];
+  set lru.items.[key] = [value, lru.newest, ()];
   set lru.items.[lru.newest].[2] = key;
   set lru.newest = key;
   lru

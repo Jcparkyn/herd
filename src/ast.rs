@@ -134,7 +134,7 @@ impl Display for MatchConstant {
             MatchConstant::Number(n) => write!(f, "{}", n),
             MatchConstant::Bool(b) => write!(f, "{}", b),
             MatchConstant::String(s) => write!(f, "'{}'", s),
-            MatchConstant::Nil => write!(f, "nil"),
+            MatchConstant::Nil => write!(f, "()"),
         }
     }
 }
@@ -274,7 +274,7 @@ impl Debug for Expr {
             Expr::Op { op, lhs, rhs } => write!(f, "({:?} {:?} {:?})", lhs, op, rhs),
             Expr::Variable(v) => v.fmt(f),
             Expr::Block(b) => b.fmt(f),
-            Expr::Nil => f.write_str("nil"),
+            Expr::Nil => f.write_str("()"),
             Expr::If {
                 condition,
                 then_branch,

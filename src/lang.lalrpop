@@ -80,7 +80,6 @@ Factor = Tier<FactorOp, Term>;
 Term: Expr = {
     NumLiteral => Expr::Number(<>),
     BoolLiteral => Expr::Bool(<>),
-    "nil" => Expr::Nil,
     StringLiteral => Expr::from_string(<>),
     Identifier => Expr::Variable(VarRef::new(<>)),
     LambdaExpr,
@@ -112,7 +111,7 @@ MatchPattern: MatchPattern = {
     NumLiteral => MatchPattern::Constant(ast::MatchConstant::Number(<>)),
     BoolLiteral => MatchPattern::Constant(ast::MatchConstant::Bool(<>)),
     StringLiteral => MatchPattern::Constant(ast::MatchConstant::String(<>)),
-    "nil" => MatchPattern::Constant(ast::MatchConstant::Nil),
+    "(" ")" => MatchPattern::Constant(ast::MatchConstant::Nil),
 }
 
 #[inline]

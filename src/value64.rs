@@ -426,21 +426,6 @@ impl Drop for Value64 {
     }
 }
 
-// impl Display for Value {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         match self {
-//             Value::Number(n) => write!(f, "{}", n),
-//             Value::Bool(b) => write!(f, "{}", b),
-//             Value::String(s) => write!(f, "'{}'", s),
-//             Value::Builtin(b) => write!(f, "{}", b.to_string()),
-//             Value::Lambda(l) => write!(f, "{}", l),
-//             Value::Dict(d) => write!(f, "{}", d),
-//             Value::List(a) => write!(f, "{}", a),
-//             Value::Nil => write!(f, "nil"),
-//         }
-//     }
-// }
-
 impl Display for Value64 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match try_get_ptr_tag(self.bits) {
@@ -456,7 +441,7 @@ impl Display for Value64 {
                 } else if self.bits == FALSE_VALUE {
                     write!(f, "false")
                 } else if self.bits == NIL_VALUE {
-                    write!(f, "nil")
+                    write!(f, "()")
                 } else if let Some(b) = self.as_builtin() {
                     write!(f, "{}", b)
                 } else {
