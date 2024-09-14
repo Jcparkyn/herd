@@ -9,7 +9,7 @@ makeTree = \d\ (
 );
 
 checkTree = \node\ (
-  match node with {
+  switch node {
     [(), ()] => 1,
     [l, r] => 1 + (checkTree l) + (checkTree r),
   }

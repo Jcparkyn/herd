@@ -145,7 +145,7 @@ IfExpr: Expr =
         };
 
 MatchExpr: Expr =
-    "match" <condition:SpExpr> "with" "{" <branches:CommaNonEmpty<MatchExprBranch>> "}" =>
+    "switch" <condition:SpExpr> "{" <branches:CommaNonEmpty<MatchExprBranch>> "}" =>
         Expr::Match(Box::new(MatchExpr { condition, branches }));
 
 MatchExprBranch: (Spanned<MatchPattern>, ast::SpannedExpr) =
