@@ -6,7 +6,6 @@ use crate::{
         Opcode, SpannedExpr, SpannedStatement, SpreadArrayPattern, Statement,
     },
     pos::{Span, Spanned},
-    // value::{Callable, , LambdaFunction, NIL},
     value64::{ArrayInstance, Callable, DictInstance, LambdaFunction, Value64 as Value},
 };
 
