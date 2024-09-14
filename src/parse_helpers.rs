@@ -2,8 +2,8 @@ use std::rc::Rc;
 
 use crate::{
     ast::{
-        Block, DeclarationType, Expr, LambdaExpr, MatchPattern, SpannedExpr, SpreadListPattern,
-        Statement, VarRef,
+        AssignmentTarget, Block, DeclarationType, Expr, LambdaExpr, MatchPattern, SpannedExpr,
+        SpreadListPattern, Statement, VarRef,
     },
     pos::Spanned,
 };
@@ -56,4 +56,11 @@ pub fn make_implicit_lambda(body: Spanned<Block>) -> Expr {
         vec![Spanned::new(body.span, param)],
         Rc::new(body.map(Expr::Block)),
     ))
+}
+
+pub fn assignment_target_to_index_expr(target: &Spanned<AssignmentTarget>) -> SpannedExpr {
+    let init = Spanned::new(target.span, Expr::Variable(target.value.var.clone()));
+    target.value.path.iter().cloned().fold(init, |e, index| {
+        Spanned::new(e.span, Expr::GetIndex(Box::new(e), Box::new(index)))
+    })
 }

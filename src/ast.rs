@@ -52,7 +52,7 @@ impl Display for BuiltInFunction {
     }
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 pub struct Block {
     pub statements: Vec<SpannedStatement>,
     pub expression: Option<Box<SpannedExpr>>,
@@ -76,13 +76,13 @@ impl Debug for Block {
     }
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub struct AssignmentTarget {
     pub var: VarRef,
     pub path: Vec<SpannedExpr>,
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub struct SpreadListPattern {
     pub before: Vec<MatchPattern>,
     pub spread: Box<MatchPattern>,
@@ -102,13 +102,13 @@ impl SpreadListPattern {
     }
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone, Copy)]
 pub enum DeclarationType {
     Const,
     Mutable,
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub enum MatchPattern {
     SimpleList(Vec<MatchPattern>),
     SpreadList(SpreadListPattern),
@@ -124,7 +124,7 @@ impl MatchPattern {
 
 type SpannedPattern = Spanned<MatchPattern>;
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub enum MatchConstant {
     Number(f64),
     Bool(bool),
@@ -143,7 +143,7 @@ impl Display for MatchConstant {
     }
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub enum Statement {
     PatternAssignment(SpannedPattern, SpannedExpr),
     Expression(SpannedExpr),
@@ -182,7 +182,7 @@ impl Debug for VarRef {
     }
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub struct LambdaExpr {
     pub params: Rc<Vec<SpannedPattern>>,
     pub body: Rc<SpannedExpr>,
@@ -201,13 +201,13 @@ impl LambdaExpr {
     }
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub struct MatchExpr {
     pub condition: SpannedExpr,
     pub branches: Vec<(SpannedPattern, SpannedExpr)>,
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 pub enum Expr {
     Number(f64),
     Bool(bool),
@@ -252,7 +252,7 @@ impl Expr {
     }
 }
 
-#[derive(PartialEq, Eq, Hash)]
+#[derive(PartialEq, Eq, Hash, Clone, Copy)]
 pub enum Opcode {
     Mul,
     Div,

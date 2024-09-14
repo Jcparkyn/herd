@@ -13,6 +13,10 @@ impl Span {
     pub fn new(start: Pos, end: Pos) -> Self {
         Span { start, end }
     }
+
+    pub fn wrap<T>(self, value: T) -> Spanned<T> {
+        Spanned::new(self, value)
+    }
 }
 
 #[derive(Copy, Clone, Default, Eq, PartialEq)]

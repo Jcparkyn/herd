@@ -37,7 +37,7 @@ mandelbrot = {size ->
         set bitNum  = 0;
       ) else (
         if x == size - 1 then (
-          set byteAcc = byteAcc | shiftLeft (8 - bitNum);
+          set byteAcc |= shiftLeft (8 - bitNum);
           set sum = xor sum byteAcc;
           set byteAcc = 0;
           set bitNum  = 0;

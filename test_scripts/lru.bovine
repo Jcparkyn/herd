@@ -20,8 +20,7 @@ removeOldest = \var lru\ (
     return lru;
   )
   oldest_tuple = lru.items.[lru.oldest];
-  // set lru.items |= removeKey lru.oldest;
-  set lru.items = lru.items | removeKey lru.oldest;
+  set lru.items |= removeKey lru.oldest;
   new_oldest = oldest_tuple.[2];
   set lru.oldest = new_oldest;
   set lru.[new_oldest].[1] = ();
@@ -71,7 +70,7 @@ put = \var lru key value\ (
   )
   // Key doesn't exist
   if len lru.items == lru.size then (
-    set lru = lru | removeOldest;
+    set lru |= removeOldest;
   )
   set lru.items.[key] = [value, lru.newest, ()];
   set lru.items.[lru.newest].[2] = key;
@@ -80,11 +79,12 @@ put = \var lru key value\ (
 );
 
 main = \\ (
-  lru = newLRU 10
-    | put 'a' 69
-    | put 'b' 420
-    | put 'c' 7;
-  print (get lru 'a');
+  var lru = newLRU 10 | put 'a' 69;
+  set lru |= put 'b' 420;
+  set lru |= put 'c' 7;
+  ![set lru, a] = get lru 'a';
+  print 'lru state: ' lru;
+  print 'a: ' a;
 );
 
-main 0;
+main ();

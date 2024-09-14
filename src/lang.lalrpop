@@ -7,6 +7,7 @@ use crate::parse_helpers::{
     process_list_match,
     process_declaration,
     make_implicit_lambda,
+    assignment_target_to_index_expr,
 };
 
 grammar;
@@ -33,10 +34,16 @@ StatementWithSemicolon: Statement = {
         process_declaration(name, decl_type, e),
     "set" <target:Sp<AssignmentTarget>> "=" <e:SpExpr> ";" =>
         Statement::PatternAssignment(target.map(MatchPattern::Assignment), e),
+    "set" <target:Sp<AssignmentTarget>> "|" "=" <rhs_l:@L> <callee:Sp<Term>> <mut args:Sp<Term>*> <rhs_r:@R> ";" => {
+        args.insert(0, assignment_target_to_index_expr(&target));
+        let rhs_span = Span::new(rhs_l, rhs_r);
+        let rhs = rhs_span.wrap(Expr::Call { callee: Box::new(callee), args });
+        Statement::PatternAssignment(target.map(MatchPattern::Assignment), rhs)
+    },
     "!" <pattern:Sp<MatchPattern>> "=" <e:SpExpr> ";" =>
         Statement::PatternAssignment(pattern, e),
     "return" <e:SpExpr> ";" => Statement::Return(e),
-    <span:Sp<"return">> ";" => Statement::Return(Spanned::new(span.span, Expr::Nil)),
+    <span:Sp<"return">> ";" => Statement::Return(span.span.wrap(Expr::Nil)),
 }
 
 Expr = {

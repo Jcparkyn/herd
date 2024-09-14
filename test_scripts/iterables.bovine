@@ -14,8 +14,8 @@ iterToArray = \iter\ (
     if state == () then (
       return arr;
     )
-    set arr = arr | push (getCurrent state);
-    set state = getNext state;
+    set arr |= push (getCurrent state);
+    set state |= getNext;
   )
   return arr;
 );
