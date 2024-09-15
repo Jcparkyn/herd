@@ -6,7 +6,7 @@ use cranelift_module::{DataDescription, Linkage, Module};
 use std::collections::HashMap;
 use std::slice;
 
-use crate::ast::{Expr, LambdaExpr, MatchPattern, SpannedExpr};
+use crate::ast::{Expr, LambdaExpr, MatchPattern, SpannedExpr, SpannedStatement, Statement};
 
 type FuncExpr = LambdaExpr;
 
@@ -130,7 +130,7 @@ impl JIT {
         // Walk the AST and declare all implicitly-declared variables.
         let mut variable_builder = VariableBuilder {
             int,
-            builder: &mut builder,
+            builder: builder,
             variables: HashMap::new(),
             index: 0,
         };
@@ -159,7 +159,7 @@ impl JIT {
 
 struct VariableBuilder<'a> {
     int: types::Type,
-    builder: &'a mut FunctionBuilder<'a>,
+    builder: FunctionBuilder<'a>,
     variables: HashMap<String, Variable>,
     index: usize,
 }
@@ -187,6 +187,17 @@ impl VariableBuilder<'_> {
             // Expr::Variable(ref name) => {
             //     declare_variable(int, builder, variables, index, name);
             // }
+            Expr::Block(b) => {
+                for stmt in &b.statements {
+                    self.declare_variables_in_stmt(stmt);
+                }
+                if let Some(ref expr) = b.expression {
+                    self.declare_variables_in_expr(expr);
+                }
+            }
+            Expr::Bool(_) => {}
+            Expr::Number(_) => {}
+            Expr::Nil => {}
             Expr::If {
                 condition,
                 then_branch,
@@ -198,7 +209,19 @@ impl VariableBuilder<'_> {
                     self.declare_variables_in_expr(else_branch);
                 }
             }
-            _ => (),
+            _ => todo!("Expression type not supported"),
+        }
+    }
+
+    fn declare_variables_in_stmt(&mut self, stmt: &SpannedStatement) {
+        match &stmt.value {
+            Statement::Expression(e) => self.declare_variables_in_expr(e),
+            Statement::Return(e) => self.declare_variables_in_expr(e),
+            Statement::PatternAssignment(pattern, rhs) => {
+                self.declare_variables_in_expr(rhs);
+                let (var_ref, _) = pattern.expect_declaration();
+                self.declare_variable(&var_ref.name);
+            }
         }
     }
 
