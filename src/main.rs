@@ -16,7 +16,7 @@ use rustyline::{
     Cmd, Completer, Config, Editor, EventHandler, Helper, Highlighter, Hinter, KeyCode, KeyEvent,
     Modifiers, Movement,
 };
-use value64::Callable;
+use value64::{Callable, Value64};
 
 mod analysis;
 mod ast;
@@ -88,8 +88,12 @@ fn main() {
                         _ => panic!(),
                     };
                     unsafe {
-                        let result = run_code::<i64, i64>(&mut jit, &func, 67);
-                        println!("Result: {:?}", result);
+                        let input = Value64::from_f64(34.0);
+                        let result = run_code::<f64>(&mut jit, &func, input.into_f64_unsafe());
+                        match result {
+                            Ok(v) => println!("Result: {}", v),
+                            Err(e) => println!("Error: {:?}", e),
+                        }
                     }
                     // match interpreter.execute(&statement) {
                     //     Ok(()) => {}
@@ -263,13 +267,13 @@ fn fmt_runtime_error(
 ///
 /// This function is unsafe since it relies on the caller to provide it with the correct
 /// input and output types. Using incorrect types at this point may corrupt the program's state.
-unsafe fn run_code<I, O>(jit: &mut jit::JIT, code: &LambdaExpr, input: I) -> Result<O, String> {
+unsafe fn run_code<I>(jit: &mut jit::JIT, code: &LambdaExpr, input: I) -> Result<Value64, String> {
     // Pass the string to the JIT, and it returns a raw pointer to machine code.
     let code_ptr = jit.compile_func(code)?;
     // Cast the raw pointer to a typed function pointer. This is unsafe, because
     // this is the critical point where you have to trust that the generated code
     // is safe to be called.
-    let code_fn = mem::transmute::<_, fn(I) -> O>(code_ptr);
+    let code_fn = mem::transmute::<_, extern "C" fn(I) -> f64>(code_ptr);
     // And now we can call it!
-    Ok(code_fn(input))
+    Ok(Value64::from_f64_unsafe(code_fn(input)))
 }

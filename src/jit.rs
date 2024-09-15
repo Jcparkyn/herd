@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+use codegen::ir;
 use cranelift::prelude::*;
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{DataDescription, Linkage, Module};
@@ -10,6 +11,8 @@ use crate::ast::{
 };
 
 type FuncExpr = LambdaExpr;
+
+const VAL64: ir::Type = ir::types::F64;
 
 /// The basic JIT class.
 pub struct JIT {
@@ -95,17 +98,11 @@ impl JIT {
     }
 
     fn translate_func(&mut self, func: &FuncExpr) -> Result<(), String> {
-        // Our toy language currently only supports I64 values, though Cranelift
-        // supports other types.
-        let int = self.module.target_config().pointer_type();
-
         for _p in &*func.params {
-            self.ctx.func.signature.params.push(AbiParam::new(int));
+            self.ctx.func.signature.params.push(AbiParam::new(VAL64));
         }
 
-        // Our toy language currently only supports one return value, though
-        // Cranelift is designed to support more.
-        self.ctx.func.signature.returns.push(AbiParam::new(int));
+        self.ctx.func.signature.returns.push(AbiParam::new(VAL64));
 
         // Create the builder to build a function.
         let mut builder = FunctionBuilder::new(&mut self.ctx.func, &mut self.builder_context);
@@ -127,7 +124,7 @@ impl JIT {
 
         // Walk the AST and declare all implicitly-declared variables.
         let variables = {
-            let mut variable_builder = VariableBuilder::new(int, &mut builder);
+            let mut variable_builder = VariableBuilder::new(&mut builder);
             variable_builder.declare_variables_in_func(func, entry_block);
             variable_builder.variables
         };
@@ -136,7 +133,6 @@ impl JIT {
 
         // Now translate the statements of the function body.
         let mut trans = FunctionTranslator {
-            int,
             builder,
             variables,
             module: &mut self.module,
@@ -153,16 +149,14 @@ impl JIT {
 }
 
 struct VariableBuilder<'a, 'b> {
-    int: types::Type,
     builder: &'a mut FunctionBuilder<'b>,
     variables: HashMap<String, Variable>,
     index: usize,
 }
 
 impl<'a, 'b> VariableBuilder<'a, 'b> {
-    fn new(int: types::Type, builder: &'a mut FunctionBuilder<'b>) -> Self {
+    fn new(builder: &'a mut FunctionBuilder<'b>) -> Self {
         Self {
-            int,
             builder,
             variables: HashMap::new(),
             index: 0,
@@ -179,10 +173,7 @@ impl<'a, 'b> VariableBuilder<'a, 'b> {
             let var = self.declare_variable(name);
             self.builder.def_var(var, val);
         }
-        // let zero = builder.ins().iconst(int, 0);
-        // let return_variable = declare_variable(int, builder, &mut variables, &mut index, the_return);
-        // builder.def_var(return_variable, zero);
-        // for expr in stmts {}
+
         self.declare_variables_in_expr(&func.body);
     }
 
@@ -235,7 +226,7 @@ impl<'a, 'b> VariableBuilder<'a, 'b> {
         let var = Variable::new(self.index);
         if !self.variables.contains_key(name) {
             self.variables.insert(name.into(), var);
-            self.builder.declare_var(var, self.int);
+            self.builder.declare_var(var, VAL64);
             self.index += 1;
         }
         var
@@ -243,7 +234,6 @@ impl<'a, 'b> VariableBuilder<'a, 'b> {
 }
 
 struct FunctionTranslator<'a> {
-    int: types::Type,
     builder: FunctionBuilder<'a>,
     variables: HashMap<String, Variable>,
     module: &'a mut JITModule,
@@ -265,14 +255,11 @@ impl<'a> FunctionTranslator<'a> {
                 if let Some(ref expr) = b.expression {
                     return self.translate_expr(expr);
                 } else {
-                    return self.builder.ins().iconst(self.int, 0);
+                    return self.builder.ins().f64const(0.0);
                 }
             }
             Expr::Bool(_) => unimplemented!(),
-            Expr::Number(f) => {
-                let todo_int = *f as i64;
-                self.builder.ins().iconst(self.int, todo_int)
-            }
+            Expr::Number(f) => self.builder.ins().f64const(*f),
             Expr::Nil => unimplemented!(),
             Expr::Op { op, lhs, rhs } => self.translate_op(*op, lhs, rhs),
             Expr::If {
@@ -305,10 +292,10 @@ impl<'a> FunctionTranslator<'a> {
         }
     }
 
-    fn translate_icmp(&mut self, cmp: IntCC, lhs: &SpannedExpr, rhs: &SpannedExpr) -> Value {
+    fn translate_cmp(&mut self, cmp: FloatCC, lhs: &SpannedExpr, rhs: &SpannedExpr) -> Value {
         let lhs = self.translate_expr(lhs);
         let rhs = self.translate_expr(rhs);
-        self.builder.ins().icmp(cmp, lhs, rhs)
+        self.builder.ins().fcmp(cmp, lhs, rhs)
     }
 
     fn translate_if_else(
@@ -328,7 +315,7 @@ impl<'a> FunctionTranslator<'a> {
         // the then and else bodies. Cranelift uses block parameters,
         // so set up a parameter in the merge block, and we'll pass
         // the return values to it from the branches.
-        self.builder.append_block_param(merge_block, self.int);
+        self.builder.append_block_param(merge_block, VAL64);
 
         // Test the if condition and conditionally branch.
         self.builder
@@ -344,7 +331,7 @@ impl<'a> FunctionTranslator<'a> {
 
         self.builder.switch_to_block(else_block);
         self.builder.seal_block(else_block);
-        let mut else_return = self.builder.ins().iconst(self.int, 0);
+        let mut else_return = self.builder.ins().f64const(0.0);
         if let Some(expr) = else_body {
             else_return = self.translate_expr(expr);
         }
@@ -370,29 +357,29 @@ impl<'a> FunctionTranslator<'a> {
             Opcode::Add => {
                 let lhs = self.translate_expr(lhs);
                 let rhs = self.translate_expr(rhs);
-                self.builder.ins().iadd(lhs, rhs)
+                self.builder.ins().fadd(lhs, rhs)
             }
             Opcode::Sub => {
                 let lhs = self.translate_expr(lhs);
                 let rhs = self.translate_expr(rhs);
-                self.builder.ins().isub(lhs, rhs)
+                self.builder.ins().fsub(lhs, rhs)
             }
             Opcode::Mul => {
                 let lhs = self.translate_expr(lhs);
                 let rhs = self.translate_expr(rhs);
-                self.builder.ins().imul(lhs, rhs)
+                self.builder.ins().fmul(lhs, rhs)
             }
             Opcode::Div => {
                 let lhs = self.translate_expr(lhs);
                 let rhs = self.translate_expr(rhs);
-                self.builder.ins().udiv(lhs, rhs)
+                self.builder.ins().fdiv(lhs, rhs)
             }
-            Opcode::Eq => self.translate_icmp(IntCC::Equal, lhs, rhs),
-            Opcode::Neq => self.translate_icmp(IntCC::NotEqual, lhs, rhs),
-            Opcode::Lt => self.translate_icmp(IntCC::SignedLessThan, lhs, rhs),
-            Opcode::Lte => self.translate_icmp(IntCC::SignedLessThanOrEqual, lhs, rhs),
-            Opcode::Gt => self.translate_icmp(IntCC::SignedGreaterThan, lhs, rhs),
-            Opcode::Gte => self.translate_icmp(IntCC::SignedGreaterThanOrEqual, lhs, rhs),
+            Opcode::Eq => self.translate_cmp(FloatCC::Equal, lhs, rhs),
+            Opcode::Neq => self.translate_cmp(FloatCC::NotEqual, lhs, rhs),
+            Opcode::Lt => self.translate_cmp(FloatCC::LessThan, lhs, rhs),
+            Opcode::Lte => self.translate_cmp(FloatCC::LessThanOrEqual, lhs, rhs),
+            Opcode::Gt => self.translate_cmp(FloatCC::GreaterThan, lhs, rhs),
+            Opcode::Gte => self.translate_cmp(FloatCC::GreaterThanOrEqual, lhs, rhs),
             _ => unimplemented!(),
         }
     }

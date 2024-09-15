@@ -97,6 +97,7 @@ impl Boxable for LambdaFunction {
     const TAG: PointerTag = PointerTag::Lambda;
 }
 
+#[repr(transparent)]
 pub struct Value64 {
     bits: u64,
 }
@@ -106,6 +107,16 @@ impl Value64 {
 
     const fn from_bits(bits: u64) -> Self {
         Value64 { bits }
+    }
+
+    pub unsafe fn into_f64_unsafe(self) -> f64 {
+        let f = f64::from_bits(self.bits);
+        std::mem::forget(self);
+        f
+    }
+
+    pub unsafe fn from_f64_unsafe(val: f64) -> Self {
+        Self::from_bits(val.to_bits())
     }
 
     #[allow(dead_code)]
@@ -672,5 +683,12 @@ mod tests {
         assert_eq!(Rc::strong_count(&s), 2);
         drop(s2);
         assert_eq!(Rc::strong_count(&s), 1);
+    }
+
+    #[test]
+    fn transmute() {
+        let val = Value64::from_f64(1.5);
+        let f = unsafe { std::mem::transmute::<_, f64>(val) };
+        assert_eq!(f, 1.5);
     }
 }
