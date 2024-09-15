@@ -6,8 +6,9 @@ use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{DataDescription, FuncOrDataId, Linkage, Module};
 use std::collections::HashMap;
 
-use crate::ast::{
-    Expr, LambdaExpr, MatchPattern, Opcode, SpannedExpr, SpannedStatement, Statement,
+use crate::{
+    ast::{Expr, LambdaExpr, MatchPattern, Opcode, SpannedExpr, SpannedStatement, Statement},
+    builtins::build_list_1,
 };
 
 type FuncExpr = LambdaExpr;
@@ -44,7 +45,8 @@ impl JIT {
         let isa = isa_builder
             .finish(settings::Flags::new(flag_builder))
             .unwrap();
-        let builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
+        let mut builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
+        builder.symbol("build_list_1", build_list_1 as *const u8);
 
         let module = JITModule::new(builder);
         Self {

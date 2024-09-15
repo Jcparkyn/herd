@@ -171,7 +171,7 @@ impl VariableAnalyzer {
                 if let Some(var_slot) = self.get_slot(&v.name) {
                     v.slot = var_slot;
                 } else {
-                    self.push_err(VariableNotDefined(v.name.clone()), span);
+                    // self.push_err(VariableNotDefined(v.name.clone()), span);
                 }
             }
             Expr::If {
@@ -215,7 +215,7 @@ impl VariableAnalyzer {
                     if let Some(slot) = self.get_slot(&capture.name) {
                         capture.slot = slot;
                     } else {
-                        self.push_err(VariableNotDefined(capture.name.clone()), span);
+                        // self.push_err(VariableNotDefined(capture.name.clone()), span);
                     }
                     lambda_analyzer.vars.push(LocalVar {
                         name: capture.name.to_string(),

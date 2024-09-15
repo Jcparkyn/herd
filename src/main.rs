@@ -20,6 +20,7 @@ use value64::{Callable, Value64};
 
 mod analysis;
 mod ast;
+mod builtins;
 mod interpreter;
 mod jit;
 mod lines;
