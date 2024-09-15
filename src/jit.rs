@@ -4,9 +4,10 @@ use cranelift::prelude::*;
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{DataDescription, Linkage, Module};
 use std::collections::HashMap;
-use std::slice;
 
-use crate::ast::{Expr, LambdaExpr, MatchPattern, SpannedExpr, SpannedStatement, Statement};
+use crate::ast::{
+    Expr, LambdaExpr, MatchPattern, Opcode, SpannedExpr, SpannedStatement, Statement,
+};
 
 type FuncExpr = LambdaExpr;
 
@@ -114,8 +115,6 @@ impl JIT {
 
         // Since this is the entry block, add block parameters corresponding to
         // the function's parameters.
-        //
-        // TODO: Streamline the API here.
         builder.append_block_params_for_function_params(entry_block);
 
         // Tell the builder to emit code in this block.
@@ -126,42 +125,42 @@ impl JIT {
         // predecessors.
         builder.seal_block(entry_block);
 
-        // The toy language allows variables to be declared implicitly.
         // Walk the AST and declare all implicitly-declared variables.
         let variables = {
             let mut variable_builder = VariableBuilder::new(int, &mut builder);
             variable_builder.declare_variables_in_func(func, entry_block);
-            variable_builder.variables.clone();
+            variable_builder.variables
         };
-        // drop(variable_builder);
+
+        builder.seal_all_blocks();
 
         // Now translate the statements of the function body.
         let mut trans = FunctionTranslator {
             int,
             builder,
-            variables: HashMap::new(),
+            variables,
             module: &mut self.module,
         };
-        trans.translate_expr(&func.body);
+        let return_value = trans.translate_expr(&func.body);
 
-        // // Emit the return instruction.
-        // trans.builder.ins().return_(&[return_value]);
+        // Emit the return instruction.
+        trans.builder.ins().return_(&[return_value]);
 
         // Tell the builder we're done with this function.
-        // trans.builder.finalize();
+        trans.builder.finalize();
         Ok(())
     }
 }
 
-struct VariableBuilder<'a> {
+struct VariableBuilder<'a, 'b> {
     int: types::Type,
-    builder: &'a mut FunctionBuilder<'a>,
+    builder: &'a mut FunctionBuilder<'b>,
     variables: HashMap<String, Variable>,
     index: usize,
 }
 
-impl<'a> VariableBuilder<'a> {
-    fn new(int: types::Type, builder: &'a mut FunctionBuilder<'a>) -> Self {
+impl<'a, 'b> VariableBuilder<'a, 'b> {
+    fn new(int: types::Type, builder: &'a mut FunctionBuilder<'b>) -> Self {
         Self {
             int,
             builder,
@@ -189,9 +188,6 @@ impl<'a> VariableBuilder<'a> {
 
     fn declare_variables_in_expr(&mut self, expr: &SpannedExpr) {
         match &expr.value {
-            // Expr::Variable(ref name) => {
-            //     declare_variable(int, builder, variables, index, name);
-            // }
             Expr::Block(b) => {
                 for stmt in &b.statements {
                     self.declare_variables_in_stmt(stmt);
@@ -203,6 +199,10 @@ impl<'a> VariableBuilder<'a> {
             Expr::Bool(_) => {}
             Expr::Number(_) => {}
             Expr::Nil => {}
+            Expr::Op { op: _, lhs, rhs } => {
+                self.declare_variables_in_expr(&lhs);
+                self.declare_variables_in_expr(&rhs);
+            }
             Expr::If {
                 condition,
                 then_branch,
@@ -214,7 +214,7 @@ impl<'a> VariableBuilder<'a> {
                     self.declare_variables_in_expr(else_branch);
                 }
             }
-            _ => todo!("Expression type not supported"),
+            e => todo!("Expression type not supported: {:?}", e),
         }
     }
 
@@ -262,13 +262,18 @@ impl<'a> FunctionTranslator<'a> {
                     self.translate_stmt(stmt);
                 }
                 if let Some(ref expr) = b.expression {
-                    self.translate_expr(expr);
+                    return self.translate_expr(expr);
+                } else {
+                    return self.builder.ins().iconst(self.int, 0);
                 }
-                unimplemented!()
             }
             Expr::Bool(_) => unimplemented!(),
-            Expr::Number(_) => unimplemented!(),
+            Expr::Number(f) => {
+                let todo_int = *f as i64;
+                self.builder.ins().iconst(self.int, todo_int)
+            }
             Expr::Nil => unimplemented!(),
+            Expr::Op { op, lhs, rhs } => self.translate_op(*op, lhs, rhs),
             Expr::If {
                 condition,
                 then_branch,
@@ -297,6 +302,12 @@ impl<'a> FunctionTranslator<'a> {
                 self.builder.def_var(*variable, rhs_value);
             }
         }
+    }
+
+    fn translate_icmp(&mut self, cmp: IntCC, lhs: &SpannedExpr, rhs: &SpannedExpr) -> Value {
+        let lhs = self.translate_expr(lhs);
+        let rhs = self.translate_expr(rhs);
+        self.builder.ins().icmp(cmp, lhs, rhs)
     }
 
     fn translate_if_else(
@@ -351,5 +362,37 @@ impl<'a> FunctionTranslator<'a> {
         let phi = self.builder.block_params(merge_block)[0];
 
         phi
+    }
+
+    fn translate_op(&mut self, op: Opcode, lhs: &SpannedExpr, rhs: &SpannedExpr) -> Value {
+        match op {
+            Opcode::Add => {
+                let lhs = self.translate_expr(lhs);
+                let rhs = self.translate_expr(rhs);
+                self.builder.ins().iadd(lhs, rhs)
+            }
+            Opcode::Sub => {
+                let lhs = self.translate_expr(lhs);
+                let rhs = self.translate_expr(rhs);
+                self.builder.ins().isub(lhs, rhs)
+            }
+            Opcode::Mul => {
+                let lhs = self.translate_expr(lhs);
+                let rhs = self.translate_expr(rhs);
+                self.builder.ins().imul(lhs, rhs)
+            }
+            Opcode::Div => {
+                let lhs = self.translate_expr(lhs);
+                let rhs = self.translate_expr(rhs);
+                self.builder.ins().udiv(lhs, rhs)
+            }
+            Opcode::Eq => self.translate_icmp(IntCC::Equal, lhs, rhs),
+            Opcode::Neq => self.translate_icmp(IntCC::NotEqual, lhs, rhs),
+            Opcode::Lt => self.translate_icmp(IntCC::SignedLessThan, lhs, rhs),
+            Opcode::Lte => self.translate_icmp(IntCC::SignedLessThanOrEqual, lhs, rhs),
+            Opcode::Gt => self.translate_icmp(IntCC::SignedGreaterThan, lhs, rhs),
+            Opcode::Gte => self.translate_icmp(IntCC::SignedGreaterThanOrEqual, lhs, rhs),
+            _ => unimplemented!(),
+        }
     }
 }

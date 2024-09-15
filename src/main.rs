@@ -1,6 +1,8 @@
 use std::fmt::Debug;
+use std::mem;
 
 use analysis::{AnalysisError, Analyzer};
+use ast::{Expr, LambdaExpr};
 use clap::Parser;
 use interpreter::{Interpreter, InterpreterError};
 use lalrpop_util::{lalrpop_mod, ParseError};
@@ -12,7 +14,7 @@ use rustyline::highlight::MatchingBracketHighlighter;
 use rustyline::validate::{ValidationContext, ValidationResult, Validator};
 use rustyline::{
     Cmd, Completer, Config, Editor, EventHandler, Helper, Highlighter, Hinter, KeyCode, KeyEvent,
-    Modifiers, Movement, Result,
+    Modifiers, Movement,
 };
 use value64::Callable;
 
@@ -56,7 +58,7 @@ fn main() {
             }
         };
         let parser = lang::ProgramParser::new();
-        let mut interpreter = Interpreter::new();
+        // let mut interpreter = Interpreter::new();
         let program_ast = parser.parse(&program);
         let lines = Lines::new(program.clone().into_bytes());
         match program_ast {
@@ -76,18 +78,30 @@ fn main() {
                         return;
                     }
                 }
+                let mut jit = jit::JIT::new();
                 for statement in program {
-                    match interpreter.execute(&statement) {
-                        Ok(()) => {}
-                        Err(err) => {
-                            let formatter = InterpreterErrorFormatter {
-                                err: &err,
-                                lines: &lines,
-                            };
-                            eprintln!("Error: {}", formatter);
-                            return;
-                        }
+                    let func = match statement.value {
+                        ast::Statement::PatternAssignment(_, rhs) => match rhs.value {
+                            Expr::Lambda(f) => f,
+                            _ => panic!(),
+                        },
+                        _ => panic!(),
+                    };
+                    unsafe {
+                        let result = run_code::<(), i64>(&mut jit, &func, ());
+                        println!("Result: {:?}", result);
                     }
+                    // match interpreter.execute(&statement) {
+                    //     Ok(()) => {}
+                    //     Err(err) => {
+                    //         let formatter = InterpreterErrorFormatter {
+                    //             err: &err,
+                    //             lines: &lines,
+                    //         };
+                    //         eprintln!("Error: {}", formatter);
+                    //         return;
+                    //     }
+                    // }
                 }
             }
         }
@@ -178,7 +192,7 @@ struct ReplInputValidator {
 }
 
 impl Validator for ReplInputValidator {
-    fn validate(&self, ctx: &mut ValidationContext<'_>) -> Result<ValidationResult> {
+    fn validate(&self, ctx: &mut ValidationContext<'_>) -> rustyline::Result<ValidationResult> {
         let parse_result = self.parser.parse(ctx.input());
         match parse_result {
             Err(ParseError::UnrecognizedEof { .. }) => Ok(ValidationResult::Incomplete),
@@ -239,4 +253,23 @@ fn fmt_runtime_error(
         writeln!(f, "\tat {}", location)?;
     };
     Ok(())
+}
+
+/// Executes the given code using the cranelift JIT compiler.
+///
+/// Feeds the given input into the JIT compiled function and returns the resulting output.
+///
+/// # Safety
+///
+/// This function is unsafe since it relies on the caller to provide it with the correct
+/// input and output types. Using incorrect types at this point may corrupt the program's state.
+unsafe fn run_code<I, O>(jit: &mut jit::JIT, code: &LambdaExpr, input: I) -> Result<O, String> {
+    // Pass the string to the JIT, and it returns a raw pointer to machine code.
+    let code_ptr = jit.compile_func(code)?;
+    // Cast the raw pointer to a typed function pointer. This is unsafe, because
+    // this is the critical point where you have to trust that the generated code
+    // is safe to be called.
+    let code_fn = mem::transmute::<_, fn(I) -> O>(code_ptr);
+    // And now we can call it!
+    Ok(code_fn(input))
 }
