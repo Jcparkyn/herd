@@ -128,25 +128,21 @@ impl JIT {
 
         // The toy language allows variables to be declared implicitly.
         // Walk the AST and declare all implicitly-declared variables.
-        let mut variable_builder = VariableBuilder {
-            int,
-            builder: builder,
-            variables: HashMap::new(),
-            index: 0,
+        let variables = {
+            let mut variable_builder = VariableBuilder::new(int, &mut builder);
+            variable_builder.declare_variables_in_func(func, entry_block);
+            variable_builder.variables.clone();
         };
-        variable_builder.declare_variables_in_func(func, entry_block);
-        let variables = variable_builder.variables;
+        // drop(variable_builder);
 
-        // // Now translate the statements of the function body.
-        // let mut trans = FunctionTranslator {
-        //     int,
-        //     builder,
-        //     variables,
-        //     module: &mut self.module,
-        // };
-        // for expr in stmts {
-        //     trans.translate_expr(expr);
-        // }
+        // Now translate the statements of the function body.
+        let mut trans = FunctionTranslator {
+            int,
+            builder,
+            variables: HashMap::new(),
+            module: &mut self.module,
+        };
+        trans.translate_expr(&func.body);
 
         // // Emit the return instruction.
         // trans.builder.ins().return_(&[return_value]);
@@ -159,12 +155,21 @@ impl JIT {
 
 struct VariableBuilder<'a> {
     int: types::Type,
-    builder: FunctionBuilder<'a>,
+    builder: &'a mut FunctionBuilder<'a>,
     variables: HashMap<String, Variable>,
     index: usize,
 }
 
-impl VariableBuilder<'_> {
+impl<'a> VariableBuilder<'a> {
+    fn new(int: types::Type, builder: &'a mut FunctionBuilder<'a>) -> Self {
+        Self {
+            int,
+            builder,
+            variables: HashMap::new(),
+            index: 0,
+        }
+    }
+
     fn declare_variables_in_func(&mut self, func: &FuncExpr, entry_block: Block) {
         for (i, pattern) in func.params.iter().enumerate() {
             let name = match pattern.value {
@@ -233,5 +238,118 @@ impl VariableBuilder<'_> {
             self.index += 1;
         }
         var
+    }
+}
+
+struct FunctionTranslator<'a> {
+    int: types::Type,
+    builder: FunctionBuilder<'a>,
+    variables: HashMap<String, Variable>,
+    module: &'a mut JITModule,
+}
+
+impl<'a> FunctionTranslator<'a> {
+    /// When you write out instructions in Cranelift, you get back `Value`s. You
+    /// can then use these references in other instructions.
+    fn translate_expr(&mut self, expr: &SpannedExpr) -> Value {
+        match &expr.value {
+            Expr::Variable(ref var) => {
+                let variable = self.variables.get(&var.name).expect("variable not defined");
+                self.builder.use_var(*variable)
+            }
+            Expr::Block(b) => {
+                for stmt in &b.statements {
+                    self.translate_stmt(stmt);
+                }
+                if let Some(ref expr) = b.expression {
+                    self.translate_expr(expr);
+                }
+                unimplemented!()
+            }
+            Expr::Bool(_) => unimplemented!(),
+            Expr::Number(_) => unimplemented!(),
+            Expr::Nil => unimplemented!(),
+            Expr::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => self.translate_if_else(condition, then_branch, else_branch),
+            _ => unimplemented!(),
+        }
+    }
+
+    fn translate_stmt(&mut self, stmt: &SpannedStatement) {
+        match &stmt.value {
+            Statement::Expression(e) => {
+                self.translate_expr(e);
+            }
+            Statement::Return(e) => {
+                let return_value = self.translate_expr(e);
+                self.builder.ins().return_(&[return_value]);
+            }
+            Statement::PatternAssignment(pattern, rhs) => {
+                let rhs_value = self.translate_expr(rhs);
+                let (var_ref, _) = pattern.expect_declaration();
+                let variable = self
+                    .variables
+                    .get(&var_ref.name)
+                    .expect("variable not defined");
+                self.builder.def_var(*variable, rhs_value);
+            }
+        }
+    }
+
+    fn translate_if_else(
+        &mut self,
+        condition: &SpannedExpr,
+        then_body: &SpannedExpr,
+        else_body: &Option<Box<SpannedExpr>>,
+    ) -> Value {
+        let condition_value = self.translate_expr(condition);
+
+        let then_block = self.builder.create_block();
+        let else_block = self.builder.create_block();
+        let merge_block = self.builder.create_block();
+
+        // If-else constructs in the toy language have a return value.
+        // In traditional SSA form, this would produce a PHI between
+        // the then and else bodies. Cranelift uses block parameters,
+        // so set up a parameter in the merge block, and we'll pass
+        // the return values to it from the branches.
+        self.builder.append_block_param(merge_block, self.int);
+
+        // Test the if condition and conditionally branch.
+        self.builder
+            .ins()
+            .brif(condition_value, then_block, &[], else_block, &[]);
+
+        self.builder.switch_to_block(then_block);
+        self.builder.seal_block(then_block);
+        let then_return = self.translate_expr(then_body);
+
+        // Jump to the merge block, passing it the block return value.
+        self.builder.ins().jump(merge_block, &[then_return]);
+
+        self.builder.switch_to_block(else_block);
+        self.builder.seal_block(else_block);
+        let mut else_return = self.builder.ins().iconst(self.int, 0);
+        if let Some(expr) = else_body {
+            else_return = self.translate_expr(expr);
+        }
+
+        // Jump to the merge block, passing it the block return value.
+        self.builder.ins().jump(merge_block, &[else_return]);
+
+        // Switch to the merge block for subsequent statements.
+        self.builder.switch_to_block(merge_block);
+
+        // We've now seen all the predecessors of the merge block.
+        self.builder.seal_block(merge_block);
+
+        // Read the value of the if-else by reading the merge block
+        // parameter.
+        let phi = self.builder.block_params(merge_block)[0];
+
+        phi
     }
 }
