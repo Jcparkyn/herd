@@ -3,7 +3,7 @@
 use codegen::ir;
 use cranelift::prelude::*;
 use cranelift_jit::{JITBuilder, JITModule};
-use cranelift_module::{DataDescription, Linkage, Module};
+use cranelift_module::{DataDescription, FuncOrDataId, Linkage, Module};
 use std::collections::HashMap;
 
 use crate::ast::{
@@ -95,6 +95,13 @@ impl JIT {
         let code = self.module.get_finalized_function(id);
 
         Ok(code)
+    }
+
+    pub fn get_func_code(&self, name: &str) -> Option<*const u8> {
+        match self.module.get_name(name) {
+            Some(FuncOrDataId::Func(f)) => Some(self.module.get_finalized_function(f)),
+            _ => None,
+        }
     }
 
     fn translate_func(&mut self, func: &FuncExpr) -> Result<(), String> {
@@ -206,6 +213,12 @@ impl<'a, 'b> VariableBuilder<'a, 'b> {
                     self.declare_variables_in_expr(else_branch);
                 }
             }
+            Expr::Call { callee, args } => {
+                for arg in args {
+                    self.declare_variables_in_expr(arg);
+                }
+                self.declare_variables_in_expr(callee);
+            }
             e => todo!("Expression type not supported: {:?}", e),
         }
     }
@@ -267,8 +280,38 @@ impl<'a> FunctionTranslator<'a> {
                 then_branch,
                 else_branch,
             } => self.translate_if_else(condition, then_branch, else_branch),
+            Expr::Call { callee, args } => self.translate_call(callee, args),
             _ => unimplemented!(),
         }
+    }
+
+    fn translate_call(&mut self, callee: &SpannedExpr, args: &Vec<SpannedExpr>) -> Value {
+        let mut sig = self.module.make_signature();
+
+        for _arg in args {
+            sig.params.push(AbiParam::new(VAL64));
+        }
+
+        sig.returns.push(AbiParam::new(VAL64));
+
+        let name = match &callee.value {
+            Expr::Variable(var) => var.name.clone(),
+            _ => todo!("Only calls directly to functions are supported"),
+        };
+
+        let callee = self
+            .module
+            .declare_function(&name, Linkage::Import, &sig)
+            .expect("problem declaring function");
+        let local_callee = self.module.declare_func_in_func(callee, self.builder.func);
+
+        let mut arg_values = Vec::new();
+        for arg in args {
+            arg_values.push(self.translate_expr(arg))
+        }
+        // self.builder.ins().call_indirect(SIG, callee, args)
+        let call = self.builder.ins().call(local_callee, &arg_values);
+        self.builder.inst_results(call)[0]
     }
 
     fn translate_stmt(&mut self, stmt: &SpannedStatement) {

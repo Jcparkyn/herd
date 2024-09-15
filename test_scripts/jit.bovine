@@ -1,4 +1,7 @@
+
+square = \a\ a * a;
+
 main = \a\ (
   b = a * 2;
-  b + 1
+  square b
 );

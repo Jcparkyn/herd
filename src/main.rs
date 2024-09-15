@@ -2,7 +2,7 @@ use std::fmt::Debug;
 use std::mem;
 
 use analysis::{AnalysisError, Analyzer};
-use ast::{Expr, LambdaExpr};
+use ast::Expr;
 use clap::Parser;
 use interpreter::{Interpreter, InterpreterError};
 use lalrpop_util::{lalrpop_mod, ParseError};
@@ -83,30 +83,18 @@ fn main() {
                     let func = match statement.value {
                         ast::Statement::PatternAssignment(_, rhs) => match rhs.value {
                             Expr::Lambda(f) => f,
-                            _ => panic!(),
+                            _ => panic!("Only function definitions are allowed at the top level"),
                         },
-                        _ => panic!(),
+                        _ => panic!("Only function definitions are allowed at the top level"),
                     };
-                    unsafe {
-                        let input = Value64::from_f64(34.0);
-                        let result = run_code::<f64>(&mut jit, &func, input.into_f64_unsafe());
-                        match result {
-                            Ok(v) => println!("Result: {}", v),
-                            Err(e) => println!("Error: {:?}", e),
-                        }
-                    }
-                    // match interpreter.execute(&statement) {
-                    //     Ok(()) => {}
-                    //     Err(err) => {
-                    //         let formatter = InterpreterErrorFormatter {
-                    //             err: &err,
-                    //             lines: &lines,
-                    //         };
-                    //         eprintln!("Error: {}", formatter);
-                    //         return;
-                    //     }
-                    // }
+                    jit.compile_func(&func).unwrap();
                 }
+                let main_func = jit
+                    .get_func_code("main")
+                    .expect("Main function should be defined");
+                let input = Value64::from_f64(3.0);
+                let result = unsafe { run_func(main_func, input) };
+                println!("Result: {}", result);
             }
         }
     } else {
@@ -259,21 +247,11 @@ fn fmt_runtime_error(
     Ok(())
 }
 
-/// Executes the given code using the cranelift JIT compiler.
-///
-/// Feeds the given input into the JIT compiled function and returns the resulting output.
-///
-/// # Safety
-///
-/// This function is unsafe since it relies on the caller to provide it with the correct
-/// input and output types. Using incorrect types at this point may corrupt the program's state.
-unsafe fn run_code<I>(jit: &mut jit::JIT, code: &LambdaExpr, input: I) -> Result<Value64, String> {
-    // Pass the string to the JIT, and it returns a raw pointer to machine code.
-    let code_ptr = jit.compile_func(code)?;
+unsafe fn run_func(func_ptr: *const u8, input: Value64) -> Value64 {
     // Cast the raw pointer to a typed function pointer. This is unsafe, because
     // this is the critical point where you have to trust that the generated code
     // is safe to be called.
-    let code_fn = mem::transmute::<_, extern "C" fn(I) -> f64>(code_ptr);
+    let code_fn = mem::transmute::<_, extern "C" fn(f64) -> f64>(func_ptr);
     // And now we can call it!
-    Ok(Value64::from_f64_unsafe(code_fn(input)))
+    Value64::from_f64_unsafe(code_fn(input.into_f64_unsafe()))
 }
