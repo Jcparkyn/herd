@@ -19,6 +19,7 @@ use value64::Callable;
 mod analysis;
 mod ast;
 mod interpreter;
+mod jit;
 mod lines;
 mod parse_helpers;
 mod pos;
