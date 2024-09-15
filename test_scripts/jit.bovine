@@ -3,6 +3,6 @@ square = \a\ a * a;
 
 main = \a\ (
   b = a * 2;
-  list = build_list_1 (square b);
+  list = [a, b, square b];
   list
 );

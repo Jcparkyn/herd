@@ -8,7 +8,7 @@ use std::collections::HashMap;
 
 use crate::{
     ast::{Expr, LambdaExpr, MatchPattern, Opcode, SpannedExpr, SpannedStatement, Statement},
-    builtins::build_list_1,
+    builtins::{list_new, list_push},
 };
 
 type FuncExpr = LambdaExpr;
@@ -46,7 +46,8 @@ impl JIT {
             .finish(settings::Flags::new(flag_builder))
             .unwrap();
         let mut builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
-        builder.symbol("build_list_1", build_list_1 as *const u8);
+        builder.symbol("NATIVE:list_new", list_new as *const u8);
+        builder.symbol("NATIVE:list_push", list_push as *const u8);
 
         let module = JITModule::new(builder);
         Self {
@@ -221,6 +222,17 @@ impl<'a, 'b> VariableBuilder<'a, 'b> {
                 }
                 self.declare_variables_in_expr(callee);
             }
+            Expr::List(l) => {
+                for item in l {
+                    self.declare_variables_in_expr(item);
+                }
+            }
+            Expr::Dict(d) => {
+                for (key, value) in d {
+                    self.declare_variables_in_expr(key);
+                    self.declare_variables_in_expr(value);
+                }
+            }
             e => todo!("Expression type not supported: {:?}", e),
         }
     }
@@ -283,6 +295,14 @@ impl<'a> FunctionTranslator<'a> {
                 else_branch,
             } => self.translate_if_else(condition, then_branch, else_branch),
             Expr::Call { callee, args } => self.translate_call(callee, args),
+            Expr::List(l) => {
+                let mut list = self.call_native("NATIVE:list_new", &[]);
+                for item in l {
+                    let val = self.translate_expr(item);
+                    list = self.call_native("NATIVE:list_push", &[list, val]);
+                }
+                list
+            }
             _ => unimplemented!(),
         }
     }
@@ -427,5 +447,20 @@ impl<'a> FunctionTranslator<'a> {
             Opcode::Gte => self.translate_cmp(FloatCC::GreaterThanOrEqual, lhs, rhs),
             _ => unimplemented!(),
         }
+    }
+
+    fn call_native(&mut self, name: &str, args: &[Value]) -> Value {
+        let mut sig = self.module.make_signature();
+        for _arg in args {
+            sig.params.push(AbiParam::new(VAL64));
+        }
+        sig.returns.push(AbiParam::new(VAL64));
+        let callee = self
+            .module
+            .declare_function(name, Linkage::Import, &sig)
+            .expect("problem declaring function");
+        let local_callee = self.module.declare_func_in_func(callee, self.builder.func);
+        let call = self.builder.ins().call(local_callee, args);
+        self.builder.inst_results(call)[0]
     }
 }
