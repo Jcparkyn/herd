@@ -3,7 +3,7 @@
 use codegen::ir;
 use cranelift::prelude::*;
 use cranelift_jit::{JITBuilder, JITModule};
-use cranelift_module::{DataDescription, FuncOrDataId, Linkage, Module};
+use cranelift_module::{DataDescription, FuncId, FuncOrDataId, Linkage, Module};
 use std::collections::HashMap;
 
 use crate::{
@@ -32,6 +32,42 @@ pub struct JIT {
     /// The module, with the jit backend, which manages the JIT'd
     /// functions.
     module: JITModule,
+
+    natives: NativeMethods,
+}
+
+fn make_sig(module: &mut JITModule, params: &[ir::Type], returns: &[ir::Type]) -> ir::Signature {
+    let mut sig = module.make_signature();
+    for param in params {
+        sig.params.push(AbiParam::new(*param));
+    }
+    for ret in returns {
+        sig.returns.push(AbiParam::new(*ret));
+    }
+    sig
+}
+
+fn get_native_methods<'a, 'b>(
+    // builder: &'a mut JITBuilder,
+    module: &'b mut JITModule,
+) -> NativeMethods {
+    fn make_method(
+        module: &mut JITModule,
+        name: &str,
+        params: &[ir::Type],
+        returns: &[ir::Type],
+    ) -> NativeMethod {
+        let sig = make_sig(module, params, returns);
+        let func = module
+            .declare_function(name, Linkage::Import, &sig)
+            .expect("problem declaring function");
+        NativeMethod { func, sig }
+    }
+
+    NativeMethods {
+        list_new: make_method(module, "NATIVE:list_new", &[], &[VAL64]),
+        list_push: make_method(module, "NATIVE:list_push", &[VAL64, VAL64], &[VAL64]),
+    }
 }
 
 impl JIT {
@@ -49,12 +85,16 @@ impl JIT {
         builder.symbol("NATIVE:list_new", list_new as *const u8);
         builder.symbol("NATIVE:list_push", list_push as *const u8);
 
-        let module = JITModule::new(builder);
+        let mut module = JITModule::new(builder);
+
+        let natives = get_native_methods(&mut module);
+
         Self {
             builder_context: FunctionBuilderContext::new(),
             ctx: module.make_context(),
             data_description: DataDescription::new(),
             module,
+            natives,
         }
     }
 
@@ -146,6 +186,7 @@ impl JIT {
             builder,
             variables,
             module: &mut self.module,
+            natives: &mut self.natives,
         };
         let return_value = trans.translate_expr(&func.body);
 
@@ -264,6 +305,7 @@ struct FunctionTranslator<'a> {
     builder: FunctionBuilder<'a>,
     variables: HashMap<String, Variable>,
     module: &'a mut JITModule,
+    natives: &'a NativeMethods,
 }
 
 impl<'a> FunctionTranslator<'a> {
@@ -296,10 +338,10 @@ impl<'a> FunctionTranslator<'a> {
             } => self.translate_if_else(condition, then_branch, else_branch),
             Expr::Call { callee, args } => self.translate_call(callee, args),
             Expr::List(l) => {
-                let mut list = self.call_native("NATIVE:list_new", &[]);
+                let mut list = self.call_native(&self.natives.list_new, &[]);
                 for item in l {
                     let val = self.translate_expr(item);
-                    list = self.call_native("NATIVE:list_push", &[list, val]);
+                    list = self.call_native(&self.natives.list_push, &[list, val]);
                 }
                 list
             }
@@ -449,18 +491,23 @@ impl<'a> FunctionTranslator<'a> {
         }
     }
 
-    fn call_native(&mut self, name: &str, args: &[Value]) -> Value {
-        let mut sig = self.module.make_signature();
-        for _arg in args {
-            sig.params.push(AbiParam::new(VAL64));
-        }
-        sig.returns.push(AbiParam::new(VAL64));
-        let callee = self
+    fn call_native(&mut self, method: &NativeMethod, args: &[Value]) -> Value {
+        let local_callee = self
             .module
-            .declare_function(name, Linkage::Import, &sig)
-            .expect("problem declaring function");
-        let local_callee = self.module.declare_func_in_func(callee, self.builder.func);
+            .declare_func_in_func(method.func, self.builder.func);
         let call = self.builder.ins().call(local_callee, args);
         self.builder.inst_results(call)[0]
     }
+}
+
+#[derive(Debug, Clone)]
+struct NativeMethod {
+    func: FuncId,
+    sig: Signature,
+}
+
+#[derive(Debug, Clone)]
+struct NativeMethods {
+    list_new: NativeMethod,
+    list_push: NativeMethod,
 }
