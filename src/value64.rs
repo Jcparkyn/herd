@@ -59,10 +59,6 @@ const fn is_ptr(value: u64) -> bool {
     (value & 0xFFFC000000000000) == 0xFFFC000000000000
 }
 
-const fn is_ptr_type(value: u64, tag: PointerTag) -> bool {
-    (value & NANISH_MASK) == pointer_mask(tag)
-}
-
 const fn is_safe_addr(ptr: u64) -> bool {
     (ptr & TAG_MASK) == 0
 }
@@ -99,29 +95,29 @@ impl Boxable for LambdaFunction {
 
 #[repr(transparent)]
 pub struct Value64 {
-    bits: u64,
+    val: f64,
 }
 
 impl Value64 {
     pub const NIL: Value64 = Value64::from_bits(NIL_VALUE);
 
     const fn from_bits(bits: u64) -> Self {
-        Value64 { bits }
+        Value64 {
+            val: unsafe { std::mem::transmute::<u64, f64>(bits) },
+        }
     }
 
-    pub unsafe fn into_f64_unsafe(self) -> f64 {
-        let f = f64::from_bits(self.bits);
-        std::mem::forget(self);
-        f
-    }
-
-    pub unsafe fn from_f64_unsafe(val: f64) -> Self {
-        Self::from_bits(val.to_bits())
+    const fn bits(&self) -> u64 {
+        unsafe { std::mem::transmute::<f64, u64>(self.val) }
     }
 
     #[allow(dead_code)]
     pub const fn is_ptr(&self) -> bool {
-        (self.bits & 0xFFFC000000000000) == 0xFFFC000000000000
+        (self.bits() & 0xFFFC000000000000) == 0xFFFC000000000000
+    }
+
+    const fn is_ptr_type(&self, tag: PointerTag) -> bool {
+        (self.bits() & NANISH_MASK) == pointer_mask(tag)
     }
 
     fn from_ptr<T>(ptr: *const T, tag: PointerTag) -> Self {
@@ -136,8 +132,8 @@ impl Value64 {
     }
 
     fn as_ref<'a, T: Boxable>(&self) -> Option<&'a T> {
-        if is_ptr_type(self.bits, T::TAG) {
-            let ptr = extract_ptr::<T>(self.bits);
+        if self.is_ptr_type(T::TAG) {
+            let ptr = extract_ptr::<T>(self.bits());
             unsafe { Some(&*ptr) }
         } else {
             None
@@ -145,12 +141,12 @@ impl Value64 {
     }
 
     pub fn is_nil(&self) -> bool {
-        self.bits == NIL_VALUE
+        self.bits() == NIL_VALUE
     }
 
     fn into_rc<T: Boxable>(self) -> Result<Rc<T>, Self> {
-        if is_ptr_type(self.bits, T::TAG) {
-            let ptr = extract_ptr::<T>(self.bits);
+        if self.is_ptr_type(T::TAG) {
+            let ptr = extract_ptr::<T>(self.bits());
             std::mem::forget(self); // Don't run destructor for self, we've "moved" it
             unsafe { Ok(Rc::from_raw(ptr)) }
         } else {
@@ -159,7 +155,8 @@ impl Value64 {
     }
 
     pub fn truthy(&self) -> bool {
-        match try_get_ptr_tag(self.bits) {
+        let bits = self.bits();
+        match try_get_ptr_tag(bits) {
             Some(PointerTag::String) => !self.as_string().unwrap().is_empty(),
             Some(PointerTag::Dict) => true,
             Some(PointerTag::List) => !self.as_list().unwrap().values.is_empty(),
@@ -167,11 +164,11 @@ impl Value64 {
             None => {
                 if let Some(float) = self.as_f64() {
                     !float.is_nan() && float != 0.0
-                } else if self.bits == TRUE_VALUE {
+                } else if bits == TRUE_VALUE {
                     true
-                } else if self.bits == FALSE_VALUE {
+                } else if bits == FALSE_VALUE {
                     false
-                } else if self.bits == NIL_VALUE {
+                } else if bits == NIL_VALUE {
                     false
                 } else {
                     true
@@ -197,16 +194,16 @@ impl Value64 {
 
     pub fn from_f64(value: f64) -> Self {
         assert!(!value.is_nan() || value.to_bits() == QNAN);
-        Value64::from_bits(value.to_bits())
+        Value64 { val: value }
     }
 
     pub const fn is_f64(&self) -> bool {
-        (self.bits & NANISH) != NANISH
+        (self.bits() & NANISH) != NANISH
     }
 
     pub fn as_f64(&self) -> Option<f64> {
         if self.is_f64() {
-            Some(f64::from_bits(self.bits))
+            Some(self.val)
         } else {
             None
         }
@@ -224,13 +221,13 @@ impl Value64 {
 
     #[allow(dead_code)]
     pub fn is_bool(&self) -> bool {
-        self.bits == TRUE_VALUE || self.bits == FALSE_VALUE
+        self.bits() == TRUE_VALUE || self.bits() == FALSE_VALUE
     }
 
     pub fn as_bool(&self) -> Option<bool> {
-        if self.bits == TRUE_VALUE {
+        if self.bits() == TRUE_VALUE {
             Some(true)
-        } else if self.bits == FALSE_VALUE {
+        } else if self.bits() == FALSE_VALUE {
             Some(false)
         } else {
             None
@@ -244,7 +241,7 @@ impl Value64 {
     }
 
     pub const fn is_string(&self) -> bool {
-        is_ptr_type(self.bits, PointerTag::String)
+        self.is_ptr_type(PointerTag::String)
     }
 
     pub fn try_into_string(self) -> Result<Rc<String>, Self> {
@@ -262,7 +259,7 @@ impl Value64 {
     }
 
     pub const fn is_dict(&self) -> bool {
-        is_ptr_type(self.bits, PointerTag::Dict)
+        self.is_ptr_type(PointerTag::Dict)
     }
 
     pub fn try_into_dict(self) -> Result<Rc<DictInstance>, Self> {
@@ -280,7 +277,7 @@ impl Value64 {
     }
 
     pub const fn is_list(&self) -> bool {
-        is_ptr_type(self.bits, PointerTag::List)
+        self.is_ptr_type(PointerTag::List)
     }
 
     pub fn try_into_list(self) -> Result<Rc<ListInstance>, Self> {
@@ -298,7 +295,7 @@ impl Value64 {
     }
 
     pub const fn is_lambda(&self) -> bool {
-        is_ptr_type(self.bits, PointerTag::Lambda)
+        self.is_ptr_type(PointerTag::Lambda)
     }
 
     pub fn try_into_lambda(self) -> Result<Rc<LambdaFunction>, Self> {
@@ -316,12 +313,12 @@ impl Value64 {
     }
 
     pub fn is_builtin(&self) -> bool {
-        (self.bits & NANISH_MASK) == BUILTIN_MASK
+        (self.bits() & NANISH_MASK) == BUILTIN_MASK
     }
 
     pub fn as_builtin(&self) -> Option<BuiltInFunction> {
         if self.is_builtin() {
-            Some(BuiltInFunction::from_repr(self.bits as u8).unwrap())
+            Some(BuiltInFunction::from_repr(self.val as u8).unwrap())
         } else {
             None
         }
@@ -338,7 +335,7 @@ impl Value64 {
 
 impl PartialEq for Value64 {
     fn eq(&self, other: &Self) -> bool {
-        match try_get_ptr_tag(self.bits) {
+        match try_get_ptr_tag(self.bits()) {
             Some(PointerTag::String) => match other.as_string() {
                 Some(b) => self.as_string().unwrap() == b,
                 None => false,
@@ -359,7 +356,7 @@ impl PartialEq for Value64 {
                 if let (Some(a), Some(b)) = (self.as_f64(), other.as_f64()) {
                     a == b
                 } else {
-                    self.bits == other.bits
+                    self.bits() == other.bits()
                 }
             }
         }
@@ -370,66 +367,68 @@ impl Eq for Value64 {}
 
 impl Debug for Value64 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Value64").field("bits", &self.bits).finish()
+        f.debug_struct("Value64").field("bits", &self.val).finish()
     }
 }
 
 impl std::hash::Hash for Value64 {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        match try_get_ptr_tag(self.bits) {
+        match try_get_ptr_tag(self.bits()) {
             Some(PointerTag::String) => self.as_string().unwrap().hash(state),
             Some(PointerTag::List) => self.as_list().unwrap().hash(state),
             Some(PointerTag::Dict) => panic!("Dicts cannot be used as keys inside dicts"),
             Some(PointerTag::Lambda) => {
                 panic!("Lambda functions cannot be used as keys inside dicts")
             }
-            None => self.bits.hash(state),
+            None => self.bits().hash(state),
         }
     }
 }
 
 impl Clone for Value64 {
     fn clone(&self) -> Self {
-        match try_get_ptr_tag(self.bits) {
+        let bits = self.bits();
+        match try_get_ptr_tag(bits) {
             Some(PointerTag::String) => {
-                let ptr = extract_ptr::<String>(self.bits);
+                let ptr = extract_ptr::<String>(bits);
                 unsafe { Rc::increment_strong_count(ptr) };
             }
             Some(PointerTag::List) => {
-                let ptr = extract_ptr::<ListInstance>(self.bits);
+                let ptr = extract_ptr::<ListInstance>(bits);
                 unsafe { Rc::increment_strong_count(ptr) };
             }
             Some(PointerTag::Dict) => {
-                let ptr = extract_ptr::<DictInstance>(self.bits);
+                let ptr = extract_ptr::<DictInstance>(bits);
                 unsafe { Rc::increment_strong_count(ptr) };
             }
             Some(PointerTag::Lambda) => {
-                let ptr = extract_ptr::<LambdaFunction>(self.bits);
+                let ptr = extract_ptr::<LambdaFunction>(bits);
                 unsafe { Rc::increment_strong_count(ptr) };
             }
             None => {}
         }
-        Value64::from_bits(self.bits)
+        Value64::from_bits(bits)
     }
 }
 
 impl Drop for Value64 {
     fn drop(&mut self) {
-        match try_get_ptr_tag(self.bits) {
+        let bits = self.bits();
+        match try_get_ptr_tag(bits) {
             Some(PointerTag::String) => {
-                let ptr = extract_ptr::<String>(self.bits);
+                let ptr = extract_ptr::<String>(bits);
                 unsafe { Rc::decrement_strong_count(ptr) };
             }
             Some(PointerTag::List) => {
-                let ptr = extract_ptr::<ListInstance>(self.bits);
+                let ptr = extract_ptr::<ListInstance>(bits);
                 unsafe { Rc::decrement_strong_count(ptr) };
             }
             Some(PointerTag::Dict) => {
-                let ptr = extract_ptr::<DictInstance>(self.bits);
+                let ptr = extract_ptr::<DictInstance>(bits);
                 unsafe { Rc::decrement_strong_count(ptr) };
             }
             Some(PointerTag::Lambda) => {
-                let ptr = extract_ptr::<LambdaFunction>(self.bits);
+                let ptr = extract_ptr::<LambdaFunction>(bits);
                 unsafe { Rc::decrement_strong_count(ptr) };
             }
             None => {}
@@ -439,7 +438,8 @@ impl Drop for Value64 {
 
 impl Display for Value64 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match try_get_ptr_tag(self.bits) {
+        let bits = self.bits();
+        match try_get_ptr_tag(bits) {
             Some(PointerTag::String) => write!(f, "'{}'", self.as_string().unwrap()),
             Some(PointerTag::List) => write!(f, "{}", self.as_list().unwrap()),
             Some(PointerTag::Dict) => write!(f, "{}", self.as_dict().unwrap()),
@@ -447,16 +447,16 @@ impl Display for Value64 {
             None => {
                 if let Some(float) = self.as_f64() {
                     write!(f, "{}", float)
-                } else if self.bits == TRUE_VALUE {
+                } else if bits == TRUE_VALUE {
                     write!(f, "true")
-                } else if self.bits == FALSE_VALUE {
+                } else if bits == FALSE_VALUE {
                     write!(f, "false")
-                } else if self.bits == NIL_VALUE {
+                } else if bits == NIL_VALUE {
                     write!(f, "()")
                 } else if let Some(b) = self.as_builtin() {
                     write!(f, "{}", b)
                 } else {
-                    write!(f, "<unknown value: {}>", self.bits)
+                    write!(f, "<unknown value: {}>", bits)
                 }
             }
         }

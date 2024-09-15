@@ -252,7 +252,7 @@ unsafe fn run_func(func_ptr: *const u8, input: Value64) -> Value64 {
     // Cast the raw pointer to a typed function pointer. This is unsafe, because
     // this is the critical point where you have to trust that the generated code
     // is safe to be called.
-    let code_fn = mem::transmute::<_, extern "C" fn(f64) -> f64>(func_ptr);
+    let code_fn = mem::transmute::<_, extern "C" fn(Value64) -> Value64>(func_ptr);
     // And now we can call it!
-    Value64::from_f64_unsafe(code_fn(input.into_f64_unsafe()))
+    code_fn(input)
 }
