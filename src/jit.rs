@@ -196,6 +196,7 @@ impl<'a, 'b> VariableBuilder<'a, 'b> {
                     self.declare_variables_in_expr(expr);
                 }
             }
+            Expr::Variable(_) => {}
             Expr::Bool(_) => {}
             Expr::Number(_) => {}
             Expr::Nil => {}

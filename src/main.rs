@@ -88,7 +88,7 @@ fn main() {
                         _ => panic!(),
                     };
                     unsafe {
-                        let result = run_code::<(), i64>(&mut jit, &func, ());
+                        let result = run_code::<i64, i64>(&mut jit, &func, 67);
                         println!("Result: {:?}", result);
                     }
                     // match interpreter.execute(&statement) {
