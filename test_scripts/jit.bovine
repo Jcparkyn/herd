@@ -2,7 +2,10 @@
 square = \a\ a * a;
 
 main = \a\ (
-  b = a * 2;
+  var b = a * 2;
+  for i in range 3 15 do (
+    set b = i;
+  )
   list = [
     a,
     b,

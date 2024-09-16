@@ -120,6 +120,7 @@ impl Spanned<MatchPattern> {
     pub fn expect_declaration(&self) -> (VarRef, DeclarationType) {
         match &self.value {
             MatchPattern::Declaration(var, dt) => (var.clone(), *dt),
+            MatchPattern::Assignment(target) => (target.var.clone(), DeclarationType::Mutable),
             _ => panic!(
                 "Pattern matching isn't supported here yet (at {:?})",
                 self.span

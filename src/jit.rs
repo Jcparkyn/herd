@@ -3,18 +3,28 @@
 use codegen::ir;
 use cranelift::prelude::*;
 use cranelift_jit::{JITBuilder, JITModule};
-use cranelift_module::{DataDescription, FuncId, FuncOrDataId, Linkage, Module};
+use cranelift_module::{DataDescription, FuncId, FuncOrDataId, Linkage, Module, ModuleError};
 use std::collections::HashMap;
+use strum::Display;
+use types::I64;
 
 use crate::{
     ast::{Expr, LambdaExpr, MatchPattern, Opcode, SpannedExpr, SpannedStatement, Statement},
-    builtins::{list_new, list_push, range},
+    builtins::{list_get_u64, list_len_u64, list_new, list_push, range},
+    pos::Spanned,
     value64,
 };
 
 type FuncExpr = LambdaExpr;
 
 const VAL64: ir::Type = ir::types::F64;
+
+#[derive(Debug, Display)]
+pub enum JITError {
+    Module(ModuleError),
+}
+
+pub type JITResult<T> = Result<T, JITError>;
 
 /// The basic JIT class.
 pub struct JIT {
@@ -68,6 +78,8 @@ fn get_native_methods<'a, 'b>(
     NativeMethods {
         list_new: make_method(module, "NATIVE:list_new", &[], &[VAL64]),
         list_push: make_method(module, "NATIVE:list_push", &[VAL64, VAL64], &[VAL64]),
+        list_len_u64: make_method(module, "NATIVE:list_len_u64", &[VAL64], &[I64]),
+        list_get_u64: make_method(module, "NATIVE:list_get_u64", &[VAL64, I64], &[VAL64]),
         range: make_method(module, "NATIVE:range", &[VAL64, VAL64], &[VAL64]),
     }
 }
@@ -86,6 +98,8 @@ impl JIT {
         let mut builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
         builder.symbol("NATIVE:list_new", list_new as *const u8);
         builder.symbol("NATIVE:list_push", list_push as *const u8);
+        builder.symbol("NATIVE:list_len_u64", list_len_u64 as *const u8);
+        builder.symbol("NATIVE:list_get_u64", list_get_u64 as *const u8);
         builder.symbol("NATIVE:range", range as *const u8);
 
         let mut module = JITModule::new(builder);
@@ -101,7 +115,7 @@ impl JIT {
         }
     }
 
-    pub fn compile_func(&mut self, func: &FuncExpr) -> Result<*const u8, String> {
+    pub fn compile_func(&mut self, func: &FuncExpr) -> JITResult<*const u8> {
         // Then, translate the AST nodes into Cranelift IR.
         self.translate_func(func)?;
 
@@ -118,7 +132,7 @@ impl JIT {
                 Linkage::Export,
                 &self.ctx.func.signature,
             )
-            .map_err(|e| e.to_string())?;
+            .map_err(JITError::Module)?;
 
         // Define the function to jit. This finishes compilation, although
         // there may be outstanding relocations to perform. Currently, jit
@@ -127,7 +141,7 @@ impl JIT {
         // function below.
         self.module
             .define_function(id, &mut self.ctx)
-            .map_err(|e| e.to_string())?;
+            .map_err(JITError::Module)?;
 
         // Now that compilation is finished, we can clear out the context state.
         self.module.clear_context(&mut self.ctx);
@@ -135,7 +149,9 @@ impl JIT {
         // Finalize the functions which we just defined, which resolves any
         // outstanding relocations (patching in addresses, now that they're
         // available).
-        self.module.finalize_definitions().unwrap();
+        self.module
+            .finalize_definitions()
+            .map_err(JITError::Module)?;
 
         // We can now retrieve a pointer to the machine code.
         let code = self.module.get_finalized_function(id);
@@ -150,7 +166,7 @@ impl JIT {
         }
     }
 
-    fn translate_func(&mut self, func: &FuncExpr) -> Result<(), String> {
+    fn translate_func(&mut self, func: &FuncExpr) -> JITResult<()> {
         for _p in &*func.params {
             self.ctx.func.signature.params.push(AbiParam::new(VAL64));
         }
@@ -261,6 +277,12 @@ impl<'a, 'b> VariableBuilder<'a, 'b> {
                     self.declare_variables_in_expr(else_branch);
                 }
             }
+            Expr::ForIn { iter, var, body } => {
+                self.declare_variables_in_expr(iter);
+                let (var_ref, _) = var.expect_declaration();
+                self.declare_variable(&var_ref.name);
+                self.declare_variables_in_expr(body);
+            }
             Expr::Call { callee, args } => {
                 for arg in args {
                     self.declare_variables_in_expr(arg);
@@ -340,6 +362,7 @@ impl<'a> FunctionTranslator<'a> {
                 then_branch,
                 else_branch,
             } => self.translate_if_else(condition, then_branch, else_branch),
+            Expr::ForIn { iter, var, body } => self.translate_for_in(iter, var, body),
             Expr::Call { callee, args } => self.translate_call(callee, args),
             Expr::List(l) => {
                 let mut list = self.call_native(&self.natives.list_new, &[]);
@@ -464,6 +487,67 @@ impl<'a> FunctionTranslator<'a> {
         phi
     }
 
+    fn translate_for_in(
+        &mut self,
+        iter: &SpannedExpr,
+        var: &Spanned<MatchPattern>,
+        body: &SpannedExpr,
+    ) -> Value {
+        let header_block = self.builder.create_block();
+        let body_block = self.builder.create_block();
+        let exit_block = self.builder.create_block();
+        let (var_ref, _) = var.expect_declaration();
+
+        let iter_value = self.translate_expr(iter);
+        let len_value = self.call_native(&self.natives.list_len_u64, &[iter_value]);
+        let initial_index = self.builder.ins().iconst(I64, 0);
+        self.builder.ins().jump(header_block, &[initial_index]);
+
+        // HEADER BLOCK
+        self.builder.append_block_param(header_block, I64); // Use block param for list index
+        self.builder.switch_to_block(header_block);
+
+        let current_index = self.builder.block_params(header_block)[0];
+        let should_continue =
+            self.builder
+                .ins()
+                .icmp(IntCC::UnsignedLessThan, current_index, len_value);
+        self.builder.ins().brif(
+            should_continue,
+            body_block,
+            &[current_index],
+            exit_block,
+            &[],
+        );
+
+        // BODY BLOCK
+        self.builder.append_block_param(body_block, I64);
+        self.builder.switch_to_block(body_block);
+        self.builder.seal_block(body_block);
+
+        let current_index = self.builder.block_params(header_block)[0];
+        let current_item =
+            self.call_native(&self.natives.list_get_u64, &[iter_value, current_index]);
+        let variable = self
+            .variables
+            .get(&var_ref.name)
+            .expect("variable not defined");
+        self.builder.def_var(*variable, current_item);
+        self.translate_expr(body);
+        let next_index = self.builder.ins().iadd_imm(current_index, 1);
+        self.builder.ins().jump(header_block, &[next_index]);
+
+        // EXIT BLOCK
+        self.builder.switch_to_block(exit_block);
+
+        // We've reached the bottom of the loop, so there will be no
+        // more backedges to the header to exits to the bottom.
+        self.builder.seal_block(header_block);
+        self.builder.seal_block(exit_block);
+
+        self.const_nil()
+    }
+
     fn translate_op(&mut self, op: Opcode, lhs: &SpannedExpr, rhs: &SpannedExpr) -> Value {
         match op {
             Opcode::Add => {
@@ -529,5 +613,7 @@ struct NativeMethod {
 struct NativeMethods {
     list_new: NativeMethod,
     list_push: NativeMethod,
+    list_len_u64: NativeMethod,
+    list_get_u64: NativeMethod,
     range: NativeMethod,
 }
