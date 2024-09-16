@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use crate::{
     ast::{Expr, LambdaExpr, MatchPattern, Opcode, SpannedExpr, SpannedStatement, Statement},
     builtins::{list_new, list_push},
+    value64,
 };
 
 type FuncExpr = LambdaExpr;
@@ -327,9 +328,9 @@ impl<'a> FunctionTranslator<'a> {
                     return self.builder.ins().f64const(0.0);
                 }
             }
-            Expr::Bool(_) => unimplemented!(),
+            Expr::Bool(b) => self.const_bool(*b),
             Expr::Number(f) => self.builder.ins().f64const(*f),
-            Expr::Nil => unimplemented!(),
+            Expr::Nil => self.const_nil(),
             Expr::Op { op, lhs, rhs } => self.translate_op(*op, lhs, rhs),
             Expr::If {
                 condition,
@@ -497,6 +498,20 @@ impl<'a> FunctionTranslator<'a> {
             .declare_func_in_func(method.func, self.builder.func);
         let call = self.builder.ins().call(local_callee, args);
         self.builder.inst_results(call)[0]
+    }
+
+    fn const_nil(&mut self) -> Value {
+        self.builder
+            .ins()
+            .f64const(f64::from_bits(value64::NIL_VALUE))
+    }
+
+    fn const_bool(&mut self, b: bool) -> Value {
+        self.builder.ins().f64const(if b {
+            f64::from_bits(value64::TRUE_VALUE)
+        } else {
+            f64::from_bits(value64::FALSE_VALUE)
+        })
     }
 }
 
