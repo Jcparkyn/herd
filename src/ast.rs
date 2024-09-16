@@ -12,7 +12,7 @@ use strum::FromRepr;
 use crate::pos::Spanned;
 
 #[repr(u8)]
-#[derive(PartialEq, Debug, Clone, Copy, Hash, FromRepr, EnumString)]
+#[derive(PartialEq, Debug, Clone, Copy, Hash, FromRepr, EnumString, strum::Display)]
 pub enum BuiltInFunction {
     // general
     #[strum(serialize = "print")]
@@ -44,12 +44,6 @@ pub enum BuiltInFunction {
     // dicts
     #[strum(serialize = "removeKey")]
     RemoveKey,
-}
-
-impl Display for BuiltInFunction {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        write!(f, "{}", self.to_string())
-    }
 }
 
 #[derive(PartialEq, Clone)]

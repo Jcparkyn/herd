@@ -8,7 +8,7 @@ use std::collections::HashMap;
 
 use crate::{
     ast::{Expr, LambdaExpr, MatchPattern, Opcode, SpannedExpr, SpannedStatement, Statement},
-    builtins::{list_new, list_push},
+    builtins::{list_new, list_push, range},
     value64,
 };
 
@@ -68,6 +68,7 @@ fn get_native_methods<'a, 'b>(
     NativeMethods {
         list_new: make_method(module, "NATIVE:list_new", &[], &[VAL64]),
         list_push: make_method(module, "NATIVE:list_push", &[VAL64, VAL64], &[VAL64]),
+        range: make_method(module, "NATIVE:range", &[VAL64, VAL64], &[VAL64]),
     }
 }
 
@@ -85,6 +86,7 @@ impl JIT {
         let mut builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
         builder.symbol("NATIVE:list_new", list_new as *const u8);
         builder.symbol("NATIVE:list_push", list_push as *const u8);
+        builder.symbol("NATIVE:range", range as *const u8);
 
         let mut module = JITModule::new(builder);
 
@@ -243,6 +245,7 @@ impl<'a, 'b> VariableBuilder<'a, 'b> {
             Expr::Bool(_) => {}
             Expr::Number(_) => {}
             Expr::Nil => {}
+            Expr::BuiltInFunction(_) => {}
             Expr::Op { op: _, lhs, rhs } => {
                 self.declare_variables_in_expr(&lhs);
                 self.declare_variables_in_expr(&rhs);
@@ -361,6 +364,7 @@ impl<'a> FunctionTranslator<'a> {
 
         let name = match &callee.value {
             Expr::Variable(var) => var.name.clone(),
+            Expr::BuiltInFunction(f) => format!("NATIVE:{}", f),
             _ => todo!("Only calls directly to functions are supported"),
         };
 
@@ -525,4 +529,5 @@ struct NativeMethod {
 struct NativeMethods {
     list_new: NativeMethod,
     list_push: NativeMethod,
+    range: NativeMethod,
 }

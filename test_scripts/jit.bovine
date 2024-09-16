@@ -3,7 +3,12 @@ square = \a\ a * a;
 
 main = \a\ (
   b = a * 2;
-  c = true;
-  list = [a, b, square b, c, ()];
+  list = [
+    a,
+    b,
+    square b,
+    (),
+    range 3 8,
+  ];
   list
 );
