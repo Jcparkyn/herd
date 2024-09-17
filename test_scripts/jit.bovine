@@ -3,7 +3,9 @@ square = \a\ a * a;
 
 main = \a\ (
   var b = a * 2;
-  for i in range 3 15 do (
+  arr = range 3 7;
+  print arr;
+  for i in arr do (
     set b = i;
   )
   list = [
@@ -11,7 +13,7 @@ main = \a\ (
     b,
     square b,
     (),
-    range 3 8,
+    arr,
   ];
   list
 );

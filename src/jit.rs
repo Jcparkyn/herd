@@ -10,7 +10,7 @@ use types::I64;
 
 use crate::{
     ast::{Expr, LambdaExpr, MatchPattern, Opcode, SpannedExpr, SpannedStatement, Statement},
-    builtins::{list_get_u64, list_len_u64, list_new, list_push, range},
+    builtins::{self, list_get_u64, list_len_u64, list_new, list_push},
     pos::Spanned,
     value64,
 };
@@ -81,6 +81,8 @@ fn get_native_methods<'a, 'b>(
         list_len_u64: make_method(module, "NATIVE:list_len_u64", &[VAL64], &[I64]),
         list_get_u64: make_method(module, "NATIVE:list_get_u64", &[VAL64, I64], &[VAL64]),
         range: make_method(module, "NATIVE:range", &[VAL64, VAL64], &[VAL64]),
+        clone: make_method(module, "NATIVE:clone", &[VAL64], &[VAL64]),
+        print: make_method(module, "NATIVE:print", &[VAL64], &[VAL64]),
     }
 }
 
@@ -100,7 +102,9 @@ impl JIT {
         builder.symbol("NATIVE:list_push", list_push as *const u8);
         builder.symbol("NATIVE:list_len_u64", list_len_u64 as *const u8);
         builder.symbol("NATIVE:list_get_u64", list_get_u64 as *const u8);
-        builder.symbol("NATIVE:range", range as *const u8);
+        builder.symbol("NATIVE:range", builtins::range as *const u8);
+        builder.symbol("NATIVE:clone", builtins::clone as *const u8);
+        builder.symbol("NATIVE:print", builtins::print as *const u8);
 
         let mut module = JITModule::new(builder);
 
@@ -399,9 +403,9 @@ impl<'a> FunctionTranslator<'a> {
 
         let mut arg_values = Vec::new();
         for arg in args {
-            arg_values.push(self.translate_expr(arg))
+            let value = self.translate_expr(arg);
+            arg_values.push(self.clone_val64(value))
         }
-        // self.builder.ins().call_indirect(SIG, callee, args)
         let call = self.builder.ins().call(local_callee, &arg_values);
         self.builder.inst_results(call)[0]
     }
@@ -528,6 +532,7 @@ impl<'a> FunctionTranslator<'a> {
         let current_index = self.builder.block_params(header_block)[0];
         let current_item =
             self.call_native(&self.natives.list_get_u64, &[iter_value, current_index]);
+        self.clone_val64(current_item);
         let variable = self
             .variables
             .get(&var_ref.name)
@@ -601,6 +606,10 @@ impl<'a> FunctionTranslator<'a> {
             f64::from_bits(value64::FALSE_VALUE)
         })
     }
+
+    fn clone_val64(&mut self, val: Value) -> Value {
+        self.call_native(&self.natives.clone, &[val])
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -616,4 +625,6 @@ struct NativeMethods {
     list_len_u64: NativeMethod,
     list_get_u64: NativeMethod,
     range: NativeMethod,
+    clone: NativeMethod,
+    print: NativeMethod,
 }
