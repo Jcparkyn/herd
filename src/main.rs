@@ -53,74 +53,78 @@ struct Args {
 fn main() {
     let args = Args::parse();
 
-    if let Some(path) = args.file {
-        let program_str = match std::fs::read_to_string(path) {
-            Ok(program) => program,
-            Err(err) => {
-                println!("Error while reading file: {}", err);
-                return;
+    if let Some(ref path) = args.file {
+        run_file(path, &args);
+    } else {
+        run_repl(args);
+    }
+}
+
+fn run_file(path: &str, args: &Args) {
+    let program_str = match std::fs::read_to_string(path) {
+        Ok(program) => program,
+        Err(err) => {
+            println!("Error while reading file: {}", err);
+            return;
+        }
+    };
+    let lines = Lines::new(program_str.clone().into_bytes());
+    let parser = lang::ProgramParser::new();
+    match parser.parse(&program_str) {
+        Err(err) => {
+            println!("Error while parsing: {}", err);
+        }
+        Ok(mut program) => {
+            let prelude_ast = parser.parse(include_str!("prelude.bovine")).unwrap();
+            program.splice(0..0, prelude_ast);
+            let mut analyzer = Analyzer::new();
+            let analyze_result = analyzer.analyze_statements(&mut program);
+            if args.ast {
+                println!("ast: {:#?}", program);
             }
-        };
-        let lines = Lines::new(program_str.clone().into_bytes());
-        let parser = lang::ProgramParser::new();
-        match parser.parse(&program_str) {
-            Err(err) => {
-                println!("Error while parsing: {}", err);
+            match analyze_result {
+                Ok(()) => {}
+                Err(errs) => {
+                    print_analysis_errors(errs, lines);
+                    return;
+                }
             }
-            Ok(mut program) => {
-                let prelude_ast = parser.parse(include_str!("prelude.bovine")).unwrap();
-                program.splice(0..0, prelude_ast);
-                let mut analyzer = Analyzer::new();
-                let analyze_result = analyzer.analyze_statements(&mut program);
-                if args.ast {
-                    println!("ast: {:#?}", program);
-                }
-                match analyze_result {
-                    Ok(()) => {}
-                    Err(errs) => {
-                        print_analysis_errors(errs, lines);
-                        return;
-                    }
-                }
-                if args.jit {
-                    let mut jit = jit::JIT::new();
-                    for statement in program {
-                        let func = match statement.value {
-                            ast::Statement::PatternAssignment(_, rhs) => match rhs.value {
-                                Expr::Lambda(f) => f,
-                                _ => {
-                                    panic!("Only function definitions are allowed at the top level")
-                                }
-                            },
-                            _ => panic!("Only function definitions are allowed at the top level"),
-                        };
-                        jit.compile_func(&func).unwrap();
-                    }
-                    let main_func = jit
-                        .get_func_code("main")
-                        .expect("Main function should be defined");
-                    let result = unsafe { run_func(main_func, Value64::NIL) };
-                    println!("Result: {}", result);
-                } else {
-                    let mut interpreter = Interpreter::new();
-                    for statement in program {
-                        match interpreter.execute(&statement) {
-                            Ok(()) => {}
-                            Err(err) => {
-                                let formatter = InterpreterErrorFormatter {
-                                    err: &err,
-                                    lines: &lines,
-                                };
-                                eprintln!("Error: {}", formatter);
-                                return;
+            if args.jit {
+                let mut jit = jit::JIT::new();
+                for statement in program {
+                    let func = match statement.value {
+                        ast::Statement::PatternAssignment(_, rhs) => match rhs.value {
+                            Expr::Lambda(f) => f,
+                            _ => {
+                                panic!("Only function definitions are allowed at the top level")
                             }
+                        },
+                        _ => panic!("Only function definitions are allowed at the top level"),
+                    };
+                    jit.compile_func(&func).unwrap();
+                }
+                let main_func = jit
+                    .get_func_code("main")
+                    .expect("Main function should be defined");
+                let result = unsafe { run_func(main_func, Value64::NIL) };
+                println!("Result: {}", result);
+            } else {
+                let mut interpreter = Interpreter::new();
+                for statement in program {
+                    match interpreter.execute(&statement) {
+                        Ok(()) => {}
+                        Err(err) => {
+                            let formatter = InterpreterErrorFormatter {
+                                err: &err,
+                                lines: &lines,
+                            };
+                            eprintln!("Error: {}", formatter);
+                            return;
                         }
                     }
                 }
             }
         }
-    } else {
-        run_repl(args);
     }
 }
 
