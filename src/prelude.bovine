@@ -5,7 +5,7 @@ not = \val\ NATIVE:not val;
 
 shiftLeft = \a by\ NATIVE:shiftLeft a by;
 
-xor = \val\ NATIVE:xor val;
+xor = \a b\ NATIVE:xor a b;
 
 floor = \val\ NATIVE:floor val;
 

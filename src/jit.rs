@@ -87,6 +87,7 @@ fn get_native_methods<'a, 'b>(
         val_eq: make_method(module, "NATIVE:val_eq", &[VAL64, VAL64], &[VAL64]),
         val_truthy: make_method(module, "NATIVE:val_truthy", &[VAL64], &[types::I8]),
         val_shift_left: make_method(module, "NATIVE:val_shift_left", &[VAL64, VAL64], &[VAL64]),
+        val_xor: make_method(module, "NATIVE:val_xor", &[VAL64, VAL64], &[VAL64]),
         range: make_method(module, "NATIVE:range", &[VAL64, VAL64], &[VAL64]),
         len: make_method(module, "NATIVE:len", &[VAL64], &[VAL64]),
         clone: make_method(module, "NATIVE:clone", &[VAL64], &[VAL64]),
@@ -118,6 +119,7 @@ impl JIT {
             "NATIVE:val_shift_left",
             builtins::val_shift_left as *const u8,
         );
+        builder.symbol("NATIVE:val_xor", builtins::val_xor as *const u8);
         builder.symbol("NATIVE:range", builtins::range as *const u8);
         builder.symbol("NATIVE:len", builtins::len as *const u8);
         builder.symbol("NATIVE:clone", builtins::clone as *const u8);
@@ -711,6 +713,7 @@ struct NativeMethods {
     val_eq: NativeMethod,
     val_truthy: NativeMethod,
     val_shift_left: NativeMethod,
+    val_xor: NativeMethod,
 }
 
 fn get_native_method_for_builtin(
@@ -722,6 +725,7 @@ fn get_native_method_for_builtin(
         BuiltInFunction::Print => Some(&methods.print),
         BuiltInFunction::Len => Some(&methods.len),
         BuiltInFunction::ShiftLeft => Some(&methods.val_shift_left),
+        BuiltInFunction::XOR => Some(&methods.val_xor),
         _ => None,
     }
 }

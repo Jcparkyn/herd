@@ -80,6 +80,15 @@ pub extern "C" fn val_shift_left(val: Value64, by: Value64) -> Value64 {
     result
 }
 
+pub extern "C" fn val_xor(val1: Value64, val2: Value64) -> Value64 {
+    let a = val1.as_f64().unwrap() as u64;
+    let b = val2.as_f64().unwrap() as u64;
+    let result = Value64::from_f64((a ^ b) as f64);
+    forget(val1);
+    forget(val2);
+    result
+}
+
 // TODO: Variadic functions
 pub extern "C" fn print(val: Value64) {
     println!("{}", val);
