@@ -1,5 +1,5 @@
 
-mandelbrot = {size ->
+mandelbrot = \size\ (
   var sum = 0;
   var byteAcc = 0;
   var bitNum = 0;
@@ -47,9 +47,13 @@ mandelbrot = {size ->
   )
 
   return sum;
-};
+);
 
-print 'starting';
-print (mandelbrot 1);
-print (mandelbrot 500);
-print (mandelbrot 750);
+main = \\ (
+  print 'starting';
+  print (mandelbrot 1);
+  print (mandelbrot 500);
+  print (mandelbrot 750);
+);
+
+main ();
