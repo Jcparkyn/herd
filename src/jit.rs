@@ -4,18 +4,18 @@ use codegen::ir;
 use cranelift::prelude::*;
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{DataDescription, FuncId, FuncOrDataId, Linkage, Module, ModuleError};
-use std::collections::HashMap;
+use std::{collections::HashMap, mem};
 use strum::Display;
 use types::I64;
 
 use crate::{
     ast::{
-        BuiltInFunction, Expr, LambdaExpr, MatchPattern, Opcode, SpannedExpr, SpannedStatement,
-        Statement,
+        self, BuiltInFunction, Expr, LambdaExpr, MatchPattern, Opcode, SpannedExpr,
+        SpannedStatement, Statement,
     },
     builtins,
     pos::{Span, Spanned},
-    value64,
+    value64, Value64,
 };
 
 type FuncExpr = LambdaExpr;
@@ -140,7 +140,36 @@ impl JIT {
         }
     }
 
-    pub fn compile_func(&mut self, func: &FuncExpr) -> JITResult<*const u8> {
+    pub fn compile_program(&mut self, program: &[SpannedStatement]) -> JITResult<()> {
+        for statement in program {
+            let func = match &statement.value {
+                ast::Statement::PatternAssignment(_, rhs) => match rhs.value {
+                    Expr::Lambda(ref f) => f,
+                    _ => panic!("Only function definitions are allowed at the top level"),
+                },
+                ast::Statement::Expression(e) => match e.value {
+                    // Ignore main () call, for compatibility with tree-walker
+                    Expr::Call { .. } => continue,
+                    _ => panic!("Only function definitions are allowed at the top level"),
+                },
+                _ => panic!("Only function definitions are allowed at the top level"),
+            };
+            self.compile_func(&func)?;
+        }
+        Ok(())
+    }
+
+    pub unsafe fn run_func(&mut self, func_id: FuncId, input: Value64) -> Value64 {
+        let func_ptr = self.module.get_finalized_function(func_id);
+        // Cast the raw pointer to a typed function pointer. This is unsafe, because
+        // this is the critical point where you have to trust that the generated code
+        // is safe to be called.
+        let code_fn = mem::transmute::<_, extern "C" fn(Value64) -> Value64>(func_ptr);
+        // And now we can call it!
+        code_fn(input)
+    }
+
+    fn compile_func(&mut self, func: &FuncExpr) -> JITResult<*const u8> {
         // Then, translate the AST nodes into Cranelift IR.
         self.translate_func(func)?;
 
@@ -184,9 +213,9 @@ impl JIT {
         Ok(code)
     }
 
-    pub fn get_func_code(&self, name: &str) -> Option<*const u8> {
+    pub fn get_func_id(&self, name: &str) -> Option<FuncId> {
         match self.module.get_name(name) {
-            Some(FuncOrDataId::Func(f)) => Some(self.module.get_finalized_function(f)),
+            Some(FuncOrDataId::Func(f)) => Some(f),
             _ => None,
         }
     }

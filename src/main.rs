@@ -1,16 +1,15 @@
 use std::fmt::Debug;
-use std::mem;
 
 use bovine::analysis::{AnalysisError, Analyzer};
-use bovine::ast;
-use bovine::ast::Expr;
 use bovine::interpreter::{Interpreter, InterpreterError};
 use bovine::jit;
+use bovine::lang;
+use bovine::lang::ProgramParser;
 use bovine::lines::{Lines, Location};
 use bovine::pos::Spanned;
 use bovine::value64::Value64;
 use clap::Parser;
-use lalrpop_util::{lalrpop_mod, ParseError};
+use lalrpop_util::ParseError;
 use mimalloc::MiMalloc;
 use rustyline::error::ReadlineError;
 use rustyline::highlight::MatchingBracketHighlighter;
@@ -22,12 +21,6 @@ use rustyline::{
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
-
-lalrpop_mod!(
-    #[allow(clippy::ptr_arg)]
-    #[rustfmt::skip]
-    pub lang
-);
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -61,7 +54,7 @@ fn run_file(path: &str, args: &Args) {
         }
     };
     let lines = Lines::new(program_str.clone().into_bytes());
-    let parser = lang::ProgramParser::new();
+    let parser = ProgramParser::new();
     let mut program = match parser.parse(&program_str) {
         Err(err) => {
             println!("Error while parsing: {}", err);
@@ -85,31 +78,17 @@ fn run_file(path: &str, args: &Args) {
     }
     if args.jit {
         let mut jit = jit::JIT::new();
-        for statement in program {
-            let func = match statement.value {
-                ast::Statement::PatternAssignment(_, rhs) => match rhs.value {
-                    Expr::Lambda(f) => f,
-                    _ => panic!("Only function definitions are allowed at the top level"),
-                },
-                ast::Statement::Expression(e) => match e.value {
-                    // Ignore main () call, for compatibility with tree-walker
-                    Expr::Call { .. } => continue,
-                    _ => panic!("Only function definitions are allowed at the top level"),
-                },
-                _ => panic!("Only function definitions are allowed at the top level"),
-            };
-            match jit.compile_func(&func) {
-                Ok(_) => {}
-                Err(err) => {
-                    println!("Error while compiling function: {:?}", err);
-                    return;
-                }
+        match jit.compile_program(&program) {
+            Ok(_) => {}
+            Err(err) => {
+                println!("Error while compiling function: {:?}", err);
+                return;
             }
         }
         let main_func = jit
-            .get_func_code("main")
+            .get_func_id("main")
             .expect("Main function should be defined");
-        let result = unsafe { run_func(main_func, Value64::NIL) };
+        let result = unsafe { jit.run_func(main_func, Value64::NIL) };
         println!("Result: {}", result);
     } else {
         let mut interpreter = Interpreter::new();
@@ -279,30 +258,3 @@ fn fmt_runtime_error(
     };
     Ok(())
 }
-
-unsafe fn run_func(func_ptr: *const u8, input: Value64) -> Value64 {
-    // Cast the raw pointer to a typed function pointer. This is unsafe, because
-    // this is the critical point where you have to trust that the generated code
-    // is safe to be called.
-    let code_fn = mem::transmute::<_, extern "C" fn(Value64) -> Value64>(func_ptr);
-    // And now we can call it!
-    code_fn(input)
-}
-
-// fn add_stdlib(program: &mut Vec<SpannedStatement>) {
-//     fn build
-
-//     fn build_std_func(func: BuiltInFunction, arg_count: usize) -> SpannedStatement {
-//         let zero_span = Span::new(0, 0);
-//         let rhs: Expr = Expr::Lambda(LambdaExpr::new(params, body));
-//         let stmt = ast::Statement::PatternAssignment(
-//             zero_span.wrap(ast::MatchPattern::Declaration(
-//                 ast::VarRef::new(func.to_string()),
-//                 ast::DeclarationType::Const,
-//             )),
-//             zero_span.wrap(rhs),
-//         );
-//         Spanned::new(Span::new(0, 0), stmt)
-//     }
-//     program.insert(0, build_std_func(BuiltInFunction::Len));
-// }
