@@ -49,6 +49,37 @@ pub extern "C" fn clone(val: Value64) -> Value64 {
     val
 }
 
+pub extern "C" fn val_get_index(val: Value64, index: Value64) -> Value64 {
+    let list = match val.as_list() {
+        Some(l) => l,
+        None => panic!("Expected list, was {}", val),
+    };
+    let result = list.values[index.as_f64().unwrap() as usize].clone();
+    forget(val);
+    result
+}
+
+pub extern "C" fn val_eq(val1: Value64, val2: Value64) -> Value64 {
+    let result = Value64::from_bool(val1 == val2);
+    forget(val1);
+    forget(val2);
+    result
+}
+
+pub extern "C" fn val_truthy(val: Value64) -> i8 {
+    let result = if val.truthy() { 1 } else { 0 };
+    forget(val);
+    result
+}
+
+pub extern "C" fn val_shift_left(val: Value64, by: Value64) -> Value64 {
+    let a = val.as_f64().unwrap() as u64;
+    let b = by.as_f64().unwrap() as u8;
+    let result = Value64::from_f64((a << b) as f64);
+    forget(val);
+    result
+}
+
 // TODO: Variadic functions
 pub extern "C" fn print(val: Value64) {
     println!("{}", val);

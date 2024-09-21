@@ -1,0 +1,37 @@
+// https://github.com/hanabi1224/Programming-Language-Benchmarks/blob/main/bench/algorithm/binarytrees/1.py
+
+// main = \a\ print 15;
+
+makeTree = \d\ if d == 0 then (
+  [(), ()]
+) else (
+  [makeTree (d - 1), makeTree (d - 1)]
+);
+
+checkTree = \node\ if node.[0]
+  then (1 + (checkTree node.[0]) + (checkTree node.[1]))
+  else 1;
+
+makeCheck = \d\ checkTree (makeTree d);
+
+run = \n\ (
+  minDepth = 4;
+  maxDepth = n;
+  stretchDepth = maxDepth + 1;
+  print [stretchDepth, makeCheck stretchDepth];
+  longLivedTree = makeTree maxDepth;
+  mmd = maxDepth + minDepth;
+  for d in range minDepth stretchDepth do (
+    i = shiftLeft 1 (mmd - d);
+    var cs = 0;
+    for ignored in range 0 i do (
+      set cs = cs + (makeCheck d);
+    )
+    print [i, d, cs];
+  )
+  print [maxDepth, (checkTree longLivedTree)];
+);
+
+main = \\ run 15;
+
+// main ();

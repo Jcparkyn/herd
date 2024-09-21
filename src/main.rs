@@ -101,7 +101,13 @@ fn run_file(path: &str, args: &Args) {
                 },
                 _ => panic!("Only function definitions are allowed at the top level"),
             };
-            jit.compile_func(&func).unwrap();
+            match jit.compile_func(&func) {
+                Ok(_) => {}
+                Err(err) => {
+                    println!("Error while compiling function: {:?}", err);
+                    return;
+                }
+            }
         }
         let main_func = jit
             .get_func_code("main")

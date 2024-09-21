@@ -13,7 +13,7 @@ use crate::{
         BuiltInFunction, Expr, LambdaExpr, MatchPattern, Opcode, SpannedExpr, SpannedStatement,
         Statement,
     },
-    builtins::{self, list_get_u64, list_len_u64, list_new, list_push},
+    builtins,
     pos::{Span, Spanned},
     value64,
 };
@@ -78,16 +78,21 @@ fn get_native_methods<'a, 'b>(
         NativeMethod { func, sig }
     }
 
-    NativeMethods {
+    let native_methods = NativeMethods {
         list_new: make_method(module, "NATIVE:list_new", &[], &[VAL64]),
         list_push: make_method(module, "NATIVE:list_push", &[VAL64, VAL64], &[VAL64]),
         list_len_u64: make_method(module, "NATIVE:list_len_u64", &[VAL64], &[I64]),
         list_get_u64: make_method(module, "NATIVE:list_get_u64", &[VAL64, I64], &[VAL64]),
+        val_get_index: make_method(module, "NATIVE:val_get_index", &[VAL64, VAL64], &[VAL64]),
+        val_eq: make_method(module, "NATIVE:val_eq", &[VAL64, VAL64], &[VAL64]),
+        val_truthy: make_method(module, "NATIVE:val_truthy", &[VAL64], &[types::I8]),
+        val_shift_left: make_method(module, "NATIVE:val_shift_left", &[VAL64, VAL64], &[VAL64]),
         range: make_method(module, "NATIVE:range", &[VAL64, VAL64], &[VAL64]),
         len: make_method(module, "NATIVE:len", &[VAL64], &[VAL64]),
         clone: make_method(module, "NATIVE:clone", &[VAL64], &[VAL64]),
-        print: make_method(module, "NATIVE:print", &[VAL64], &[VAL64]),
-    }
+        print: make_method(module, "NATIVE:print", &[VAL64], &[]),
+    };
+    native_methods
 }
 
 impl JIT {
@@ -102,10 +107,17 @@ impl JIT {
             .finish(settings::Flags::new(flag_builder))
             .unwrap();
         let mut builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
-        builder.symbol("NATIVE:list_new", list_new as *const u8);
-        builder.symbol("NATIVE:list_push", list_push as *const u8);
-        builder.symbol("NATIVE:list_len_u64", list_len_u64 as *const u8);
-        builder.symbol("NATIVE:list_get_u64", list_get_u64 as *const u8);
+        builder.symbol("NATIVE:list_new", builtins::list_new as *const u8);
+        builder.symbol("NATIVE:list_push", builtins::list_push as *const u8);
+        builder.symbol("NATIVE:list_len_u64", builtins::list_len_u64 as *const u8);
+        builder.symbol("NATIVE:list_get_u64", builtins::list_get_u64 as *const u8);
+        builder.symbol("NATIVE:val_get_index", builtins::val_get_index as *const u8);
+        builder.symbol("NATIVE:val_eq", builtins::val_eq as *const u8);
+        builder.symbol("NATIVE:val_truthy", builtins::val_truthy as *const u8);
+        builder.symbol(
+            "NATIVE:val_shift_left",
+            builtins::val_shift_left as *const u8,
+        );
         builder.symbol("NATIVE:range", builtins::range as *const u8);
         builder.symbol("NATIVE:len", builtins::len as *const u8);
         builder.symbol("NATIVE:clone", builtins::clone as *const u8);
@@ -246,6 +258,8 @@ impl<'a, 'b> VariableBuilder<'a, 'b> {
         for (i, pattern) in func.params.iter().enumerate() {
             let name = match pattern.value {
                 MatchPattern::Declaration(ref var, _) => &var.name,
+                MatchPattern::Discard => continue,
+                MatchPattern::Constant(_) => continue,
                 _ => todo!("Pattern matching in functions isn't supported"),
             };
             let val = self.builder.block_params(entry_block)[i];
@@ -314,6 +328,11 @@ impl<'a, 'b> VariableBuilder<'a, 'b> {
                     self.declare_variables_in_expr(value);
                 }
             }
+            Expr::GetIndex(val, index) => {
+                // TODO: Should this order be reversed?
+                self.declare_variables_in_expr(index);
+                self.declare_variables_in_expr(val);
+            }
             e => todo!("Expression type not supported: {:?}", e),
         }
     }
@@ -381,12 +400,17 @@ impl<'a> FunctionTranslator<'a> {
             Expr::Call { callee, args } => self.translate_call(callee, args),
             Expr::CallNative { callee, args } => self.translate_native_call(*callee, args),
             Expr::List(l) => {
-                let mut list = self.call_native(&self.natives.list_new, &[]);
+                let mut list = self.call_native(&self.natives.list_new, &[])[0];
                 for item in l {
                     let val = self.translate_expr(item);
-                    list = self.call_native(&self.natives.list_push, &[list, val]);
+                    list = self.call_native(&self.natives.list_push, &[list, val])[0];
                 }
                 list
+            }
+            Expr::GetIndex(val, index) => {
+                let index = self.translate_expr(index);
+                let val = self.translate_expr(val);
+                self.call_native(&self.natives.val_get_index, &[val, index])[0]
             }
             _ => unimplemented!(),
         }
@@ -430,14 +454,26 @@ impl<'a> FunctionTranslator<'a> {
 
         sig.returns.push(AbiParam::new(VAL64));
 
-        let method = get_native_method_for_builtin(&self.natives, callee);
+        let method = match get_native_method_for_builtin(&self.natives, callee) {
+            Some(m) => m,
+            None => {
+                // FIXME: using trapz because trap makes it impossible to return Value
+                let zero = self.builder.ins().iconst(types::I8, 0);
+                self.builder.ins().trapz(zero, TrapCode::User(1));
+                return self.const_nil();
+            }
+        };
 
         let mut arg_values = Vec::new();
         for arg in args {
             let value = self.translate_expr(arg);
             arg_values.push(self.clone_val64(value))
         }
-        self.call_native(method, &arg_values)
+        match self.call_native(method, &arg_values) {
+            [val] => *val,
+            [] => self.const_nil(),
+            _ => panic!("Built-in functions should only return zero or one value"),
+        }
     }
 
     fn translate_stmt(&mut self, stmt: &SpannedStatement) {
@@ -464,6 +500,7 @@ impl<'a> FunctionTranslator<'a> {
     fn translate_cmp(&mut self, cmp: FloatCC, lhs: &SpannedExpr, rhs: &SpannedExpr) -> Value {
         let lhs = self.translate_expr(lhs);
         let rhs = self.translate_expr(rhs);
+        // TODO: wrong return type?
         self.builder.ins().fcmp(cmp, lhs, rhs)
     }
 
@@ -474,6 +511,7 @@ impl<'a> FunctionTranslator<'a> {
         else_body: &Option<Box<SpannedExpr>>,
     ) -> Value {
         let condition_value = self.translate_expr(condition);
+        let condition_value = self.call_native(&self.natives.val_truthy, &[condition_value])[0];
 
         let then_block = self.builder.create_block();
         let else_block = self.builder.create_block();
@@ -533,7 +571,7 @@ impl<'a> FunctionTranslator<'a> {
         let (var_ref, _) = var.expect_declaration();
 
         let iter_value = self.translate_expr(iter);
-        let len_value = self.call_native(&self.natives.list_len_u64, &[iter_value]);
+        let len_value = self.call_native(&self.natives.list_len_u64, &[iter_value])[0];
         let initial_index = self.builder.ins().iconst(I64, 0);
         self.builder.ins().jump(header_block, &[initial_index]);
 
@@ -563,7 +601,7 @@ impl<'a> FunctionTranslator<'a> {
 
         let current_index = self.builder.block_params(header_block)[0];
         let current_item =
-            self.call_native(&self.natives.list_get_u64, &[iter_value, current_index]);
+            self.call_native(&self.natives.list_get_u64, &[iter_value, current_index])[0];
         self.clone_val64(current_item);
         let variable = self
             .variables
@@ -607,7 +645,11 @@ impl<'a> FunctionTranslator<'a> {
                 let rhs = self.translate_expr(rhs);
                 self.builder.ins().fdiv(lhs, rhs)
             }
-            Opcode::Eq => self.translate_cmp(FloatCC::Equal, lhs, rhs),
+            Opcode::Eq => {
+                let lhs_val = self.translate_expr(lhs);
+                let rhs_val = self.translate_expr(rhs);
+                self.call_native(&self.natives.val_eq, &[lhs_val, rhs_val])[0]
+            }
             Opcode::Neq => self.translate_cmp(FloatCC::NotEqual, lhs, rhs),
             Opcode::Lt => self.translate_cmp(FloatCC::LessThan, lhs, rhs),
             Opcode::Lte => self.translate_cmp(FloatCC::LessThanOrEqual, lhs, rhs),
@@ -617,12 +659,12 @@ impl<'a> FunctionTranslator<'a> {
         }
     }
 
-    fn call_native(&mut self, method: &NativeMethod, args: &[Value]) -> Value {
+    fn call_native(&mut self, method: &NativeMethod, args: &[Value]) -> &[Value] {
         let local_callee = self
             .module
             .declare_func_in_func(method.func, self.builder.func);
         let call = self.builder.ins().call(local_callee, args);
-        self.builder.inst_results(call)[0]
+        self.builder.inst_results(call)
     }
 
     fn const_nil(&mut self) -> Value {
@@ -640,7 +682,7 @@ impl<'a> FunctionTranslator<'a> {
     }
 
     fn clone_val64(&mut self, val: Value) -> Value {
-        self.call_native(&self.natives.clone, &[val])
+        self.call_native(&self.natives.clone, &[val])[0]
     }
 
     fn set_src_span(&mut self, span: &Span) {
@@ -665,13 +707,21 @@ struct NativeMethods {
     clone: NativeMethod,
     print: NativeMethod,
     len: NativeMethod,
+    val_get_index: NativeMethod,
+    val_eq: NativeMethod,
+    val_truthy: NativeMethod,
+    val_shift_left: NativeMethod,
 }
 
-fn get_native_method_for_builtin(methods: &NativeMethods, func: BuiltInFunction) -> &NativeMethod {
+fn get_native_method_for_builtin(
+    methods: &NativeMethods,
+    func: BuiltInFunction,
+) -> Option<&NativeMethod> {
     match func {
-        BuiltInFunction::Range => &methods.range,
-        BuiltInFunction::Print => &methods.print,
-        BuiltInFunction::Len => &methods.len,
-        _ => todo!("Built-in not implemented for JIT: {}", func),
+        BuiltInFunction::Range => Some(&methods.range),
+        BuiltInFunction::Print => Some(&methods.print),
+        BuiltInFunction::Len => Some(&methods.len),
+        BuiltInFunction::ShiftLeft => Some(&methods.val_shift_left),
+        _ => None,
     }
 }
