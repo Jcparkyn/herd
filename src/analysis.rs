@@ -8,6 +8,7 @@ use crate::{
     pos::{Span, Spanned},
 };
 
+#[derive(Debug)]
 pub enum AnalysisError {
     VariableAlreadyDefined(String),
     VariableNotDefined(String),
