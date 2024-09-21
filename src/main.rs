@@ -6,7 +6,7 @@ use ast::Expr;
 use clap::Parser;
 use interpreter::{Interpreter, InterpreterError};
 use lalrpop_util::{lalrpop_mod, ParseError};
-use lines::Lines;
+use lines::{Lines, Location};
 use mimalloc::MiMalloc;
 use pos::Spanned;
 use rustyline::error::ReadlineError;
@@ -63,7 +63,6 @@ fn main() {
         };
         let lines = Lines::new(program_str.clone().into_bytes());
         let parser = lang::ProgramParser::new();
-        // let mut interpreter = Interpreter::new();
         match parser.parse(&program_str) {
             Err(err) => {
                 println!("Error while parsing: {}", err);
@@ -250,7 +249,11 @@ fn fmt_runtime_error(
         PatternMatchFailed { message } => writeln!(f, "Unsuccessful pattern match: {}", message),
         FunctionCallFailed { function, inner } => {
             fmt_runtime_error(f, &inner, lines, false)?;
-            let inner_location = lines.location(inner.span.start).unwrap();
+            // Spans for prelude functions can be outside of the original source file.
+            // We need to also store the file for each span.
+            let inner_location = lines.location(inner.span.start).unwrap_or(Location {
+                ..Default::default()
+            });
             write!(f, "\tat ")?;
             writeln!(
                 f,
