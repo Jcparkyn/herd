@@ -143,6 +143,10 @@ fn expect_into_callable(value: Value) -> IResult<Callable> {
     expect_into_type(value, Value::try_into_callable, "a callable")
 }
 
+fn expect_into_lambda(value: Value) -> IResult<Rc<LambdaFunction>> {
+    expect_into_type(value, Value::try_into_lambda, "a lambda")
+}
+
 impl Environment {
     pub fn new() -> Environment {
         Environment {
@@ -361,7 +365,6 @@ impl Interpreter {
             }
             Expr::Op { op, lhs, rhs } => self.eval_binary_op(lhs, rhs, op),
             Expr::Block(block) => self.eval_block(block),
-            Expr::BuiltInFunction(f) => Ok(Value::from_builtin(f.clone())),
             Expr::Call { callee, args } => {
                 let arg_stack_len_before = self.arg_stack.len();
                 let arg_count = args.len();
@@ -377,12 +380,20 @@ impl Interpreter {
                 }
 
                 let callee_val = self.eval(callee)?;
-                let result = match expect_into_callable(callee_val) {
-                    Ok(c) => self.call(&c, arg_count),
+                let result = match expect_into_lambda(callee_val) {
+                    Ok(l) => self
+                        .call_lambda(&l, arg_count)
+                        .map_err(|e| FunctionCallFailed {
+                            function: Callable::Lambda(l.clone()),
+                            inner: Box::new(e),
+                        }),
                     Err(e) => Err(e),
                 };
                 self.arg_stack.truncate(arg_stack_len_before);
                 return result.with_span(&callee.span);
+            }
+            Expr::CallNative { .. } => {
+                todo!()
             }
             Expr::Lambda(l) => {
                 let f = self.eval_lambda_definition(l);
@@ -467,6 +478,25 @@ impl Interpreter {
             }
         }
     }
+
+    // fn eval_call(&mut self, callee: Callable, args: &[SpannedExpr]) -> IResult<Value> {
+    //     let arg_stack_len_before = self.arg_stack.len();
+    //     let arg_count = args.len();
+    //     // self.arg_stack.clear();
+    //     for arg in args.iter() {
+    //         match self.eval(arg) {
+    //             Ok(v) => self.arg_stack.push(v),
+    //             Err(e) => {
+    //                 self.arg_stack.truncate(arg_stack_len_before);
+    //                 return Err(e);
+    //             }
+    //         };
+    //     }
+
+    //     let result = self.call(&callee, arg_count);
+    //     self.arg_stack.truncate(arg_stack_len_before);
+    //     return result;
+    // }
 
     fn eval_lambda_definition(&mut self, lambda: &LambdaExpr) -> LambdaFunction {
         let mut captures: Vec<Value> = vec![];

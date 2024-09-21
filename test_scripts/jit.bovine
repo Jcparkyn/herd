@@ -1,7 +1,8 @@
 
 square = \a\ a * a;
 
-main = \a\ (
+main = \ignored\ (
+  a = 3;
   var b = a * 2;
   arr = range 3 7;
   print arr;

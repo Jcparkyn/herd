@@ -2,13 +2,13 @@ use std::fmt::Debug;
 use std::mem;
 
 use analysis::{AnalysisError, Analyzer};
-use ast::Expr;
+use ast::{BuiltInFunction, Expr, LambdaExpr, MatchPattern, SpannedStatement};
 use clap::Parser;
 use interpreter::{Interpreter, InterpreterError};
 use lalrpop_util::{lalrpop_mod, ParseError};
 use lines::Lines;
 use mimalloc::MiMalloc;
-use pos::Spanned;
+use pos::{Span, Spanned};
 use rustyline::error::ReadlineError;
 use rustyline::highlight::MatchingBracketHighlighter;
 use rustyline::validate::{ValidationContext, ValidationResult, Validator};
@@ -51,22 +51,23 @@ fn main() {
     let args = Args::parse();
 
     if let Some(path) = args.file {
-        let program = match std::fs::read_to_string(path) {
+        let program_str = match std::fs::read_to_string(path) {
             Ok(program) => program,
             Err(err) => {
                 println!("Error while reading file: {}", err);
                 return;
             }
         };
+        let lines = Lines::new(program_str.clone().into_bytes());
         let parser = lang::ProgramParser::new();
         // let mut interpreter = Interpreter::new();
-        let program_ast = parser.parse(&program);
-        let lines = Lines::new(program.clone().into_bytes());
-        match program_ast {
+        match parser.parse(&program_str) {
             Err(err) => {
                 println!("Error while parsing: {}", err);
             }
             Ok(mut program) => {
+                let prelude_ast = parser.parse(include_str!("prelude.bovine")).unwrap();
+                program.splice(0..0, prelude_ast);
                 let mut analyzer = Analyzer::new();
                 let analyze_result = analyzer.analyze_statements(&mut program);
                 if args.ast {
@@ -93,8 +94,7 @@ fn main() {
                 let main_func = jit
                     .get_func_code("main")
                     .expect("Main function should be defined");
-                let input = Value64::from_f64(3.0);
-                let result = unsafe { run_func(main_func, input) };
+                let result = unsafe { run_func(main_func, Value64::NIL) };
                 println!("Result: {}", result);
             }
         }
@@ -256,3 +256,21 @@ unsafe fn run_func(func_ptr: *const u8, input: Value64) -> Value64 {
     // And now we can call it!
     code_fn(input)
 }
+
+// fn add_stdlib(program: &mut Vec<SpannedStatement>) {
+//     fn build
+
+//     fn build_std_func(func: BuiltInFunction, arg_count: usize) -> SpannedStatement {
+//         let zero_span = Span::new(0, 0);
+//         let rhs: Expr = Expr::Lambda(LambdaExpr::new(params, body));
+//         let stmt = ast::Statement::PatternAssignment(
+//             zero_span.wrap(ast::MatchPattern::Declaration(
+//                 ast::VarRef::new(func.to_string()),
+//                 ast::DeclarationType::Const,
+//             )),
+//             zero_span.wrap(rhs),
+//         );
+//         Spanned::new(Span::new(0, 0), stmt)
+//     }
+//     program.insert(0, build_std_func(BuiltInFunction::Len));
+// }

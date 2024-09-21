@@ -9,9 +9,12 @@ use strum::Display;
 use types::I64;
 
 use crate::{
-    ast::{Expr, LambdaExpr, MatchPattern, Opcode, SpannedExpr, SpannedStatement, Statement},
+    ast::{
+        BuiltInFunction, Expr, LambdaExpr, MatchPattern, Opcode, SpannedExpr, SpannedStatement,
+        Statement,
+    },
     builtins::{self, list_get_u64, list_len_u64, list_new, list_push},
-    pos::Spanned,
+    pos::{Span, Spanned},
     value64,
 };
 
@@ -81,6 +84,7 @@ fn get_native_methods<'a, 'b>(
         list_len_u64: make_method(module, "NATIVE:list_len_u64", &[VAL64], &[I64]),
         list_get_u64: make_method(module, "NATIVE:list_get_u64", &[VAL64, I64], &[VAL64]),
         range: make_method(module, "NATIVE:range", &[VAL64, VAL64], &[VAL64]),
+        len: make_method(module, "NATIVE:len", &[VAL64], &[VAL64]),
         clone: make_method(module, "NATIVE:clone", &[VAL64], &[VAL64]),
         print: make_method(module, "NATIVE:print", &[VAL64], &[VAL64]),
     }
@@ -103,6 +107,7 @@ impl JIT {
         builder.symbol("NATIVE:list_len_u64", list_len_u64 as *const u8);
         builder.symbol("NATIVE:list_get_u64", list_get_u64 as *const u8);
         builder.symbol("NATIVE:range", builtins::range as *const u8);
+        builder.symbol("NATIVE:len", builtins::len as *const u8);
         builder.symbol("NATIVE:clone", builtins::clone as *const u8);
         builder.symbol("NATIVE:print", builtins::print as *const u8);
 
@@ -265,7 +270,7 @@ impl<'a, 'b> VariableBuilder<'a, 'b> {
             Expr::Bool(_) => {}
             Expr::Number(_) => {}
             Expr::Nil => {}
-            Expr::BuiltInFunction(_) => {}
+            // Expr::BuiltInFunction(_) => {}
             Expr::Op { op: _, lhs, rhs } => {
                 self.declare_variables_in_expr(&lhs);
                 self.declare_variables_in_expr(&rhs);
@@ -292,6 +297,11 @@ impl<'a, 'b> VariableBuilder<'a, 'b> {
                     self.declare_variables_in_expr(arg);
                 }
                 self.declare_variables_in_expr(callee);
+            }
+            Expr::CallNative { callee: _, args } => {
+                for arg in args {
+                    self.declare_variables_in_expr(arg);
+                }
             }
             Expr::List(l) => {
                 for item in l {
@@ -342,6 +352,7 @@ impl<'a> FunctionTranslator<'a> {
     /// When you write out instructions in Cranelift, you get back `Value`s. You
     /// can then use these references in other instructions.
     fn translate_expr(&mut self, expr: &SpannedExpr) -> Value {
+        self.set_src_span(&expr.span);
         match &expr.value {
             Expr::Variable(ref var) => {
                 let variable = self.variables.get(&var.name).expect("variable not defined");
@@ -368,6 +379,7 @@ impl<'a> FunctionTranslator<'a> {
             } => self.translate_if_else(condition, then_branch, else_branch),
             Expr::ForIn { iter, var, body } => self.translate_for_in(iter, var, body),
             Expr::Call { callee, args } => self.translate_call(callee, args),
+            Expr::CallNative { callee, args } => self.translate_native_call(*callee, args),
             Expr::List(l) => {
                 let mut list = self.call_native(&self.natives.list_new, &[]);
                 for item in l {
@@ -391,7 +403,6 @@ impl<'a> FunctionTranslator<'a> {
 
         let name = match &callee.value {
             Expr::Variable(var) => var.name.clone(),
-            Expr::BuiltInFunction(f) => format!("NATIVE:{}", f),
             _ => todo!("Only calls directly to functions are supported"),
         };
 
@@ -408,6 +419,25 @@ impl<'a> FunctionTranslator<'a> {
         }
         let call = self.builder.ins().call(local_callee, &arg_values);
         self.builder.inst_results(call)[0]
+    }
+
+    fn translate_native_call(&mut self, callee: BuiltInFunction, args: &Vec<SpannedExpr>) -> Value {
+        let mut sig = self.module.make_signature();
+
+        for _arg in args {
+            sig.params.push(AbiParam::new(VAL64));
+        }
+
+        sig.returns.push(AbiParam::new(VAL64));
+
+        let method = get_native_method_for_builtin(&self.natives, callee);
+
+        let mut arg_values = Vec::new();
+        for arg in args {
+            let value = self.translate_expr(arg);
+            arg_values.push(self.clone_val64(value))
+        }
+        self.call_native(method, &arg_values)
     }
 
     fn translate_stmt(&mut self, stmt: &SpannedStatement) {
@@ -508,6 +538,7 @@ impl<'a> FunctionTranslator<'a> {
         self.builder.ins().jump(header_block, &[initial_index]);
 
         // HEADER BLOCK
+        self.set_src_span(&iter.span);
         self.builder.append_block_param(header_block, I64); // Use block param for list index
         self.builder.switch_to_block(header_block);
 
@@ -525,6 +556,7 @@ impl<'a> FunctionTranslator<'a> {
         );
 
         // BODY BLOCK
+        self.set_src_span(&body.span);
         self.builder.append_block_param(body_block, I64);
         self.builder.switch_to_block(body_block);
         self.builder.seal_block(body_block);
@@ -610,6 +642,11 @@ impl<'a> FunctionTranslator<'a> {
     fn clone_val64(&mut self, val: Value) -> Value {
         self.call_native(&self.natives.clone, &[val])
     }
+
+    fn set_src_span(&mut self, span: &Span) {
+        self.builder
+            .set_srcloc(ir::SourceLoc::new(span.start as u32));
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -627,4 +664,14 @@ struct NativeMethods {
     range: NativeMethod,
     clone: NativeMethod,
     print: NativeMethod,
+    len: NativeMethod,
+}
+
+fn get_native_method_for_builtin(methods: &NativeMethods, func: BuiltInFunction) -> &NativeMethod {
+    match func {
+        BuiltInFunction::Range => &methods.range,
+        BuiltInFunction::Print => &methods.print,
+        BuiltInFunction::Len => &methods.len,
+        _ => todo!("Built-in not implemented for JIT: {}", func),
+    }
 }

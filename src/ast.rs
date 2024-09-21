@@ -237,7 +237,11 @@ pub enum Expr {
         callee: Box<SpannedExpr>,
         args: Vec<SpannedExpr>,
     },
-    BuiltInFunction(BuiltInFunction),
+    CallNative {
+        callee: BuiltInFunction,
+        args: Vec<SpannedExpr>,
+    },
+    // BuiltInFunction(BuiltInFunction),
     Lambda(LambdaExpr),
     Dict(Vec<(SpannedExpr, SpannedExpr)>),
     List(Vec<SpannedExpr>),
@@ -281,7 +285,7 @@ impl Debug for Expr {
             Expr::Number(n) => write!(f, "{}", n),
             Expr::Bool(b) => write!(f, "{}", b),
             Expr::String(s) => write!(f, "'{}'", s),
-            Expr::BuiltInFunction(b) => write!(f, "{:?}", b),
+            // Expr::BuiltInFunction(b) => write!(f, "{:?}", b),
             Expr::Op { op, lhs, rhs } => write!(f, "({:?} {:?} {:?})", lhs, op, rhs),
             Expr::Variable(v) => v.fmt(f),
             Expr::Block(b) => b.fmt(f),
@@ -301,6 +305,11 @@ impl Debug for Expr {
             }
             Expr::Match(m) => m.fmt(f),
             Expr::Call { callee, args } => f.debug_tuple("Call").field(callee).field(args).finish(),
+            Expr::CallNative { callee, args } => f
+                .debug_tuple("CallNative")
+                .field(callee)
+                .field(args)
+                .finish(),
             Expr::Lambda(l) => l.fmt(f),
             Expr::Dict(entries) => {
                 f.write_str("Dict")?;

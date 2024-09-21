@@ -37,6 +37,13 @@ pub extern "C" fn range(start: Value64, stop: Value64) -> Value64 {
     return Value64::from_list(Rc::new(ListInstance::new(values)));
 }
 
+pub extern "C" fn len(list: Value64) -> Value64 {
+    let list2 = list.as_list().unwrap();
+    let result = Value64::from_f64(list2.values.len() as f64);
+    forget(list);
+    result
+}
+
 pub extern "C" fn clone(val: Value64) -> Value64 {
     forget(val.clone());
     val

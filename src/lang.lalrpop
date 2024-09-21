@@ -75,6 +75,10 @@ ComparisonExpr = Tier<ComparisonOp, AddSubCallExpr>;
 
 AddSubCallExpr: Expr = {
     <callee:Box<Sp<Term>>> <args:Sp<Term>+> => Expr::Call { callee, args },
+    "NATIVE" ":" <callee:Identifier> <args:Sp<Term>+> => Expr::CallNative {
+        callee: ast::BuiltInFunction::from_str(&callee).unwrap(),
+        args,
+    },
     AddSubExpr,
 }
 

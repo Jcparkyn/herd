@@ -1,0 +1,6 @@
+
+range = \start stop\ NATIVE:range start stop;
+
+len = \val\ NATIVE:len val;
+
+print = \val\ NATIVE:print val;

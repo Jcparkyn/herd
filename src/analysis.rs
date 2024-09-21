@@ -1,9 +1,9 @@
-use std::{collections::HashSet, fmt::Display, rc::Rc, str::FromStr};
+use std::{collections::HashSet, fmt::Display, rc::Rc};
 
 use crate::{
     ast::{
-        Block, BuiltInFunction, DeclarationType, Expr, MatchPattern, SpannedExpr, SpannedStatement,
-        Statement, VarRef,
+        Block, DeclarationType, Expr, MatchPattern, SpannedExpr, SpannedStatement, Statement,
+        VarRef,
     },
     pos::{Span, Spanned},
 };
@@ -205,7 +205,12 @@ impl VariableAnalyzer {
                 }
                 self.analyze_expr(callee);
             }
-            Expr::BuiltInFunction(_) => {}
+            Expr::CallNative { callee: _, args } => {
+                for arg in args {
+                    self.analyze_expr(arg);
+                }
+            }
+            // Expr::BuiltInFunction(_) => {}
             Expr::Lambda(l) => {
                 let mut lambda_analyzer = VariableAnalyzer::new();
                 for param in Rc::get_mut(&mut l.params).unwrap() {
@@ -359,10 +364,6 @@ fn analyze_expr_liveness(expr: &mut Expr, deps: &mut HashSet<String>) {
         Expr::String(_) => {}
         Expr::Nil => {}
         Expr::Variable(v) => {
-            if let Ok(builtin) = BuiltInFunction::from_str(&v.name) {
-                *expr = Expr::BuiltInFunction(builtin);
-                return;
-            }
             // If is_final was already cleared, don't set it.
             // This is required for loops, which are analyzed twice.
             v.is_final = v.is_final && deps.insert(v.name.to_string());
@@ -402,9 +403,13 @@ fn analyze_expr_liveness(expr: &mut Expr, deps: &mut HashSet<String>) {
         Expr::Block(block) => {
             analyze_block_liveness(block, deps);
         }
-        Expr::BuiltInFunction(_) => {}
         Expr::Call { callee, args } => {
             analyze_expr_liveness(&mut callee.value, deps);
+            for arg in args.iter_mut().rev() {
+                analyze_expr_liveness(&mut arg.value, deps);
+            }
+        }
+        Expr::CallNative { callee: _, args } => {
             for arg in args.iter_mut().rev() {
                 analyze_expr_liveness(&mut arg.value, deps);
             }
