@@ -34,4 +34,4 @@ run = \n\ (
 
 main = \\ run 15;
 
-// main ();
+main ();
