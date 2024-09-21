@@ -92,6 +92,7 @@ fn get_native_methods<'a, 'b>(
         len: make_method(module, "NATIVE:len", &[VAL64], &[VAL64]),
         clone: make_method(module, "NATIVE:clone", &[VAL64], &[VAL64]),
         print: make_method(module, "NATIVE:print", &[VAL64], &[]),
+        val_not: make_method(module, "NATIVE:val_not", &[VAL64], &[VAL64]),
     };
     native_methods
 }
@@ -124,6 +125,7 @@ impl JIT {
         builder.symbol("NATIVE:len", builtins::len as *const u8);
         builder.symbol("NATIVE:clone", builtins::clone as *const u8);
         builder.symbol("NATIVE:print", builtins::print as *const u8);
+        builder.symbol("NATIVE:val_not", builtins::val_not as *const u8);
 
         let mut module = JITModule::new(builder);
 
@@ -714,6 +716,7 @@ struct NativeMethods {
     val_truthy: NativeMethod,
     val_shift_left: NativeMethod,
     val_xor: NativeMethod,
+    val_not: NativeMethod,
 }
 
 fn get_native_method_for_builtin(
@@ -726,6 +729,7 @@ fn get_native_method_for_builtin(
         BuiltInFunction::Len => Some(&methods.len),
         BuiltInFunction::ShiftLeft => Some(&methods.val_shift_left),
         BuiltInFunction::XOR => Some(&methods.val_xor),
+        BuiltInFunction::Not => Some(&methods.val_not),
         _ => None,
     }
 }

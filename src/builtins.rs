@@ -89,6 +89,12 @@ pub extern "C" fn val_xor(val1: Value64, val2: Value64) -> Value64 {
     result
 }
 
+pub extern "C" fn val_not(val: Value64) -> Value64 {
+    let result = Value64::from_bool(!val.truthy());
+    forget(val);
+    result
+}
+
 // TODO: Variadic functions
 pub extern "C" fn print(val: Value64) {
     println!("{}", val);
