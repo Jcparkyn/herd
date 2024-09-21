@@ -21,6 +21,182 @@ fn sub() {
     insta::assert_snapshot!(result, @"-1");
 }
 
+#[test]
+fn bodmas() {
+    let program = r#"
+        main = \\ 6 + (1 - 2) * 3;
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"3");
+}
+
+#[test]
+fn array_literal() {
+    let program = r#"
+        main = \\ [1, 2, 3];
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"[1, 2, 3]");
+}
+
+#[test]
+fn variables() {
+    let program = r#"
+        main = \\ (
+            a = 1;
+            b = 2;
+            a + b
+        );
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"3");
+}
+
+#[test]
+fn equals() {
+    let program = r#"
+        main = \\ [
+            0 == 1, 1 == 1, 1 == (), () == (),
+            [0] == [1], [1] == [1]
+        ];
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"[false, true, false, true, false, true]");
+}
+
+#[test]
+fn cmp_lt() {
+    let program = r#"
+        main = \\ [
+            0 < 1, 1 < 1, 1 < (), () < (),
+            0 <= 1, 1 <= 1, 1 <= (), () <= (),
+        ];
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"[true, false, false, false, true, true, false, false]");
+}
+
+#[test]
+fn cmp_gt() {
+    let program = r#"
+        main = \\ [
+            0 > 1, 1 > 1, 1 > (), () > (),
+            0 >= 1, 1 >= 1, 1 >= (), () >= (),
+        ];
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"[false, false, false, false, false, true, false, false]");
+}
+
+#[test]
+fn index_list() {
+    let program = r#"
+        main = \\ [1, 2, 3].[1];
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"2");
+}
+
+#[test]
+fn if_else() {
+    let program = r#"
+        main = \\ [
+            if 1 == 1 then 1 else 0,
+            if 1 == 1 then 1,
+            if 1 == 0 then 1 else 0,
+            if 1 == 0 then 1,
+        ];
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"[1, 1, 0, ()]");
+}
+
+#[test]
+fn logic_and() {
+    let program = r#"
+        main = \\ [
+            true and true,
+            true and false,
+            false and true,
+            false and false,
+        ];
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"[true, false, false, false]");
+}
+
+#[test]
+fn logic_or() {
+    let program = r#"
+        main = \\ [
+            true or true,
+            true or false,
+            false or true,
+            false or false,
+        ];
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"[true, true, true, false]");
+}
+
+#[test]
+fn for_in_loop() {
+    let program = r#"
+        main = \\ (
+            var sum = 0;
+            for x in [1, 2, 3] do (
+                set sum = sum + x;
+            )
+            sum
+        );
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"6");
+}
+
+#[test]
+fn while_loop() {
+    let program = r#"
+        main = \\ (
+            var sum = 1;
+            while sum < 10 do (
+                set sum = sum * 2;
+            )
+            sum
+        );
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"16");
+}
+
+#[test]
+fn user_functions() {
+    let program = r#"
+        square = \a\ a * a;
+        main = \\ square 3;
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"9");
+}
+
+#[test]
+fn builtin_range() {
+    let program = r#"
+        main = \\ range -1 3;
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"[-1, 0, 1, 2]");
+}
+
+#[test]
+fn builtin_not() {
+    let program = r#"
+        main = \\ [not true, not 1, not false];
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"[false, false, true]");
+}
+
 fn eval_snapshot(program: &str) -> Value64 {
     let parser = ProgramParser::new();
     let prelude_ast = parser.parse(include_str!("../src/prelude.bovine")).unwrap();

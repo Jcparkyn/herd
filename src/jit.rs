@@ -576,7 +576,7 @@ impl<'a> FunctionTranslator<'a> {
 
         self.builder.switch_to_block(else_block);
         self.builder.seal_block(else_block);
-        let mut else_return = self.builder.ins().f64const(0.0);
+        let mut else_return = self.const_nil();
         if let Some(expr) = else_body {
             else_return = self.translate_expr(expr);
         }
@@ -732,7 +732,15 @@ impl<'a> FunctionTranslator<'a> {
                 let bool_val = self.builder.ins().band(lhs_truthy, rhs_truthy);
                 self.bool_to_val64(bool_val)
             }
-            _ => unimplemented!("Opcode not implemented: {:?}", op),
+            Opcode::Or => {
+                // TODO: conditional evaluation
+                let lhs = self.translate_expr(lhs);
+                let rhs = self.translate_expr(rhs);
+                let lhs_truthy = self.is_truthy(lhs);
+                let rhs_truthy = self.is_truthy(rhs);
+                let bool_val = self.builder.ins().bor(lhs_truthy, rhs_truthy);
+                self.bool_to_val64(bool_val)
+            }
         }
     }
 
