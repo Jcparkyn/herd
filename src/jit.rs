@@ -310,6 +310,10 @@ impl<'a, 'b> VariableBuilder<'a, 'b> {
                 self.declare_variable(&var_ref.name);
                 self.declare_variables_in_expr(body);
             }
+            Expr::While { condition, body } => {
+                self.declare_variables_in_expr(condition);
+                self.declare_variables_in_expr(body);
+            }
             Expr::Call { callee, args } => {
                 for arg in args {
                     self.declare_variables_in_expr(arg);
@@ -401,6 +405,7 @@ impl<'a> FunctionTranslator<'a> {
                 else_branch,
             } => self.translate_if_else(condition, then_branch, else_branch),
             Expr::ForIn { iter, var, body } => self.translate_for_in(iter, var, body),
+            Expr::While { condition, body } => self.translate_while_loop(condition, body),
             Expr::Call { callee, args } => self.translate_call(callee, args),
             Expr::CallNative { callee, args } => self.translate_native_call(*callee, args),
             Expr::List(l) => {
@@ -504,8 +509,8 @@ impl<'a> FunctionTranslator<'a> {
     fn translate_cmp(&mut self, cmp: FloatCC, lhs: &SpannedExpr, rhs: &SpannedExpr) -> Value {
         let lhs = self.translate_expr(lhs);
         let rhs = self.translate_expr(rhs);
-        // TODO: wrong return type?
-        self.builder.ins().fcmp(cmp, lhs, rhs)
+        let cmp_val = self.builder.ins().fcmp(cmp, lhs, rhs);
+        self.bool_to_val64(cmp_val)
     }
 
     fn translate_if_else(
@@ -627,6 +632,36 @@ impl<'a> FunctionTranslator<'a> {
         self.const_nil()
     }
 
+    fn translate_while_loop(&mut self, condition: &SpannedExpr, body: &SpannedExpr) -> Value {
+        let header_block = self.builder.create_block();
+        let body_block = self.builder.create_block();
+        let exit_block = self.builder.create_block();
+
+        self.builder.ins().jump(header_block, &[]);
+        self.builder.switch_to_block(header_block);
+
+        let condition_value = self.translate_expr(condition);
+        let condition_bool = self.is_truthy(condition_value);
+        self.builder
+            .ins()
+            .brif(condition_bool, body_block, &[], exit_block, &[]);
+
+        self.builder.switch_to_block(body_block);
+        self.builder.seal_block(body_block);
+
+        self.translate_expr(body);
+        self.builder.ins().jump(header_block, &[]);
+
+        self.builder.switch_to_block(exit_block);
+
+        // We've reached the bottom of the loop, so there will be no
+        // more backedges to the header to exits to the bottom.
+        self.builder.seal_block(header_block);
+        self.builder.seal_block(exit_block);
+
+        self.const_nil()
+    }
+
     fn translate_op(&mut self, op: Opcode, lhs: &SpannedExpr, rhs: &SpannedExpr) -> Value {
         match op {
             Opcode::Add => {
@@ -659,7 +694,16 @@ impl<'a> FunctionTranslator<'a> {
             Opcode::Lte => self.translate_cmp(FloatCC::LessThanOrEqual, lhs, rhs),
             Opcode::Gt => self.translate_cmp(FloatCC::GreaterThan, lhs, rhs),
             Opcode::Gte => self.translate_cmp(FloatCC::GreaterThanOrEqual, lhs, rhs),
-            _ => unimplemented!(),
+            Opcode::And => {
+                // TODO: conditional evaluation
+                let lhs = self.translate_expr(lhs);
+                let rhs = self.translate_expr(rhs);
+                let lhs_truthy = self.is_truthy(lhs);
+                let rhs_truthy = self.is_truthy(rhs);
+                let bool_val = self.builder.ins().band(lhs_truthy, rhs_truthy);
+                self.bool_to_val64(bool_val)
+            }
+            _ => unimplemented!("Opcode not implemented: {:?}", op),
         }
     }
 
@@ -692,6 +736,16 @@ impl<'a> FunctionTranslator<'a> {
     fn set_src_span(&mut self, span: &Span) {
         self.builder
             .set_srcloc(ir::SourceLoc::new(span.start as u32));
+    }
+
+    fn is_truthy(&mut self, val: Value) -> Value {
+        self.call_native(&self.natives.val_truthy, &[val])[0]
+    }
+
+    fn bool_to_val64(&mut self, b: Value) -> Value {
+        let t = self.const_bool(true);
+        let f = self.const_bool(false);
+        self.builder.ins().select(b, t, f)
     }
 }
 
