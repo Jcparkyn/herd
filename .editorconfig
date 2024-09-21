@@ -1,0 +1,8 @@
+
+[*.rs]
+indent_style = space
+indent_size = 4
+
+[*.bovine]
+indent_style = space
+indent_size = 2
