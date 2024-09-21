@@ -695,22 +695,30 @@ impl<'a> FunctionTranslator<'a> {
         match op {
             Opcode::Add => {
                 let lhs = self.translate_expr(lhs);
+                self.guard_f64(lhs);
                 let rhs = self.translate_expr(rhs);
+                self.guard_f64(rhs);
                 self.builder.ins().fadd(lhs, rhs)
             }
             Opcode::Sub => {
                 let lhs = self.translate_expr(lhs);
+                self.guard_f64(lhs);
                 let rhs = self.translate_expr(rhs);
+                self.guard_f64(rhs);
                 self.builder.ins().fsub(lhs, rhs)
             }
             Opcode::Mul => {
                 let lhs = self.translate_expr(lhs);
+                self.guard_f64(lhs);
                 let rhs = self.translate_expr(rhs);
+                self.guard_f64(rhs);
                 self.builder.ins().fmul(lhs, rhs)
             }
             Opcode::Div => {
                 let lhs = self.translate_expr(lhs);
+                self.guard_f64(lhs);
                 let rhs = self.translate_expr(rhs);
+                self.guard_f64(rhs);
                 self.builder.ins().fdiv(lhs, rhs)
             }
             Opcode::Eq => {
@@ -783,6 +791,14 @@ impl<'a> FunctionTranslator<'a> {
         let t = self.const_bool(true);
         let f = self.const_bool(false);
         self.builder.ins().select(b, t, f)
+    }
+
+    fn guard_f64(&mut self, val: Value) {
+        let val_int = self.builder.ins().bitcast(I64, MemFlags::new(), val);
+        let nanish = self.builder.ins().iconst(I64, value64::NANISH as i64);
+        let and = self.builder.ins().band(val_int, nanish);
+        let is_f64 = self.builder.ins().icmp(IntCC::NotEqual, and, nanish);
+        self.builder.ins().trapz(is_f64, TrapCode::User(2));
     }
 }
 

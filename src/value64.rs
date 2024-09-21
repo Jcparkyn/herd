@@ -64,7 +64,7 @@ const fn is_safe_addr(ptr: u64) -> bool {
 }
 
 const QNAN: u64 = 0x7FF8000000000000;
-const NANISH: u64 = 0x7FFC000000000000;
+pub const NANISH: u64 = 0x7FFC000000000000;
 const NANISH_MASK: u64 = 0xFFFF000000000000;
 const TAG_MASK: u64 = 0xFFFF000000000000;
 
