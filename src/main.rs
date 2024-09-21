@@ -99,6 +99,11 @@ fn run_file(path: &str, args: &Args) {
                     Expr::Lambda(f) => f,
                     _ => panic!("Only function definitions are allowed at the top level"),
                 },
+                ast::Statement::Expression(e) => match e.value {
+                    // Ignore main () call, for compatibility with tree-walker
+                    Expr::Call { .. } => continue,
+                    _ => panic!("Only function definitions are allowed at the top level"),
+                },
                 _ => panic!("Only function definitions are allowed at the top level"),
             };
             match jit.compile_func(&func) {
