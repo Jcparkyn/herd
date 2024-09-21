@@ -1,6 +1,26 @@
 
+print = \val\ NATIVE:print val;
+
+not = \val\ NATIVE:not val;
+
+shiftLeft = \a by\ NATIVE:shiftLeft a by;
+
+xor = \val\ NATIVE:xor val;
+
+floor = \val\ NATIVE:floor val;
+
 range = \start stop\ NATIVE:range start stop;
+
+push = \arr element\ NATIVE:push arr element;
+
+pop = \arr\ NATIVE:pop arr;
 
 len = \val\ NATIVE:len val;
 
-print = \val\ NATIVE:print val;
+sort = \arr\ NATIVE:sort arr;
+
+map = \val f\ NATIVE:map val f;
+
+filter = \val predicate\ NATIVE:filter val predicate;
+
+removeKey = \val key\ NATIVE:removeKey val key;

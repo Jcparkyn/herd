@@ -6,7 +6,7 @@ use crate::{
         Opcode, SpannedExpr, SpannedStatement, SpreadListPattern, Statement,
     },
     pos::{Span, Spanned},
-    value64::{Callable, DictInstance, LambdaFunction, ListInstance, Value64 as Value},
+    value64::{DictInstance, LambdaFunction, ListInstance, Value64 as Value},
 };
 
 pub const NIL: Value = Value::NIL;
@@ -42,7 +42,7 @@ pub enum InterpreterError {
         message: String,
     },
     FunctionCallFailed {
-        function: Callable,
+        function: Rc<LambdaFunction>,
         inner: Box<Spanned<InterpreterError>>,
     },
 }
@@ -137,10 +137,6 @@ fn expect_list(value: Value) -> IResult<Rc<ListInstance>> {
 
 fn expect_into_dict(value: Value) -> IResult<Rc<DictInstance>> {
     expect_into_type(value, Value::try_into_dict, "a dict")
-}
-
-fn expect_into_callable(value: Value) -> IResult<Callable> {
-    expect_into_type(value, Value::try_into_callable, "a callable")
 }
 
 fn expect_into_lambda(value: Value) -> IResult<Rc<LambdaFunction>> {
@@ -365,36 +361,14 @@ impl Interpreter {
             }
             Expr::Op { op, lhs, rhs } => self.eval_binary_op(lhs, rhs, op),
             Expr::Block(block) => self.eval_block(block),
-            Expr::Call { callee, args } => {
-                let arg_stack_len_before = self.arg_stack.len();
-                let arg_count = args.len();
-                // self.arg_stack.clear();
-                for arg in args.iter() {
-                    match self.eval(arg) {
-                        Ok(v) => self.arg_stack.push(v),
-                        Err(e) => {
-                            self.arg_stack.truncate(arg_stack_len_before);
-                            return Err(e);
-                        }
-                    };
-                }
-
-                let callee_val = self.eval(callee)?;
-                let result = match expect_into_lambda(callee_val) {
-                    Ok(l) => self
-                        .call_lambda(&l, arg_count)
-                        .map_err(|e| FunctionCallFailed {
-                            function: Callable::Lambda(l.clone()),
-                            inner: Box::new(e),
-                        }),
-                    Err(e) => Err(e),
-                };
-                self.arg_stack.truncate(arg_stack_len_before);
-                return result.with_span(&callee.span);
-            }
-            Expr::CallNative { .. } => {
-                todo!()
-            }
+            Expr::Call { callee, args } => self.run_with_args(args, |s| {
+                let callee_val = s.eval(callee)?;
+                let lambda = expect_into_lambda(callee_val).with_span(&callee.span)?;
+                s.call_lambda(&lambda, args.len()).with_span(&expr.span)
+            }),
+            Expr::CallNative { callee, args } => self.run_with_args(args, |s| {
+                s.call_builtin(*callee, args.len()).with_span(&expr.span)
+            }),
             Expr::Lambda(l) => {
                 let f = self.eval_lambda_definition(l);
                 Ok(Value::from_lambda(Rc::new(f)))
@@ -479,24 +453,25 @@ impl Interpreter {
         }
     }
 
-    // fn eval_call(&mut self, callee: Callable, args: &[SpannedExpr]) -> IResult<Value> {
-    //     let arg_stack_len_before = self.arg_stack.len();
-    //     let arg_count = args.len();
-    //     // self.arg_stack.clear();
-    //     for arg in args.iter() {
-    //         match self.eval(arg) {
-    //             Ok(v) => self.arg_stack.push(v),
-    //             Err(e) => {
-    //                 self.arg_stack.truncate(arg_stack_len_before);
-    //                 return Err(e);
-    //             }
-    //         };
-    //     }
-
-    //     let result = self.call(&callee, arg_count);
-    //     self.arg_stack.truncate(arg_stack_len_before);
-    //     return result;
-    // }
+    fn run_with_args(
+        &mut self,
+        args: &[SpannedExpr],
+        task: impl FnOnce(&mut Self) -> SpannedResult<Value>,
+    ) -> SpannedResult<Value> {
+        let arg_stack_len_before = self.arg_stack.len();
+        for arg in args.iter() {
+            match self.eval(arg) {
+                Ok(v) => self.arg_stack.push(v),
+                Err(e) => {
+                    self.arg_stack.truncate(arg_stack_len_before);
+                    return Err(e);
+                }
+            };
+        }
+        let result = task(self);
+        self.arg_stack.truncate(arg_stack_len_before);
+        result
+    }
 
     fn eval_lambda_definition(&mut self, lambda: &LambdaExpr) -> LambdaFunction {
         let mut captures: Vec<Value> = vec![];
@@ -564,25 +539,14 @@ impl Interpreter {
         }
     }
 
-    fn call(&mut self, callable: &Callable, arg_count: usize) -> IResult<Value> {
-        let result = match callable {
-            Callable::Lambda(f) => self.call_lambda(f, arg_count),
-            Callable::Builtin(f) => self.call_builtin(*f, arg_count).with_span(&Span::new(0, 0)),
-        };
-        result.map_err(|e| FunctionCallFailed {
-            function: callable.clone(),
-            inner: Box::new(e),
-        })
-    }
-
     fn call_internal<const N: usize>(
         &mut self,
-        callable: &Callable,
+        func: &Rc<LambdaFunction>,
         args: [Value; N],
     ) -> IResult<Value> {
         let arg_stack_len_before = self.arg_stack.len();
         self.arg_stack.extend(args);
-        let result = self.call(callable, N);
+        let result = self.call_lambda(func, N);
         self.arg_stack.truncate(arg_stack_len_before);
         result
     }
@@ -682,7 +646,7 @@ impl Interpreter {
             BuiltInFunction::Map => {
                 let [list_val, f_val] = self.destructure_args(arg_count)?;
                 let mut list = expect_list(list_val)?;
-                let f = expect_into_callable(f_val)?;
+                let f = expect_into_lambda(f_val)?;
                 let mut_list = Rc::make_mut(&mut list);
                 for v in mut_list.values.iter_mut() {
                     let v2 = std::mem::replace(v, NIL);
@@ -693,7 +657,7 @@ impl Interpreter {
             BuiltInFunction::Filter => {
                 let [list_val, f_val] = self.destructure_args(arg_count)?;
                 let mut list = expect_list(list_val)?;
-                let f = expect_into_callable(f_val)?;
+                let f = expect_into_lambda(f_val)?;
                 let mut_list = Rc::make_mut(&mut list);
 
                 let mut err = None;
@@ -739,18 +703,16 @@ impl Interpreter {
         }
     }
 
-    fn call_lambda(
-        &mut self,
-        function: &Rc<LambdaFunction>,
-        arg_count: usize,
-    ) -> SpannedResult<Value> {
+    fn call_lambda(&mut self, function: &Rc<LambdaFunction>, arg_count: usize) -> IResult<Value> {
         if function.params.len() != arg_count {
-            return Err(WrongArgumentCount {
+            let inner_err = function.body.span.wrap(WrongArgumentCount {
                 expected: function.params.len(),
                 supplied: arg_count,
-            }
-            // TODO use params span
-            .with_span(&function.body.span));
+            });
+            return Err(FunctionCallFailed {
+                function: function.clone(),
+                inner: Box::new(inner_err),
+            });
         }
         let old_frame = self.environment.cur_frame;
         self.environment.cur_frame = self.environment.slots.len();
@@ -758,7 +720,11 @@ impl Interpreter {
             let arg = self.arg_stack.pop().unwrap();
             let pattern = &function.params[param_idx];
             self.match_pattern(&pattern.value, arg)
-                .with_span(&pattern.span)?;
+                .with_span(&pattern.span)
+                .map_err(|e| FunctionCallFailed {
+                    function: function.clone(),
+                    inner: Box::new(e),
+                })?;
         }
         for val in &function.closure {
             self.environment.slots.push(val.clone());
@@ -774,7 +740,11 @@ impl Interpreter {
                 value: InterpreterError::Return(v),
                 span: _,
             }) => Ok(v),
-            r => r,
+            Ok(v) => Ok(v),
+            Err(e) => Err(FunctionCallFailed {
+                function: function.clone(),
+                inner: Box::new(e),
+            }),
         };
         self.environment.slots.truncate(self.environment.cur_frame);
         self.environment.cur_frame = old_frame;

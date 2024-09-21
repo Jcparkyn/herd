@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::{
-    ast::{BuiltInFunction, MatchPattern, SpannedExpr},
+    ast::{MatchPattern, SpannedExpr},
     pos::Spanned,
 };
 
@@ -71,7 +71,6 @@ const TAG_MASK: u64 = 0xFFFF000000000000;
 pub const TRUE_VALUE: u64 = 0x7FFE000000000003;
 pub const FALSE_VALUE: u64 = 0x7FFE000000000002;
 pub const NIL_VALUE: u64 = 0x7FFE000000000000;
-const BUILTIN_MASK: u64 = 0x7FFC000000000000;
 
 pub trait Boxable {
     const TAG: PointerTag;
@@ -305,32 +304,6 @@ impl Value64 {
     pub fn as_lambda(&self) -> Option<&LambdaFunction> {
         self.as_ref()
     }
-
-    // BUILTINS:
-
-    pub fn from_builtin(value: BuiltInFunction) -> Self {
-        Value64::from_bits((value as u64) | BUILTIN_MASK)
-    }
-
-    pub fn is_builtin(&self) -> bool {
-        (self.bits() & NANISH_MASK) == BUILTIN_MASK
-    }
-
-    pub fn as_builtin(&self) -> Option<BuiltInFunction> {
-        if self.is_builtin() {
-            Some(BuiltInFunction::from_repr(self.val as u8).unwrap())
-        } else {
-            None
-        }
-    }
-
-    pub fn try_into_callable(self) -> Result<Callable, Self> {
-        if let Some(b) = self.as_builtin() {
-            Ok(Callable::Builtin(b))
-        } else {
-            self.try_into_lambda().map(Callable::Lambda)
-        }
-    }
 }
 
 impl PartialEq for Value64 {
@@ -453,20 +426,12 @@ impl Display for Value64 {
                     write!(f, "false")
                 } else if bits == NIL_VALUE {
                     write!(f, "()")
-                } else if let Some(b) = self.as_builtin() {
-                    write!(f, "{}", b)
                 } else {
                     write!(f, "<unknown value: {}>", bits)
                 }
             }
         }
     }
-}
-
-#[derive(Debug, Clone)]
-pub enum Callable {
-    Lambda(Rc<LambdaFunction>),
-    Builtin(BuiltInFunction),
 }
 
 #[derive(PartialEq, Debug)]
@@ -588,7 +553,6 @@ mod tests {
         for val in [t, f] {
             assert!(val.is_bool());
             assert!(!val.is_ptr());
-            assert!(!val.is_builtin());
             assert!(!val.is_nil());
         }
     }
@@ -659,17 +623,6 @@ mod tests {
         assert!(val.is_ptr());
         let s2 = val.try_into_string();
         assert_eq!(s2, Ok(s));
-    }
-
-    #[test]
-    fn builtin_round_trip() {
-        let builtin = BuiltInFunction::Map;
-        let val = Value64::from_builtin(builtin);
-        assert!(val.is_builtin());
-        assert!(!val.is_ptr());
-        assert!(!val.is_bool());
-        assert!(!val.is_nil());
-        assert_eq!(val.as_builtin(), Some(BuiltInFunction::Map));
     }
 
     #[test]

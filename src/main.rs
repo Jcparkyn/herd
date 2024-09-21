@@ -2,13 +2,13 @@ use std::fmt::Debug;
 use std::mem;
 
 use analysis::{AnalysisError, Analyzer};
-use ast::{BuiltInFunction, Expr, LambdaExpr, MatchPattern, SpannedStatement};
+use ast::Expr;
 use clap::Parser;
 use interpreter::{Interpreter, InterpreterError};
 use lalrpop_util::{lalrpop_mod, ParseError};
 use lines::Lines;
 use mimalloc::MiMalloc;
-use pos::{Span, Spanned};
+use pos::Spanned;
 use rustyline::error::ReadlineError;
 use rustyline::highlight::MatchingBracketHighlighter;
 use rustyline::validate::{ValidationContext, ValidationResult, Validator};
@@ -16,7 +16,7 @@ use rustyline::{
     Cmd, Completer, Config, Editor, EventHandler, Helper, Highlighter, Hinter, KeyCode, KeyEvent,
     Modifiers, Movement,
 };
-use value64::{Callable, Value64};
+use value64::Value64;
 
 mod analysis;
 mod ast;
@@ -45,6 +45,9 @@ struct Args {
 
     #[arg(long)]
     ast: bool,
+
+    #[arg(long)]
+    jit: bool,
 }
 
 fn main() {
@@ -80,22 +83,41 @@ fn main() {
                         return;
                     }
                 }
-                let mut jit = jit::JIT::new();
-                for statement in program {
-                    let func = match statement.value {
-                        ast::Statement::PatternAssignment(_, rhs) => match rhs.value {
-                            Expr::Lambda(f) => f,
+                if args.jit {
+                    let mut jit = jit::JIT::new();
+                    for statement in program {
+                        let func = match statement.value {
+                            ast::Statement::PatternAssignment(_, rhs) => match rhs.value {
+                                Expr::Lambda(f) => f,
+                                _ => {
+                                    panic!("Only function definitions are allowed at the top level")
+                                }
+                            },
                             _ => panic!("Only function definitions are allowed at the top level"),
-                        },
-                        _ => panic!("Only function definitions are allowed at the top level"),
-                    };
-                    jit.compile_func(&func).unwrap();
+                        };
+                        jit.compile_func(&func).unwrap();
+                    }
+                    let main_func = jit
+                        .get_func_code("main")
+                        .expect("Main function should be defined");
+                    let result = unsafe { run_func(main_func, Value64::NIL) };
+                    println!("Result: {}", result);
+                } else {
+                    let mut interpreter = Interpreter::new();
+                    for statement in program {
+                        match interpreter.execute(&statement) {
+                            Ok(()) => {}
+                            Err(err) => {
+                                let formatter = InterpreterErrorFormatter {
+                                    err: &err,
+                                    lines: &lines,
+                                };
+                                eprintln!("Error: {}", formatter);
+                                return;
+                            }
+                        }
+                    }
                 }
-                let main_func = jit
-                    .get_func_code("main")
-                    .expect("Main function should be defined");
-                let result = unsafe { run_func(main_func, Value64::NIL) };
-                println!("Result: {}", result);
             }
         }
     } else {
@@ -230,15 +252,12 @@ fn fmt_runtime_error(
             fmt_runtime_error(f, &inner, lines, false)?;
             let inner_location = lines.location(inner.span.start).unwrap();
             write!(f, "\tat ")?;
-            match function {
-                Callable::Lambda(l) => writeln!(
-                    f,
-                    "{} ({})",
-                    l.self_name.as_deref().unwrap_or("<lambda>"),
-                    inner_location
-                ),
-                Callable::Builtin(b) => writeln!(f, "{} (built-in function)", b),
-            }
+            writeln!(
+                f,
+                "{} ({})",
+                function.self_name.as_deref().unwrap_or("<lambda>"),
+                inner_location
+            )
         }
     }?;
     if outer {
