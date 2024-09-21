@@ -130,7 +130,7 @@ fn expect_list(value: Value) -> IResult<Rc<ListInstance>> {
     match value.try_into_list() {
         Ok(v) => Ok(v),
         Err(v) => Err(WrongType {
-            message: format!("Expected an list, found {}", &v),
+            message: format!("Expected a list, found {}", &v),
         }),
     }
 }
@@ -166,7 +166,7 @@ impl Environment {
         } else {
             Err(WrongType {
                 message: format!(
-                    "Can't assign to index {index}, because {old} is neither a dict nor an list."
+                    "Can't assign to index {index}, because {old} is neither a dict nor a list."
                 ),
             })
         }
@@ -438,7 +438,7 @@ impl Interpreter {
                     }
                     Err(v) => {
                         return Err(WrongType {
-                            message: format!("Expected an list, found {v}"),
+                            message: format!("Expected a list, found {v}"),
                         }
                         .with_span(&iter.span))
                     }
@@ -585,7 +585,7 @@ impl Interpreter {
                     Ok(Value::from_f64(d.values.len() as f64))
                 } else {
                     Err(WrongType {
-                        message: format!("Expected an list or dict, found {arg}"),
+                        message: format!("Expected a list or dict, found {arg}"),
                     })
                 }
             }
@@ -847,7 +847,7 @@ impl Interpreter {
                     Err(rc) => self.match_slice_clone(&parts, &rc.values),
                 },
                 Err(v) => Err(PatternMatchFailed {
-                    message: format!("Expected an list, found {v}"),
+                    message: format!("Expected a list, found {v}"),
                 }),
             },
             MatchPattern::SpreadList(pattern) => match value.try_into_list() {
@@ -855,7 +855,7 @@ impl Interpreter {
                     if a.values.len() < pattern.min_len() {
                         return Err(PatternMatchFailed {
                             message: format!(
-                                "Expected an list with length >= {}, but actual list had length = {}",
+                                "Expected a list with length >= {}, but actual list had length = {}",
                                 pattern.min_len(),
                                 a.values.len()
                             ),
@@ -865,7 +865,7 @@ impl Interpreter {
                     self.match_spread_list(pattern, mut_values)
                 }
                 Err(v) => Err(PatternMatchFailed {
-                    message: format!("Expected an list, found {v}"),
+                    message: format!("Expected a list, found {v}"),
                 }),
             },
             MatchPattern::Constant(c) => {
@@ -954,7 +954,7 @@ fn assert_slice_len(parts: &[MatchPattern], values: &[Value]) -> IResult<()> {
     if parts.len() != values.len() {
         return Err(PatternMatchFailed {
             message: format!(
-                "Expected an list with length={}, but actual list had length={}",
+                "Expected a list with length={}, but actual list had length={}",
                 parts.len(),
                 values.len()
             ),
