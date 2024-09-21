@@ -46,11 +46,10 @@ mandelbrot = \size\ (
     )
   )
 
-  return sum;
+  sum
 );
 
 main = \\ (
-  print 'starting';
   print (mandelbrot 1);
   print (mandelbrot 500);
   print (mandelbrot 750);
