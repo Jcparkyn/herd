@@ -1,8 +1,8 @@
 use std::{str::FromStr,rc::Rc};
-use crate::ast;
-use crate::pos::{Span, Spanned};
-use crate::ast::{Expr, Opcode, Statement, Block, AssignmentTarget, VarRef, LambdaExpr, MatchPattern, MatchExpr};
-use crate::parse_helpers::{
+use bovine::ast;
+use bovine::pos::{Span, Spanned};
+use bovine::ast::{Expr, Opcode, Statement, Block, AssignmentTarget, VarRef, LambdaExpr, MatchPattern, MatchExpr};
+use bovine::parse_helpers::{
     parse_string_literal,
     process_list_match,
     process_declaration,

@@ -1,14 +1,17 @@
 use std::fmt::Debug;
 use std::mem;
 
-use analysis::{AnalysisError, Analyzer};
-use ast::Expr;
+use bovine::analysis::{AnalysisError, Analyzer};
+use bovine::ast;
+use bovine::ast::Expr;
+use bovine::interpreter::{Interpreter, InterpreterError};
+use bovine::jit;
+use bovine::lines::{Lines, Location};
+use bovine::pos::Spanned;
+use bovine::value64::Value64;
 use clap::Parser;
-use interpreter::{Interpreter, InterpreterError};
 use lalrpop_util::{lalrpop_mod, ParseError};
-use lines::{Lines, Location};
 use mimalloc::MiMalloc;
-use pos::Spanned;
 use rustyline::error::ReadlineError;
 use rustyline::highlight::MatchingBracketHighlighter;
 use rustyline::validate::{ValidationContext, ValidationResult, Validator};
@@ -16,17 +19,6 @@ use rustyline::{
     Cmd, Completer, Config, Editor, EventHandler, Helper, Highlighter, Hinter, KeyCode, KeyEvent,
     Modifiers, Movement,
 };
-use value64::Value64;
-
-mod analysis;
-mod ast;
-mod builtins;
-mod interpreter;
-mod jit;
-mod lines;
-mod parse_helpers;
-mod pos;
-mod value64;
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
