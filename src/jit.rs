@@ -520,8 +520,19 @@ impl<'a> FunctionTranslator<'a> {
                 self.translate_expr(e);
             }
             Statement::Return(e) => {
+                // Create a new block for the return instruction, so that other instructions
+                // can still be added after it. Normally, Cranelift rejects instructions after
+                // return, but we need them to keep the code simple.
+                let return_block = self.builder.create_block();
+                self.builder.ins().jump(return_block, &[]);
+                self.builder.switch_to_block(return_block);
+                self.builder.seal_block(return_block);
                 let return_value = self.translate_expr(e);
                 self.builder.ins().return_(&[return_value]);
+
+                let after_return_block = self.builder.create_block();
+                self.builder.switch_to_block(after_return_block);
+                self.builder.seal_block(after_return_block);
             }
             Statement::PatternAssignment(pattern, rhs) => {
                 let rhs_value = self.translate_expr(rhs);

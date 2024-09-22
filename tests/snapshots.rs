@@ -197,6 +197,19 @@ fn builtin_not() {
     insta::assert_snapshot!(result, @"[false, false, true]");
 }
 
+#[test]
+fn early_return_if() {
+    let program = r#"
+        f = \a\ [if a then 1 else (return 0;)];
+        main = \\ [
+            f true,
+            f false,
+        ];
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"[[1], 0]");
+}
+
 fn eval_snapshot(program: &str) -> Value64 {
     let parser = ProgramParser::new();
     let prelude_ast = parser.parse(include_str!("../src/prelude.bovine")).unwrap();
