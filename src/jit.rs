@@ -118,14 +118,14 @@ impl JIT {
         builder.symbol("NATIVE:val_truthy", builtins::val_truthy as *const u8);
         builder.symbol(
             "NATIVE:val_shift_left",
-            builtins::val_shift_left as *const u8,
+            builtins::public_val_shift_left as *const u8,
         );
-        builder.symbol("NATIVE:val_xor", builtins::val_xor as *const u8);
-        builder.symbol("NATIVE:range", builtins::range as *const u8);
-        builder.symbol("NATIVE:len", builtins::len as *const u8);
+        builder.symbol("NATIVE:val_xor", builtins::public_val_xor as *const u8);
+        builder.symbol("NATIVE:range", builtins::public_range as *const u8);
+        builder.symbol("NATIVE:len", builtins::public_len as *const u8);
         builder.symbol("NATIVE:clone", builtins::clone as *const u8);
-        builder.symbol("NATIVE:print", builtins::print as *const u8);
-        builder.symbol("NATIVE:val_not", builtins::val_not as *const u8);
+        builder.symbol("NATIVE:print", builtins::public_print as *const u8);
+        builder.symbol("NATIVE:val_not", builtins::public_val_not as *const u8);
 
         let mut module = JITModule::new(builder);
 
