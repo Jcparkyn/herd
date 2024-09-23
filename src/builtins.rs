@@ -15,8 +15,10 @@ impl Deref for Value64Ref {
     }
 }
 
-pub extern "C" fn list_new() -> Value64 {
-    Value64::from_list(Rc::new(ListInstance::new(vec![])))
+pub extern "C" fn list_new(capacity: u64) -> Value64 {
+    Value64::from_list(Rc::new(ListInstance::new(Vec::with_capacity(
+        capacity as usize,
+    ))))
 }
 
 pub extern "C" fn list_push(list: Value64, val: Value64) -> Value64 {

@@ -87,7 +87,7 @@ fn get_native_methods<'a, 'b>(
     }
 
     let native_methods = NativeMethods {
-        list_new: make_method(module, "NATIVE:list_new", &[], &[VAL64]),
+        list_new: make_method(module, "NATIVE:list_new", &[I64], &[VAL64]),
         list_push: make_method(module, "NATIVE:list_push", &[VAL64, VAL64], &[VAL64]),
         list_len_u64: make_method(module, "NATIVE:list_len_u64", &[VAL64], &[I64]),
         list_get_u64: make_method(module, "NATIVE:list_get_u64", &[VAL64, I64], &[VAL64]),
@@ -451,7 +451,8 @@ impl<'a> FunctionTranslator<'a> {
             Expr::Call { callee, args } => self.translate_call(callee, args),
             Expr::CallNative { callee, args } => self.translate_native_call(*callee, args),
             Expr::List(l) => {
-                let mut list = self.call_native(&self.natives.list_new, &[])[0];
+                let len_value = self.builder.ins().iconst(types::I64, l.len() as i64);
+                let mut list = self.call_native(&self.natives.list_new, &[len_value])[0];
                 for item in l {
                     let val = self.translate_expr(item);
                     list = self.call_native(&self.natives.list_push, &[list, val])[0];
