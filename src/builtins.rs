@@ -92,5 +92,8 @@ pub extern "C" fn public_val_not(val: Value64) -> Value64 {
 
 // TODO: Variadic functions
 pub extern "C" fn public_print(val: Value64) {
-    println!("{}", val);
+    match val.try_into_string() {
+        Ok(s) => print!("{s}"),
+        Err(v) => print!("{v}"),
+    }
 }
