@@ -9,7 +9,23 @@ use crate::{
 };
 
 pub fn parse_string_literal(s: &str) -> String {
-    s[1..s.len() - 1].to_string()
+    let mut result = String::new();
+    let mut chars = s[1..s.len() - 1].chars();
+    while let Some(ch) = chars.next() {
+        if ch == '\\' {
+            match chars.next() {
+                Some('\\') => result.push('\\'),
+                Some('n') => result.push('\n'),
+                Some('t') => result.push('\t'),
+                Some('"') => result.push('"'),
+                Some('\'') => result.push('\''),
+                _ => panic!("Unexpected string escape"),
+            }
+        } else {
+            result.push(ch);
+        }
+    }
+    result
 }
 
 pub fn process_list_match(parts: Vec<(MatchPattern, bool)>) -> Result<MatchPattern, &'static str> {
@@ -63,4 +79,19 @@ pub fn assignment_target_to_index_expr(target: &Spanned<AssignmentTarget>) -> Sp
     target.value.path.iter().cloned().fold(init, |e, index| {
         Spanned::new(e.span, Expr::GetIndex(Box::new(e), Box::new(index)))
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_string_literal_test() {
+        assert_eq!(parse_string_literal("\'hello\'"), "hello");
+        assert_eq!(parse_string_literal("\"hello\\nworld\""), "hello\nworld");
+        assert_eq!(parse_string_literal("\"hello\\\"world\""), "hello\"world");
+        assert_eq!(parse_string_literal("\"hello\\'world\""), "hello'world");
+        assert_eq!(parse_string_literal("\"hello\\\\world\""), "hello\\world");
+        assert_eq!(parse_string_literal("\"hello\\tworld\""), "hello\tworld");
+    }
 }

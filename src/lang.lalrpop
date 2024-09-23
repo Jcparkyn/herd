@@ -187,7 +187,7 @@ BoolLiteral: bool = {
 };
 
 StringLiteral: String = {
-    r"'[^']*'" => parse_string_literal(<>),
+    r#"'([^']|\\[\\nt'"])*'"# => parse_string_literal(<>),
 }
 
 LambdaExpr: Expr = {
