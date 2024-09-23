@@ -30,6 +30,6 @@ run = \n\ (
   printf ['long lived tree of depth ', maxDepth, ' check: ', (checkTree longLivedTree)];
 );
 
-main = \\ run 15;
+main = \\ run 18;
 
 main ();
