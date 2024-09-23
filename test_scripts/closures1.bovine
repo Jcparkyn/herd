@@ -1,6 +1,6 @@
 var a = 'global';
 (
-  showA = \\ print a;
+  showA = \\ println a;
   showA ();
   set a = 'block';
   showA ();

@@ -50,9 +50,10 @@ mandelbrot = \size\ (
 );
 
 main = \\ (
-  print (mandelbrot 1);
-  print (mandelbrot 500);
-  print (mandelbrot 750);
+  println (mandelbrot 1);
+  println (mandelbrot 500);
+  println (mandelbrot 750);
+  println (mandelbrot 3000);
 );
 
 main ();

@@ -8,12 +8,12 @@ isOdd = \n\ (
 
 isEven = \n\ isEven_ isOdd n;
 
-print (isEven 0);
-print (isEven 1);
-print (isEven 2);
-print (isEven 3);
+println (isEven 0);
+println (isEven 1);
+println (isEven 2);
+println (isEven 3);
 
-print (isOdd 0);
-print (isOdd 1);
-print (isOdd 2);
-print (isOdd 3);
+println (isOdd 0);
+println (isOdd 1);
+println (isOdd 2);
+println (isOdd 3);

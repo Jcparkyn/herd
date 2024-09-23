@@ -2,8 +2,8 @@
   x = [:];
   var y = x;
   set y.a = 'a';
-  print x;
-  print y;
+  println x;
+  println y;
 );
 
 (
@@ -27,8 +27,8 @@
     _
   );
 
-  print order1;
-  print order2;
-  print order3;
-  print order4;
+  println order1;
+  println order2;
+  println order3;
+  println order4;
 );

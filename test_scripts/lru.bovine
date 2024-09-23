@@ -83,8 +83,8 @@ main = \\ (
   set lru |= put 'b' 420;
   set lru |= put 'c' 7;
   ![set lru, a] = get lru 'a';
-  print 'lru state: ' lru;
-  print 'a: ' a;
+  println 'lru state: ' lru;
+  println 'a: ' a;
 );
 
 main ();

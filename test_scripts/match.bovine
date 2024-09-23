@@ -4,7 +4,7 @@ foo = switch arr {
   [a, b] => [a + b],
   _ => 0,
 };
-print foo;
+println foo;
 
 invert = \node\ switch node {
   [l, r] => [invert r, invert l],
@@ -14,4 +14,4 @@ invert = \node\ switch node {
 tree = [[0, 1], [2, 3]];
 
 tree2 = invert tree;
-print tree2;
+println tree2;

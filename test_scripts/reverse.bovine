@@ -13,4 +13,4 @@ reverse = \var arr\ (
 var x = [5, 6, 1];
 set x = x | sort | push -5 | reverse;
 
-print x;
+println x;

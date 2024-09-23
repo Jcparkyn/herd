@@ -1,17 +1,17 @@
 x = 7;
 
 if x < 10 then (
-  print 'pass';
+  println 'pass';
 ) else (
-  print 'fail';
+  println 'fail';
 )
 
-print (if x < 10 then 'pass' else 'fail');
+println (if x < 10 then 'pass' else 'fail');
 
 (
   y = x + 2;
-  print y;
+  println y;
 );
 
 y = 3;
-print y;
+println y;

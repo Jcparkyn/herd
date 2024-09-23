@@ -2,7 +2,7 @@
 var x = 7;
 ![set x, y] = [1, 2];
 
-print [x: x, y: y];
+println [x: x, y: y];
 
 fn1 = \a\ (
   var z = 0;
@@ -10,4 +10,4 @@ fn1 = \a\ (
   z + n
 );
 
-print (fn1 [1]);
+println (fn1 [1]);

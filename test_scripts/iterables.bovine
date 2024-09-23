@@ -64,4 +64,4 @@ iter2 = iterRange 1 7
   | iterStep 2
   | iterMap \(0 - _)
   | iterRepeat 2;
-print (iterToArray iter2);
+println (iterToArray iter2);

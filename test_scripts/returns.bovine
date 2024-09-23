@@ -2,9 +2,9 @@
 fn1 = \x\ (
   y = [1, 3, 2];
   if x > 10 then ( return y; )
-  print x;
+  println x;
   return 'small';
 );
 
-print (fn1 17);
-print (fn1 2);
+println (fn1 17);
+println (fn1 2);
