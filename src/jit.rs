@@ -4,7 +4,12 @@ use codegen::ir;
 use cranelift::prelude::*;
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{DataDescription, FuncId, FuncOrDataId, Linkage, Module, ModuleError};
-use std::{collections::HashMap, mem};
+use std::{
+    collections::HashMap,
+    mem::{self},
+    ops::Deref,
+    rc::Rc,
+};
 use strum::Display;
 use types::I64;
 
@@ -48,6 +53,9 @@ pub struct JIT {
     module: JITModule,
 
     natives: NativeMethods,
+
+    /// Interned string constants, which are used for string literals.
+    string_constants: HashMap<String, Value64>,
 }
 
 fn make_sig(module: &mut JITModule, params: &[ir::Type], returns: &[ir::Type]) -> ir::Signature {
@@ -137,6 +145,7 @@ impl JIT {
             data_description: DataDescription::new(),
             module,
             natives,
+            string_constants: HashMap::new(),
         }
     }
 
@@ -259,7 +268,8 @@ impl JIT {
             builder,
             variables,
             module: &mut self.module,
-            natives: &mut self.natives,
+            natives: &self.natives,
+            string_constants: &mut self.string_constants,
         };
         let return_value = trans.translate_expr(&func.body);
 
@@ -316,6 +326,7 @@ impl<'a, 'b> VariableBuilder<'a, 'b> {
             Expr::Variable(_) => {}
             Expr::Bool(_) => {}
             Expr::Number(_) => {}
+            Expr::String(_) => {}
             Expr::Nil => {}
             // Expr::BuiltInFunction(_) => {}
             Expr::Op { op: _, lhs, rhs } => {
@@ -402,6 +413,7 @@ struct FunctionTranslator<'a> {
     variables: HashMap<String, Variable>,
     module: &'a mut JITModule,
     natives: &'a NativeMethods,
+    string_constants: &'a mut HashMap<String, Value64>,
 }
 
 impl<'a> FunctionTranslator<'a> {
@@ -426,6 +438,7 @@ impl<'a> FunctionTranslator<'a> {
             }
             Expr::Bool(b) => self.const_bool(*b),
             Expr::Number(f) => self.builder.ins().f64const(*f),
+            Expr::String(s) => self.string_literal(s.deref().clone()),
             Expr::Nil => self.const_nil(),
             Expr::Op { op, lhs, rhs } => self.translate_op(*op, lhs, rhs),
             Expr::If {
@@ -810,6 +823,15 @@ impl<'a> FunctionTranslator<'a> {
         let and = self.builder.ins().band(val_int, nanish);
         let is_f64 = self.builder.ins().icmp(IntCC::NotEqual, and, nanish);
         self.builder.ins().trapz(is_f64, TrapCode::User(2));
+    }
+
+    fn string_literal(&mut self, string: String) -> Value {
+        let string_val64 = self
+            .string_constants
+            .entry(string)
+            .or_insert_with_key(|key| Value64::from_string(Rc::new(key.clone())));
+        let string_val = self.builder.ins().f64const(string_val64.bits_f64());
+        self.clone_val64(string_val)
     }
 }
 

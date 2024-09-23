@@ -106,8 +106,12 @@ impl Value64 {
         }
     }
 
-    const fn bits(&self) -> u64 {
+    pub const fn bits(&self) -> u64 {
         unsafe { std::mem::transmute::<f64, u64>(self.val) }
+    }
+
+    pub const fn bits_f64(&self) -> f64 {
+        self.val
     }
 
     #[allow(dead_code)]

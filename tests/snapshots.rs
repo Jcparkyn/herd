@@ -210,6 +210,27 @@ fn early_return_if() {
     insta::assert_snapshot!(result, @"[[1], 0]");
 }
 
+#[test]
+fn string_literal() {
+    let program = r#"
+        main = \\ ['hello', 'world'];
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @r#"['hello', 'world']"#);
+}
+
+#[test]
+fn string_interning() {
+    let program = r#"
+        main = \\ ['hello', 'hello'];
+    "#;
+    let result = eval_snapshot(program);
+    insta::assert_snapshot!(result.to_string(), @r#"['hello', 'hello']"#);
+    let list = result.try_into_list().unwrap();
+    // This is a dirty way to check that the pointers are equal.
+    assert_eq!(list.values[0].bits(), list.values[1].bits());
+}
+
 fn eval_snapshot(program: &str) -> Value64 {
     let parser = ProgramParser::new();
     let prelude_ast = parser.parse(include_str!("../src/prelude.bovine")).unwrap();
