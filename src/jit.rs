@@ -58,6 +58,32 @@ pub struct JIT {
     string_constants: HashMap<String, Value64>,
 }
 
+#[derive(Debug, Clone)]
+struct NativeMethod {
+    func: FuncId,
+    sig: Signature,
+}
+
+#[derive(Debug, Clone)]
+struct NativeMethods {
+    list_new: NativeMethod,
+    list_push: NativeMethod,
+    list_len_u64: NativeMethod,
+    list_get_u64: NativeMethod,
+    range: NativeMethod,
+    clone: NativeMethod,
+    print: NativeMethod,
+    len: NativeMethod,
+    val_get_index: NativeMethod,
+    val_eq: NativeMethod,
+    val_truthy: NativeMethod,
+    val_shift_left: NativeMethod,
+    val_xor: NativeMethod,
+    val_not: NativeMethod,
+    dict_new: NativeMethod,
+    dict_insert: NativeMethod,
+}
+
 fn make_sig(module: &mut JITModule, params: &[ir::Type], returns: &[ir::Type]) -> ir::Signature {
     let mut sig = module.make_signature();
     for param in params {
@@ -69,10 +95,7 @@ fn make_sig(module: &mut JITModule, params: &[ir::Type], returns: &[ir::Type]) -
     sig
 }
 
-fn get_native_methods<'a, 'b>(
-    // builder: &'a mut JITBuilder,
-    module: &'b mut JITModule,
-) -> NativeMethods {
+fn get_native_methods<'a, 'b>(module: &'b mut JITModule) -> NativeMethods {
     fn make_method(
         module: &mut JITModule,
         name: &str,
@@ -849,32 +872,6 @@ impl<'a> FunctionTranslator<'a> {
         let string_val = self.builder.ins().f64const(string_val64.bits_f64());
         self.clone_val64(string_val)
     }
-}
-
-#[derive(Debug, Clone)]
-struct NativeMethod {
-    func: FuncId,
-    sig: Signature,
-}
-
-#[derive(Debug, Clone)]
-struct NativeMethods {
-    list_new: NativeMethod,
-    list_push: NativeMethod,
-    list_len_u64: NativeMethod,
-    list_get_u64: NativeMethod,
-    range: NativeMethod,
-    clone: NativeMethod,
-    print: NativeMethod,
-    len: NativeMethod,
-    val_get_index: NativeMethod,
-    val_eq: NativeMethod,
-    val_truthy: NativeMethod,
-    val_shift_left: NativeMethod,
-    val_xor: NativeMethod,
-    val_not: NativeMethod,
-    dict_new: NativeMethod,
-    dict_insert: NativeMethod,
 }
 
 fn get_native_method_for_builtin(
