@@ -1,6 +1,6 @@
-use std::{mem::ManuallyDrop, ops::Deref, rc::Rc};
+use std::{collections::HashMap, mem::ManuallyDrop, ops::Deref, rc::Rc};
 
-use crate::value64::{ListInstance, Value64};
+use crate::value64::{DictInstance, ListInstance, Value64};
 
 // Not using &Value64, so that the ABI for these functions still takes
 // regular f64 values.
@@ -37,6 +37,19 @@ pub extern "C" fn list_get_u64(list: Value64Ref, index: u64) -> Value64 {
     list2.values[index as usize].clone()
 }
 
+pub extern "C" fn dict_new(capacity: u64) -> Value64 {
+    Value64::from_dict(Rc::new(DictInstance {
+        values: HashMap::with_capacity(capacity as usize),
+    }))
+}
+
+pub extern "C" fn dict_insert(dict: Value64, key: Value64, val: Value64) -> Value64 {
+    let mut dict = dict.try_into_dict().unwrap();
+    let mut_dict = Rc::make_mut(&mut dict);
+    mut_dict.values.insert(key, val);
+    Value64::from_dict(dict)
+}
+
 pub extern "C" fn public_range(start: Value64, stop: Value64) -> Value64 {
     let start_int = start.as_f64().unwrap() as i64;
     let stop_int = stop.as_f64().unwrap() as i64;
@@ -57,14 +70,16 @@ pub extern "C" fn clone(val: Value64Ref) -> Value64 {
 }
 
 pub extern "C" fn val_get_index(val: Value64Ref, index: Value64Ref) -> Value64 {
-    let list = match val.as_list() {
-        Some(l) => l,
-        None => panic!("Expected list, was {}", *val),
-    };
-    list.values
-        .get(index.as_f64().unwrap() as usize)
-        .unwrap() // TODO
-        .clone()
+    if let Some(list) = val.as_list() {
+        list.values
+            .get(index.as_f64().unwrap() as usize)
+            .unwrap() // TODO
+            .clone()
+    } else if let Some(dict) = val.as_dict() {
+        dict.values.get(&index).cloned().unwrap_or(Value64::NIL)
+    } else {
+        panic!("Expected list or dict, was {}", *val)
+    }
 }
 
 pub extern "C" fn val_eq(val1: Value64Ref, val2: Value64Ref) -> Value64 {

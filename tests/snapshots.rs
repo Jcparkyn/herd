@@ -231,6 +231,18 @@ fn string_interning() {
     assert_eq!(list.values[0].bits(), list.values[1].bits());
 }
 
+#[test]
+fn dict_literal() {
+    let program = r#"
+        main = \\ (
+            dict = [a: 1, b: 2];
+            [dict, dict.a, dict.b]
+        );
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"[[a: 1, b: 2], 1, 2]");
+}
+
 fn eval_snapshot(program: &str) -> Value64 {
     let parser = ProgramParser::new();
     let prelude_ast = parser.parse(include_str!("../src/prelude.bovine")).unwrap();

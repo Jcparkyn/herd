@@ -91,6 +91,13 @@ fn get_native_methods<'a, 'b>(
         list_push: make_method(module, "NATIVE:list_push", &[VAL64, VAL64], &[VAL64]),
         list_len_u64: make_method(module, "NATIVE:list_len_u64", &[VAL64], &[I64]),
         list_get_u64: make_method(module, "NATIVE:list_get_u64", &[VAL64, I64], &[VAL64]),
+        dict_new: make_method(module, "NATIVE:dict_new", &[I64], &[VAL64]),
+        dict_insert: make_method(
+            module,
+            "NATIVE:dict_insert",
+            &[VAL64, VAL64, VAL64],
+            &[VAL64],
+        ),
         val_get_index: make_method(module, "NATIVE:val_get_index", &[VAL64, VAL64], &[VAL64]),
         val_eq: make_method(module, "NATIVE:val_eq", &[VAL64, VAL64], &[VAL64]),
         val_truthy: make_method(module, "NATIVE:val_truthy", &[VAL64], &[types::I8]),
@@ -121,6 +128,8 @@ impl JIT {
         builder.symbol("NATIVE:list_push", builtins::list_push as *const u8);
         builder.symbol("NATIVE:list_len_u64", builtins::list_len_u64 as *const u8);
         builder.symbol("NATIVE:list_get_u64", builtins::list_get_u64 as *const u8);
+        builder.symbol("NATIVE:dict_new", builtins::dict_new as *const u8);
+        builder.symbol("NATIVE:dict_insert", builtins::dict_insert as *const u8);
         builder.symbol("NATIVE:val_get_index", builtins::val_get_index as *const u8);
         builder.symbol("NATIVE:val_eq", builtins::val_eq as *const u8);
         builder.symbol("NATIVE:val_truthy", builtins::val_truthy as *const u8);
@@ -463,6 +472,16 @@ impl<'a> FunctionTranslator<'a> {
                 let index = self.translate_expr(index);
                 let val = self.translate_expr(val);
                 self.call_native(&self.natives.val_get_index, &[val, index])[0]
+            }
+            Expr::Dict(d) => {
+                let len_value = self.builder.ins().iconst(types::I64, d.len() as i64);
+                let mut dict = self.call_native(&self.natives.dict_new, &[len_value])[0];
+                for (key, value) in d {
+                    let key = self.translate_expr(key);
+                    let value = self.translate_expr(value);
+                    dict = self.call_native(&self.natives.dict_insert, &[dict, key, value])[0];
+                }
+                dict
             }
             _ => unimplemented!(),
         }
@@ -854,6 +873,8 @@ struct NativeMethods {
     val_shift_left: NativeMethod,
     val_xor: NativeMethod,
     val_not: NativeMethod,
+    dict_new: NativeMethod,
+    dict_insert: NativeMethod,
 }
 
 fn get_native_method_for_builtin(
