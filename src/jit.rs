@@ -82,6 +82,7 @@ struct NativeMethods {
     val_not: NativeMethod,
     dict_new: NativeMethod,
     dict_insert: NativeMethod,
+    val_set_index: NativeMethod,
 }
 
 fn make_sig(module: &mut JITModule, params: &[ir::Type], returns: &[ir::Type]) -> ir::Signature {
@@ -122,6 +123,12 @@ fn get_native_methods<'a, 'b>(module: &'b mut JITModule) -> NativeMethods {
             &[VAL64],
         ),
         val_get_index: make_method(module, "NATIVE:val_get_index", &[VAL64, VAL64], &[VAL64]),
+        val_set_index: make_method(
+            module,
+            "NATIVE:val_set_index",
+            &[VAL64, VAL64, VAL64],
+            &[VAL64],
+        ),
         val_eq: make_method(module, "NATIVE:val_eq", &[VAL64, VAL64], &[VAL64]),
         val_truthy: make_method(module, "NATIVE:val_truthy", &[VAL64], &[types::I8]),
         val_shift_left: make_method(module, "NATIVE:val_shift_left", &[VAL64, VAL64], &[VAL64]),
@@ -154,6 +161,7 @@ impl JIT {
         builder.symbol("NATIVE:dict_new", builtins::dict_new as *const u8);
         builder.symbol("NATIVE:dict_insert", builtins::dict_insert as *const u8);
         builder.symbol("NATIVE:val_get_index", builtins::val_get_index as *const u8);
+        builder.symbol("NATIVE:val_set_index", builtins::val_set_index as *const u8);
         builder.symbol("NATIVE:val_eq", builtins::val_eq as *const u8);
         builder.symbol("NATIVE:val_truthy", builtins::val_truthy as *const u8);
         builder.symbol(
@@ -429,6 +437,35 @@ impl<'a, 'b> VariableBuilder<'a, 'b> {
         }
     }
 
+    fn declare_variables_in_pattern(&mut self, pattern: &MatchPattern) {
+        match pattern {
+            MatchPattern::Declaration(var, _) => {
+                self.declare_variable(&var.name);
+            }
+            MatchPattern::Discard => {}
+            MatchPattern::Constant(_) => {}
+            MatchPattern::Assignment(target) => {
+                for index in &target.path {
+                    self.declare_variables_in_expr(&index);
+                }
+            }
+            MatchPattern::SimpleList(parts) => {
+                for part in parts {
+                    self.declare_variables_in_pattern(part);
+                }
+            }
+            MatchPattern::SpreadList(spread) => {
+                for part in &spread.before {
+                    self.declare_variables_in_pattern(part);
+                }
+                self.declare_variables_in_pattern(&spread.spread);
+                for part in &spread.after {
+                    self.declare_variables_in_pattern(part);
+                }
+            }
+        }
+    }
+
     fn declare_variable(&mut self, name: &str) -> Variable {
         let var = Variable::new(self.index);
         if !self.variables.contains_key(name) {
@@ -587,13 +624,64 @@ impl<'a> FunctionTranslator<'a> {
                 self.builder.seal_block(after_return_block);
             }
             Statement::PatternAssignment(pattern, rhs) => {
-                let rhs_value = self.translate_expr(rhs);
-                let (var_ref, _) = pattern.expect_declaration();
+                self.translate_pattern_assignment(rhs, pattern);
+            }
+        }
+    }
+
+    fn translate_pattern_assignment(
+        &mut self,
+        rhs: &Spanned<Expr>,
+        pattern: &Spanned<MatchPattern>,
+    ) {
+        let rhs_value = self.translate_expr(rhs);
+        match &pattern.value {
+            MatchPattern::Discard => {}
+            MatchPattern::Declaration(var_ref, _) => {
                 let variable = self
                     .variables
                     .get(&var_ref.name)
                     .expect("variable not defined");
                 self.builder.def_var(*variable, rhs_value);
+            }
+            MatchPattern::Assignment(target) => {
+                self.translate_assignment(target, rhs_value);
+            }
+            _ => todo!("Pattern matching isn't supported here yet"),
+        }
+    }
+
+    fn translate_assignment(&mut self, target: &ast::AssignmentTarget, rhs: Value) {
+        let mut path_values = vec![];
+        for index in &target.path {
+            let value = self.translate_expr(index);
+            path_values.push(value);
+        }
+        let variable = self
+            .variables
+            .get(&target.var.name)
+            .copied()
+            .expect("variable not defined");
+        let new_val = match &path_values[..] {
+            [] => rhs,
+            [index, rest @ ..] => {
+                let old_val = self.builder.use_var(variable);
+                let old_val = self.clone_val64(old_val);
+                self.assign_part(old_val, *index, rest, rhs)
+            }
+        };
+        self.builder.def_var(variable, new_val);
+    }
+
+    fn assign_part(&mut self, val: Value, index: Value, rest_path: &[Value], rhs: Value) -> Value {
+        match rest_path {
+            [] => {
+                return self.call_native(&self.natives.val_set_index, &[val, index, rhs])[0];
+            }
+            [next_index, rest @ ..] => {
+                let old_val = self.call_native(&self.natives.val_get_index, &[val, index])[0];
+                let new_val = self.assign_part(old_val, *next_index, rest, rhs);
+                return self.call_native(&self.natives.val_set_index, &[val, index, new_val])[0];
             }
         }
     }

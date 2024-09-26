@@ -1,4 +1,5 @@
 use std::{
+    cmp::Ordering,
     collections::HashMap,
     fmt::{Debug, Display},
     rc::Rc,
@@ -191,6 +192,60 @@ impl Value64 {
             return a.values.iter().all(Self::is_valid_dict_key);
         }
         return true;
+    }
+
+    pub fn display_cmp(&self, other: &Value64) -> Ordering {
+        fn to_order(val: &Value64) -> u8 {
+            match try_get_ptr_tag(val.bits()) {
+                Some(PointerTag::String) => 0,
+                Some(PointerTag::Dict) => 1,
+                Some(PointerTag::List) => 2,
+                Some(PointerTag::Lambda) => 3,
+                None => {
+                    if val.is_f64() {
+                        4
+                    } else if val.is_bool() {
+                        5
+                    } else if val.is_nil() {
+                        6
+                    } else {
+                        7
+                    }
+                }
+            }
+        }
+        let da = to_order(self);
+        let db = to_order(other);
+        if da < db {
+            return Ordering::Less;
+        } else if da > db {
+            return Ordering::Greater;
+        }
+        match try_get_ptr_tag(self.bits()) {
+            Some(PointerTag::String) => {
+                let a = self.as_string().unwrap();
+                let b = other.as_string().unwrap();
+                return a.cmp(b);
+            }
+            Some(PointerTag::Dict) => Ordering::Equal, // TODO
+            Some(PointerTag::List) => Ordering::Equal, // TODO
+            Some(PointerTag::Lambda) => Ordering::Equal, // TODO
+            None => {
+                if self.is_f64() {
+                    let a = self.as_f64().unwrap();
+                    let b = other.as_f64().unwrap();
+                    return a.partial_cmp(&b).unwrap_or(Ordering::Equal);
+                } else if self.is_bool() {
+                    let a = self.as_bool().unwrap();
+                    let b = other.as_bool().unwrap();
+                    return a.cmp(&b);
+                } else if self.is_nil() {
+                    return Ordering::Equal;
+                } else {
+                    unreachable!()
+                }
+            }
+        }
     }
 
     // FLOATS
@@ -477,8 +532,10 @@ impl Display for DictInstance {
         if self.values.is_empty() {
             return write!(f, "[:]");
         }
+        let mut entries: Vec<_> = self.values.iter().collect();
+        entries.sort_unstable_by(|a, b| a.0.display_cmp(b.0));
         let mut values = vec![];
-        for (key, value) in &self.values {
+        for (key, value) in entries {
             if let Some(s) = key.as_string() {
                 values.push(format!("{}: {}", s, value));
             } else {

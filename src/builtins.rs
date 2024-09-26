@@ -82,6 +82,22 @@ pub extern "C" fn val_get_index(val: Value64Ref, index: Value64Ref) -> Value64 {
     }
 }
 
+pub extern "C" fn val_set_index(val: Value64, index: Value64, new_val: Value64) -> Value64 {
+    if val.is_list() {
+        let mut list = val.try_into_list().unwrap();
+        let mut_list = Rc::make_mut(&mut list);
+        mut_list.values[index.as_f64().unwrap() as usize] = new_val;
+        Value64::from_list(list)
+    } else if val.is_dict() {
+        let mut dict = val.try_into_dict().unwrap();
+        let mut_dict = Rc::make_mut(&mut dict);
+        mut_dict.values.insert(index, new_val);
+        Value64::from_dict(dict)
+    } else {
+        panic!("Expected list or dict, was {}", val)
+    }
+}
+
 pub extern "C" fn val_eq(val1: Value64Ref, val2: Value64Ref) -> Value64 {
     Value64::from_bool(*val1 == *val2)
 }

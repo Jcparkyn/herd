@@ -243,6 +243,49 @@ fn dict_literal() {
     insta::assert_snapshot!(result, @"[[a: 1, b: 2], 1, 2]");
 }
 
+#[test]
+fn array_assign() {
+    let program = r#"
+        main = \\ (
+            a = [1, 2];
+            var b = a;
+            set b.[0] = 4;
+            [a, b]
+        );
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"[[1, 2], [4, 2]]");
+}
+
+#[test]
+fn dict_assign() {
+    let program = r#"
+        main = \\ (
+            a = [x: 1, y: 2];
+            var b = a;
+            set b.x = 4;
+            [a, b]
+        );
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"[[x: 1, y: 2], [x: 4, y: 2]]");
+}
+
+#[test]
+fn nested_assign() {
+    let program = r#"
+        main = \\ (
+            a = [[x: 1, y: 2], 3];
+            var b = a;
+            set b.[0].x = 4;
+            set b.[1] = 5;
+            [a, b]
+        );
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"[[[x: 1, y: 2], 3], [[x: 4, y: 2], 5]]");
+}
+
 fn eval_snapshot(program: &str) -> Value64 {
     let parser = ProgramParser::new();
     let prelude_ast = parser.parse(include_str!("../src/prelude.bovine")).unwrap();
