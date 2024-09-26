@@ -180,6 +180,19 @@ fn user_functions() {
 }
 
 #[test]
+fn user_functions_2() {
+    let program = r#"
+        mul = \a b\ a * b;
+        main = \\ [
+            mul 3 4,
+            mul 5 6,
+        ];
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"[12, 30]");
+}
+
+#[test]
 fn builtin_range() {
     let program = r#"
         main = \\ range -1 3;
