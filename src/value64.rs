@@ -5,8 +5,6 @@ use std::{
     rc::Rc,
 };
 
-use cranelift_module::FuncId;
-
 use crate::{
     ast::{MatchPattern, SpannedExpr},
     pos::Spanned,
@@ -503,7 +501,6 @@ pub struct LambdaFunction {
     pub closure: Vec<Value64>,
     pub self_name: Option<String>,
     pub recursive: bool,
-    pub func_id: Option<FuncId>,
     pub func_ptr: Option<*const u8>,
 }
 

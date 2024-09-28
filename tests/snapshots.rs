@@ -6,7 +6,7 @@ use bovine::value64::Value64;
 #[test]
 fn add() {
     let program = r#"
-        main = \\ 1 + 2;
+        return 1 + 2;
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"3");
@@ -15,7 +15,7 @@ fn add() {
 #[test]
 fn sub() {
     let program = r#"
-        main = \\ 1 - 2;
+        return 1 - 2;
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"-1");
@@ -24,7 +24,7 @@ fn sub() {
 #[test]
 fn bodmas() {
     let program = r#"
-        main = \\ 6 + (1 - 2) * 3;
+        return 6 + (1 - 2) * 3;
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"3");
@@ -33,7 +33,7 @@ fn bodmas() {
 #[test]
 fn array_literal() {
     let program = r#"
-        main = \\ [1, 2, 3];
+        return [1, 2, 3];
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"[1, 2, 3]");
@@ -42,7 +42,7 @@ fn array_literal() {
 #[test]
 fn variables() {
     let program = r#"
-        main = \\ (
+        return (
             a = 1;
             b = 2;
             a + b
@@ -55,7 +55,7 @@ fn variables() {
 #[test]
 fn equals() {
     let program = r#"
-        main = \\ [
+        return [
             0 == 1, 1 == 1, 1 == (), () == (),
             [0] == [1], [1] == [1]
         ];
@@ -67,7 +67,7 @@ fn equals() {
 #[test]
 fn cmp_lt() {
     let program = r#"
-        main = \\ [
+        return [
             0 < 1, 1 < 1, 1 < (), () < (),
             0 <= 1, 1 <= 1, 1 <= (), () <= (),
         ];
@@ -79,7 +79,7 @@ fn cmp_lt() {
 #[test]
 fn cmp_gt() {
     let program = r#"
-        main = \\ [
+        return [
             0 > 1, 1 > 1, 1 > (), () > (),
             0 >= 1, 1 >= 1, 1 >= (), () >= (),
         ];
@@ -91,7 +91,7 @@ fn cmp_gt() {
 #[test]
 fn index_list() {
     let program = r#"
-        main = \\ [1, 2, 3].[1];
+        return [1, 2, 3].[1];
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"2");
@@ -100,7 +100,7 @@ fn index_list() {
 #[test]
 fn if_else() {
     let program = r#"
-        main = \\ [
+        return [
             if 1 == 1 then 1 else 0,
             if 1 == 1 then 1,
             if 1 == 0 then 1 else 0,
@@ -114,7 +114,7 @@ fn if_else() {
 #[test]
 fn logic_and() {
     let program = r#"
-        main = \\ [
+        return [
             true and true,
             true and false,
             false and true,
@@ -128,7 +128,7 @@ fn logic_and() {
 #[test]
 fn logic_or() {
     let program = r#"
-        main = \\ [
+        return [
             true or true,
             true or false,
             false or true,
@@ -142,13 +142,11 @@ fn logic_or() {
 #[test]
 fn for_in_loop() {
     let program = r#"
-        main = \\ (
-            var sum = 0;
-            for x in [1, 2, 3] do (
-                set sum = sum + x;
-            )
-            sum
-        );
+        var sum = 0;
+        for x in [1, 2, 3] do (
+            set sum = sum + x;
+        )
+        return sum;
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"6");
@@ -157,13 +155,11 @@ fn for_in_loop() {
 #[test]
 fn while_loop() {
     let program = r#"
-        main = \\ (
-            var sum = 1;
-            while sum < 10 do (
-                set sum = sum * 2;
-            )
-            sum
-        );
+        var sum = 1;
+        while sum < 10 do (
+            set sum = sum * 2;
+        )
+        return sum;
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"16");
@@ -173,7 +169,7 @@ fn while_loop() {
 fn user_functions() {
     let program = r#"
         square = \a\ a * a;
-        main = \\ square 3;
+        return square 3;
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"9");
@@ -183,7 +179,7 @@ fn user_functions() {
 fn user_functions_2() {
     let program = r#"
         mul = \a b\ a * b;
-        main = \\ [
+        return [
             mul 3 4,
             mul 5 6,
         ];
@@ -195,7 +191,7 @@ fn user_functions_2() {
 #[test]
 fn builtin_range() {
     let program = r#"
-        main = \\ range -1 3;
+        return range -1 3;
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"[-1, 0, 1, 2]");
@@ -204,7 +200,7 @@ fn builtin_range() {
 #[test]
 fn builtin_not() {
     let program = r#"
-        main = \\ [not true, not 1, not false];
+        return [not true, not 1, not false];
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"[false, false, true]");
@@ -214,10 +210,7 @@ fn builtin_not() {
 fn early_return_if() {
     let program = r#"
         f = \a\ [if a then 1 else (return 0;)];
-        main = \\ [
-            f true,
-            f false,
-        ];
+        return [f true, f false];
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"[[1], 0]");
@@ -226,7 +219,7 @@ fn early_return_if() {
 #[test]
 fn string_literal() {
     let program = r#"
-        main = \\ ['hello', 'world'];
+        return ['hello', 'world'];
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @r#"['hello', 'world']"#);
@@ -235,7 +228,7 @@ fn string_literal() {
 #[test]
 fn string_interning() {
     let program = r#"
-        main = \\ ['hello', 'hello'];
+        return ['hello', 'hello'];
     "#;
     let result = eval_snapshot(program);
     insta::assert_snapshot!(result.to_string(), @r#"['hello', 'hello']"#);
@@ -247,10 +240,8 @@ fn string_interning() {
 #[test]
 fn dict_literal() {
     let program = r#"
-        main = \\ (
-            dict = [a: 1, b: 2];
-            [dict, dict.a, dict.b]
-        );
+        dict = [a: 1, b: 2];
+        return [dict, dict.a, dict.b];
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"[[a: 1, b: 2], 1, 2]");
@@ -259,12 +250,10 @@ fn dict_literal() {
 #[test]
 fn array_assign() {
     let program = r#"
-        main = \\ (
-            a = [1, 2];
-            var b = a;
-            set b.[0] = 4;
-            [a, b]
-        );
+        a = [1, 2];
+        var b = a;
+        set b.[0] = 4;
+        return [a, b];
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"[[1, 2], [4, 2]]");
@@ -273,12 +262,10 @@ fn array_assign() {
 #[test]
 fn dict_assign() {
     let program = r#"
-        main = \\ (
-            a = [x: 1, y: 2];
-            var b = a;
-            set b.x = 4;
-            [a, b]
-        );
+        a = [x: 1, y: 2];
+        var b = a;
+        set b.x = 4;
+        return [a, b];
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"[[x: 1, y: 2], [x: 4, y: 2]]");
@@ -305,6 +292,28 @@ fn lambda_func() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"8");
+}
+
+#[test]
+fn func_with_captures() {
+    let program = r#"
+        a = 6;
+        f = \x\ [x, a];
+        return f 2;
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"[2, 6]");
+}
+
+#[test]
+fn multiple_funcs() {
+    let program = r#"
+        f = \a\ a + 1;
+        g = \b\ (f b) * 2;
+        return g 6;
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"14");
 }
 
 fn eval_snapshot(program: &str) -> Value64 {

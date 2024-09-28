@@ -1,12 +1,12 @@
 #![allow(dead_code)]
 
-use codegen::ir;
+use codegen::ir::{self};
 use cranelift::prelude::*;
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{DataDescription, FuncId, FuncOrDataId, Linkage, Module, ModuleError};
 use std::{
     collections::HashMap,
-    mem::{self, forget},
+    mem::{self, size_of},
     ops::Deref,
     rc::Rc,
 };
@@ -20,13 +20,14 @@ use crate::{
     },
     builtins,
     pos::{Span, Spanned},
-    value64::{self, LambdaFunction},
+    value64::{self},
     Value64,
 };
 
 type FuncExpr = LambdaExpr;
 
 const VAL64: ir::Type = ir::types::F64;
+const PTR: ir::Type = ir::types::I64;
 
 #[derive(Debug, Display)]
 pub enum JITError {
@@ -85,6 +86,7 @@ struct NativeMethods {
     dict_insert: NativeMethod,
     val_set_index: NativeMethod,
     val_get_lambda_details: NativeMethod,
+    construct_lambda: NativeMethod,
 }
 
 fn make_sig(module: &mut JITModule, params: &[ir::Type], returns: &[ir::Type]) -> ir::Signature {
@@ -136,8 +138,14 @@ fn get_native_methods<'a, 'b>(module: &'b mut JITModule) -> NativeMethods {
         val_get_lambda_details: make_method(
             module,
             "NATIVE:val_get_lambda_details",
-            &[VAL64, types::I32],
+            &[VAL64, types::I32, types::I64],
             &[I64],
+        ),
+        construct_lambda: make_method(
+            module,
+            "NATIVE:construct_lambda",
+            &[I64, PTR, I64, PTR],
+            &[VAL64],
         ),
         val_shift_left: make_method(module, "NATIVE:val_shift_left", &[VAL64, VAL64], &[VAL64]),
         val_xor: make_method(module, "NATIVE:val_xor", &[VAL64, VAL64], &[VAL64]),
@@ -176,6 +184,10 @@ impl JIT {
         builder.symbol(
             "NATIVE:val_get_lambda_details",
             builtins::val_get_lambda_details as *const u8,
+        );
+        builder.symbol(
+            "NATIVE:construct_lambda",
+            builtins::construct_lambda as *const u8,
         );
         builder.symbol(
             "NATIVE:val_shift_left",
@@ -299,6 +311,7 @@ impl JIT {
     }
 
     fn translate_func(&mut self, func: &FuncExpr) -> JITResult<()> {
+        self.ctx.func.signature.params.push(AbiParam::new(PTR)); // closure
         for _p in &*func.params {
             self.ctx.func.signature.params.push(AbiParam::new(VAL64));
         }
@@ -367,6 +380,17 @@ impl<'a, 'b> VariableBuilder<'a, 'b> {
     }
 
     fn declare_variables_in_func(&mut self, func: &FuncExpr, entry_block: Block) {
+        let closure_ptr = self.builder.block_params(entry_block)[0];
+        for (i, var) in func.potential_captures.iter().enumerate() {
+            let var = self.declare_variable(&var.name);
+            let val = self.builder.ins().load(
+                VAL64,
+                MemFlags::new(),
+                closure_ptr,
+                (i * size_of::<Value64>()) as i32,
+            );
+            self.builder.def_var(var, val);
+        }
         for (i, pattern) in func.params.iter().enumerate() {
             let name = match pattern.value {
                 MatchPattern::Declaration(ref var, _) => &var.name,
@@ -374,7 +398,7 @@ impl<'a, 'b> VariableBuilder<'a, 'b> {
                 MatchPattern::Constant(_) => continue,
                 _ => todo!("Pattern matching in functions isn't supported"),
             };
-            let val = self.builder.block_params(entry_block)[i];
+            let val = self.builder.block_params(entry_block)[i + 1]; // actual params start at 1, first is closure
             let var = self.declare_variable(name);
             self.builder.def_var(var, val);
         }
@@ -619,13 +643,27 @@ impl<'a> FunctionTranslator<'a> {
     fn translate_dynamic_call(&mut self, callee: &SpannedExpr, args: &Vec<SpannedExpr>) -> Value {
         let callee_val = self.translate_expr(callee);
 
+        let closure_ptr_slot = self.builder.create_sized_stack_slot(StackSlotData::new(
+            StackSlotKind::ExplicitSlot,
+            8,
+            0,
+        ));
+        // self.builder.ins().sta
+        let closure_ptr_ptr_val = self
+            .builder
+            .ins()
+            .stack_addr(types::I64, closure_ptr_slot, 0);
         let arg_count_val = self.builder.ins().iconst(types::I32, args.len() as i64);
         let func_ptr = self.call_native(
             &self.natives.val_get_lambda_details,
-            &[callee_val, arg_count_val],
+            &[callee_val, arg_count_val, closure_ptr_ptr_val],
         )[0];
         // Null pointer means callee wasn't a lambda
         self.builder.ins().trapz(func_ptr, TrapCode::User(3));
+        let closure_ptr = self
+            .builder
+            .ins()
+            .stack_load(types::I64, closure_ptr_slot, 0);
         // let param_count_cmp =
         //     self.builder
         //         .ins()
@@ -633,6 +671,8 @@ impl<'a> FunctionTranslator<'a> {
         // self.builder.ins().trapz(param_count_cmp, TrapCode::User(4));
 
         let mut sig = self.module.make_signature();
+
+        sig.params.push(AbiParam::new(I64)); // closure pointer
 
         for _arg in args {
             sig.params.push(AbiParam::new(VAL64));
@@ -642,6 +682,7 @@ impl<'a> FunctionTranslator<'a> {
         let sig_ref = self.builder.import_signature(sig);
 
         let mut arg_values = Vec::new();
+        arg_values.push(closure_ptr);
         for arg in args {
             let value = self.translate_expr(arg);
             arg_values.push(self.clone_val64(value))
@@ -983,9 +1024,7 @@ impl<'a> FunctionTranslator<'a> {
 
     fn translate_lambda_definition(&mut self, lambda: &LambdaExpr) -> Value {
         let mut ctx = self.module.make_context();
-        // for _ in 0..lambda.potential_captures.len() {
-        //     ctx.func.signature.params.push(AbiParam::new(VAL64));
-        // }
+        ctx.func.signature.params.push(AbiParam::new(PTR)); // closure
         for _ in 0..lambda.params.len() {
             ctx.func.signature.params.push(AbiParam::new(VAL64));
         }
@@ -1031,22 +1070,35 @@ impl<'a> FunctionTranslator<'a> {
         self.module.finalize_definitions().unwrap();
 
         let func_ptr = self.module.get_finalized_function(func_id);
-        let temp_lamda = LambdaFunction {
-            params: lambda.params.clone(),
-            param_count: lambda.params.len(),
-            body: lambda.body.clone(),
-            closure: Vec::new(),
-            self_name: Some("TEMP lambda".to_string()),
-            recursive: false, // TODO
-            func_id: None,
-            func_ptr: Some(func_ptr),
-        };
-        let temp_lambda_val = Value64::from_lambda(Rc::new(temp_lamda));
-
-        let lambda_val = self.builder.ins().f64const(temp_lambda_val.bits_f64());
-
-        forget(temp_lambda_val);
-        return self.clone_val64(lambda_val);
+        let param_count_val = self.builder.ins().iconst(I64, lambda.params.len() as i64);
+        let func_ptr_val = self.builder.ins().iconst(PTR, func_ptr as i64);
+        let capture_count_val = self
+            .builder
+            .ins()
+            .iconst(I64, lambda.potential_captures.len() as i64);
+        let closure_slot = self.builder.create_sized_stack_slot(StackSlotData::new(
+            StackSlotKind::ExplicitSlot,
+            (8 * lambda.potential_captures.len()) as u32,
+            0,
+        ));
+        for (i, var_ref) in lambda.potential_captures.iter().enumerate() {
+            let var = self.variables.get(&var_ref.name).unwrap();
+            let var_val = self.builder.use_var(*var);
+            self.builder
+                .ins()
+                .stack_store(var_val, closure_slot, (i * 8) as i32);
+        }
+        let closure_ptr = self.builder.ins().stack_addr(PTR, closure_slot, 0);
+        let lambda_val = self.call_native(
+            &self.natives.construct_lambda,
+            &[
+                param_count_val,
+                func_ptr_val,
+                capture_count_val,
+                closure_ptr,
+            ],
+        )[0];
+        return lambda_val;
     }
 
     fn call_native(&mut self, method: &NativeMethod, args: &[Value]) -> &[Value] {

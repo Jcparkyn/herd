@@ -487,7 +487,6 @@ impl Interpreter {
             closure: captures,
             self_name: lambda.name.clone(),
             recursive: false,
-            func_id: None,
             func_ptr: None,
         }
     }

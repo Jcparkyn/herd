@@ -1,6 +1,10 @@
 use std::{collections::HashMap, mem::ManuallyDrop, ops::Deref, ptr::null, rc::Rc};
 
-use crate::value64::{DictInstance, ListInstance, Value64};
+use crate::{
+    ast,
+    pos::{Span, Spanned},
+    value64::{DictInstance, LambdaFunction, ListInstance, Value64},
+};
 
 // Not using &Value64, so that the ABI for these functions still takes
 // regular f64 values.
@@ -106,7 +110,11 @@ pub extern "C" fn val_truthy(val: Value64Ref) -> i8 {
     val.truthy() as i8
 }
 
-pub extern "C" fn val_get_lambda_details(val: Value64Ref, param_count: u32) -> *const u8 {
+pub extern "C" fn val_get_lambda_details(
+    val: Value64Ref,
+    param_count: u32,
+    closure_out: *mut *const Value64,
+) -> *const u8 {
     let lambda = match val.as_lambda() {
         Some(l) => l,
         None => {
@@ -118,8 +126,31 @@ pub extern "C" fn val_get_lambda_details(val: Value64Ref, param_count: u32) -> *
         println!("Wrong number of parameters");
         return null();
     } else {
+        unsafe {
+            // We can only return one value, so passing this via pointer
+            *closure_out = lambda.closure.as_ptr();
+        }
         return lambda.func_ptr.unwrap();
     }
+}
+
+pub extern "C" fn construct_lambda(
+    param_count: usize,
+    func_ptr: *const u8,
+    capture_count: usize,
+    captures: *const Value64,
+) -> Value64 {
+    let closure_slice = unsafe { std::slice::from_raw_parts(captures, capture_count) };
+    let lambda = LambdaFunction {
+        params: Rc::new(vec![]), // Not used in JIT
+        param_count,
+        body: Rc::new(Spanned::new(Span::new(0, 0), ast::Expr::Nil)), // Not used in JIT
+        closure: closure_slice.to_vec(),
+        self_name: Some("TEMP lambda".to_string()),
+        recursive: false, // TODO
+        func_ptr: Some(func_ptr),
+    };
+    Value64::from_lambda(Rc::new(lambda))
 }
 
 pub extern "C" fn public_val_shift_left(val: Value64, by: Value64) -> Value64 {
