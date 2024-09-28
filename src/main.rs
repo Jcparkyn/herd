@@ -78,16 +78,13 @@ fn run_file(path: &str, args: &Args) {
     }
     if args.jit {
         let mut jit = jit::JIT::new();
-        match jit.compile_program(&program) {
-            Ok(_) => {}
+        let main_func = match jit.compile_program_as_function(&program) {
+            Ok(id) => id,
             Err(err) => {
                 println!("Error while compiling function: {:?}", err);
                 return;
             }
-        }
-        let main_func = jit
-            .get_func_id("main")
-            .expect("Main function should be defined");
+        };
         let result = unsafe { jit.run_func(main_func, Value64::NIL) };
         println!("Result: {}", result);
     } else {

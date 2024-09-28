@@ -287,13 +287,11 @@ fn dict_assign() {
 #[test]
 fn nested_assign() {
     let program = r#"
-        main = \\ (
-            a = [[x: 1, y: 2], 3];
-            var b = a;
-            set b.[0].x = 4;
-            set b.[1] = 5;
-            [a, b]
-        );
+        a = [[x: 1, y: 2], 3];
+        var b = a;
+        set b.[0].x = 4;
+        set b.[1] = 5;
+        return [a, b];
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"[[[x: 1, y: 2], 3], [[x: 4, y: 2], 5]]");
@@ -302,10 +300,8 @@ fn nested_assign() {
 #[test]
 fn lambda_func() {
     let program = r#"
-        main = \\ (
-            f = \x y\ x + 2 * y;
-            f 2 3
-        );
+        f = \x y\ x + 2 * y;
+        return f 2 3;
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"8");
@@ -320,11 +316,7 @@ fn eval_snapshot(program: &str) -> Value64 {
     analyzer.analyze_statements(&mut program_ast).unwrap();
 
     let mut jit = jit::JIT::new();
-    jit.compile_program(&program_ast).unwrap();
-
-    let main_func = jit
-        .get_func_id("main")
-        .expect("Main function should be defined");
+    let main_func = jit.compile_program_as_function(&program_ast).unwrap();
     let result = unsafe { jit.run_func(main_func, Value64::NIL) };
 
     result

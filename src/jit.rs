@@ -221,6 +221,25 @@ impl JIT {
         Ok(())
     }
 
+    pub fn compile_program_as_function(
+        &mut self,
+        program: &[SpannedStatement],
+    ) -> JITResult<FuncId> {
+        let params = Rc::new(vec![]);
+        let body = Expr::Block(ast::Block {
+            statements: program.to_vec(),
+            expression: None,
+        });
+        let func = LambdaExpr {
+            params,
+            body: Rc::new(Spanned::new(Span::new(0, 0), body)),
+            potential_captures: vec![],
+            name: Some("main".to_string()),
+        };
+        let func_id = self.compile_func(&func)?;
+        Ok(func_id)
+    }
+
     pub unsafe fn run_func(&mut self, func_id: FuncId, input: Value64) -> Value64 {
         let func_ptr = self.module.get_finalized_function(func_id);
         // Cast the raw pointer to a typed function pointer. This is unsafe, because
@@ -231,7 +250,7 @@ impl JIT {
         code_fn(input)
     }
 
-    fn compile_func(&mut self, func: &FuncExpr) -> JITResult<*const u8> {
+    fn compile_func(&mut self, func: &FuncExpr) -> JITResult<FuncId> {
         // Then, translate the AST nodes into Cranelift IR.
         self.translate_func(func)?;
 
@@ -269,10 +288,7 @@ impl JIT {
             .finalize_definitions()
             .map_err(JITError::Module)?;
 
-        // We can now retrieve a pointer to the machine code.
-        let code = self.module.get_finalized_function(id);
-
-        Ok(code)
+        Ok(id)
     }
 
     pub fn get_func_id(&self, name: &str) -> Option<FuncId> {
@@ -510,7 +526,10 @@ impl<'a> FunctionTranslator<'a> {
         self.set_src_span(&expr.span);
         match &expr.value {
             Expr::Variable(ref var) => {
-                let variable = self.variables.get(&var.name).expect("variable not defined");
+                let variable = self
+                    .variables
+                    .get(&var.name)
+                    .unwrap_or_else(|| panic!("variable {} not defined", var.name));
                 self.builder.use_var(*variable)
             }
             Expr::Block(b) => {
