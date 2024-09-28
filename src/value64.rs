@@ -5,6 +5,8 @@ use std::{
     rc::Rc,
 };
 
+use cranelift_module::FuncId;
+
 use crate::{
     ast::{MatchPattern, SpannedExpr},
     pos::Spanned,
@@ -496,10 +498,13 @@ impl Display for Value64 {
 #[derive(PartialEq, Debug)]
 pub struct LambdaFunction {
     pub params: Rc<Vec<Spanned<MatchPattern>>>,
+    pub param_count: usize,
     pub body: Rc<SpannedExpr>,
     pub closure: Vec<Value64>,
     pub self_name: Option<String>,
     pub recursive: bool,
+    pub func_id: Option<FuncId>,
+    pub func_ptr: Option<*const u8>,
 }
 
 impl Display for LambdaFunction {

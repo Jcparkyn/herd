@@ -299,6 +299,18 @@ fn nested_assign() {
     insta::assert_snapshot!(result, @"[[[x: 1, y: 2], 3], [[x: 4, y: 2], 5]]");
 }
 
+#[test]
+fn lambda_func() {
+    let program = r#"
+        main = \\ (
+            f = \x y\ x + 2 * y;
+            f 2 3
+        );
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"8");
+}
+
 fn eval_snapshot(program: &str) -> Value64 {
     let parser = ProgramParser::new();
     let prelude_ast = parser.parse(include_str!("../src/prelude.bovine")).unwrap();

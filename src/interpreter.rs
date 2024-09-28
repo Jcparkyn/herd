@@ -482,10 +482,13 @@ impl Interpreter {
         }
         LambdaFunction {
             params: lambda.params.clone(),
+            param_count: lambda.params.len(),
             body: lambda.body.clone(),
             closure: captures,
             self_name: lambda.name.clone(),
             recursive: false,
+            func_id: None,
+            func_ptr: None,
         }
     }
 

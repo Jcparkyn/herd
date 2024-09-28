@@ -1,4 +1,4 @@
-use std::{collections::HashMap, mem::ManuallyDrop, ops::Deref, rc::Rc};
+use std::{collections::HashMap, mem::ManuallyDrop, ops::Deref, ptr::null, rc::Rc};
 
 use crate::value64::{DictInstance, ListInstance, Value64};
 
@@ -104,6 +104,22 @@ pub extern "C" fn val_eq(val1: Value64Ref, val2: Value64Ref) -> Value64 {
 
 pub extern "C" fn val_truthy(val: Value64Ref) -> i8 {
     val.truthy() as i8
+}
+
+pub extern "C" fn val_get_lambda_details(val: Value64Ref, param_count: u32) -> *const u8 {
+    let lambda = match val.as_lambda() {
+        Some(l) => l,
+        None => {
+            println!("Not a lambda");
+            return null();
+        }
+    };
+    if lambda.param_count != param_count as usize {
+        println!("Wrong number of parameters");
+        return null();
+    } else {
+        return lambda.func_ptr.unwrap();
+    }
 }
 
 pub extern "C" fn public_val_shift_left(val: Value64, by: Value64) -> Value64 {

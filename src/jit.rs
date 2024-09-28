@@ -6,7 +6,7 @@ use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{DataDescription, FuncId, FuncOrDataId, Linkage, Module, ModuleError};
 use std::{
     collections::HashMap,
-    mem::{self},
+    mem::{self, forget},
     ops::Deref,
     rc::Rc,
 };
@@ -20,7 +20,8 @@ use crate::{
     },
     builtins,
     pos::{Span, Spanned},
-    value64, Value64,
+    value64::{self, LambdaFunction},
+    Value64,
 };
 
 type FuncExpr = LambdaExpr;
@@ -83,6 +84,7 @@ struct NativeMethods {
     dict_new: NativeMethod,
     dict_insert: NativeMethod,
     val_set_index: NativeMethod,
+    val_get_lambda_details: NativeMethod,
 }
 
 fn make_sig(module: &mut JITModule, params: &[ir::Type], returns: &[ir::Type]) -> ir::Signature {
@@ -131,6 +133,12 @@ fn get_native_methods<'a, 'b>(module: &'b mut JITModule) -> NativeMethods {
         ),
         val_eq: make_method(module, "NATIVE:val_eq", &[VAL64, VAL64], &[VAL64]),
         val_truthy: make_method(module, "NATIVE:val_truthy", &[VAL64], &[types::I8]),
+        val_get_lambda_details: make_method(
+            module,
+            "NATIVE:val_get_lambda_details",
+            &[VAL64, types::I32],
+            &[I64],
+        ),
         val_shift_left: make_method(module, "NATIVE:val_shift_left", &[VAL64, VAL64], &[VAL64]),
         val_xor: make_method(module, "NATIVE:val_xor", &[VAL64, VAL64], &[VAL64]),
         range: make_method(module, "NATIVE:range", &[VAL64, VAL64], &[VAL64]),
@@ -165,6 +173,10 @@ impl JIT {
         builder.symbol("NATIVE:val_set_index", builtins::val_set_index as *const u8);
         builder.symbol("NATIVE:val_eq", builtins::val_eq as *const u8);
         builder.symbol("NATIVE:val_truthy", builtins::val_truthy as *const u8);
+        builder.symbol(
+            "NATIVE:val_get_lambda_details",
+            builtins::val_get_lambda_details as *const u8,
+        );
         builder.symbol(
             "NATIVE:val_shift_left",
             builtins::public_val_shift_left as *const u8,
@@ -422,7 +434,12 @@ impl<'a, 'b> VariableBuilder<'a, 'b> {
                 self.declare_variables_in_expr(index);
                 self.declare_variables_in_expr(val);
             }
-            e => todo!("Expression type not supported: {:?}", e),
+            Expr::Lambda(_) => {
+                // for capture in l.potential_captures {
+                //     self.declare_variable(&capture.name);
+                // }
+            }
+            Expr::Match(m) => todo!("Match expressions not supported: {:?}", m),
         }
     }
 
@@ -518,7 +535,9 @@ impl<'a> FunctionTranslator<'a> {
             } => self.translate_if_else(condition, then_branch, else_branch),
             Expr::ForIn { iter, var, body } => self.translate_for_in(iter, var, body),
             Expr::While { condition, body } => self.translate_while_loop(condition, body),
-            Expr::Call { callee, args } => self.translate_call(callee, args),
+            // Expr::Call { callee, args } => self.translate_call(callee, args),
+            Expr::Call { callee, args } => self.translate_dynamic_call(callee, args),
+            // Expr::Call { .. } => self.string_literal("TODO function call".to_string()),
             Expr::CallNative { callee, args } => self.translate_native_call(*callee, args),
             Expr::List(l) => {
                 let len_value = self.builder.ins().iconst(types::I64, l.len() as i64);
@@ -544,7 +563,8 @@ impl<'a> FunctionTranslator<'a> {
                 }
                 dict
             }
-            _ => unimplemented!(),
+            Expr::Lambda(l) => self.translate_lambda_definition(l),
+            Expr::Match(_) => todo!(),
         }
     }
 
@@ -575,6 +595,44 @@ impl<'a> FunctionTranslator<'a> {
         }
         let call = self.builder.ins().call(local_callee, &arg_values);
         self.builder.inst_results(call)[0]
+    }
+
+    fn translate_dynamic_call(&mut self, callee: &SpannedExpr, args: &Vec<SpannedExpr>) -> Value {
+        let callee_val = self.translate_expr(callee);
+
+        let arg_count_val = self.builder.ins().iconst(types::I32, args.len() as i64);
+        let func_ptr = self.call_native(
+            &self.natives.val_get_lambda_details,
+            &[callee_val, arg_count_val],
+        )[0];
+        // Null pointer means callee wasn't a lambda
+        self.builder.ins().trapz(func_ptr, TrapCode::User(3));
+        // let param_count_cmp =
+        //     self.builder
+        //         .ins()
+        //         .icmp_imm(IntCC::Equal, param_count, args.len() as i64);
+        // self.builder.ins().trapz(param_count_cmp, TrapCode::User(4));
+
+        let mut sig = self.module.make_signature();
+
+        for _arg in args {
+            sig.params.push(AbiParam::new(VAL64));
+        }
+
+        sig.returns.push(AbiParam::new(VAL64));
+        let sig_ref = self.builder.import_signature(sig);
+
+        let mut arg_values = Vec::new();
+        for arg in args {
+            let value = self.translate_expr(arg);
+            arg_values.push(self.clone_val64(value))
+        }
+        let call = self
+            .builder
+            .ins()
+            .call_indirect(sig_ref, func_ptr, &arg_values);
+
+        return self.builder.inst_results(call)[0];
     }
 
     fn translate_native_call(&mut self, callee: BuiltInFunction, args: &Vec<SpannedExpr>) -> Value {
@@ -902,6 +960,74 @@ impl<'a> FunctionTranslator<'a> {
                 self.bool_to_val64(bool_val)
             }
         }
+    }
+
+    fn translate_lambda_definition(&mut self, lambda: &LambdaExpr) -> Value {
+        let mut ctx = self.module.make_context();
+        // for _ in 0..lambda.potential_captures.len() {
+        //     ctx.func.signature.params.push(AbiParam::new(VAL64));
+        // }
+        for _ in 0..lambda.params.len() {
+            ctx.func.signature.params.push(AbiParam::new(VAL64));
+        }
+        ctx.func.signature.returns.push(AbiParam::new(VAL64));
+
+        let mut builder_context = FunctionBuilderContext::new();
+        let mut builder = FunctionBuilder::new(&mut ctx.func, &mut builder_context);
+
+        let entry_block = builder.create_block();
+        builder.append_block_params_for_function_params(entry_block);
+        builder.switch_to_block(entry_block);
+        builder.seal_block(entry_block);
+
+        let variables = {
+            let mut variable_builder = VariableBuilder::new(&mut builder);
+            variable_builder.declare_variables_in_func(lambda, entry_block);
+            variable_builder.variables
+        };
+
+        builder.seal_all_blocks(); // ??
+
+        let mut trans = FunctionTranslator {
+            builder,
+            variables,
+            module: &mut self.module,
+            natives: &self.natives,
+            string_constants: &mut self.string_constants,
+        };
+        let return_value = trans.translate_expr(&lambda.body);
+
+        trans.builder.ins().return_(&[return_value]);
+
+        trans.builder.finalize();
+
+        let func_id = self
+            .module
+            .declare_anonymous_function(&ctx.func.signature)
+            .unwrap();
+
+        self.module.define_function(func_id, &mut ctx).unwrap();
+        self.module.clear_context(&mut ctx);
+
+        self.module.finalize_definitions().unwrap();
+
+        let func_ptr = self.module.get_finalized_function(func_id);
+        let temp_lamda = LambdaFunction {
+            params: lambda.params.clone(),
+            param_count: lambda.params.len(),
+            body: lambda.body.clone(),
+            closure: Vec::new(),
+            self_name: Some("TEMP lambda".to_string()),
+            recursive: false, // TODO
+            func_id: None,
+            func_ptr: Some(func_ptr),
+        };
+        let temp_lambda_val = Value64::from_lambda(Rc::new(temp_lamda));
+
+        let lambda_val = self.builder.ins().f64const(temp_lambda_val.bits_f64());
+
+        forget(temp_lambda_val);
+        return self.clone_val64(lambda_val);
     }
 
     fn call_native(&mut self, method: &NativeMethod, args: &[Value]) -> &[Value] {
