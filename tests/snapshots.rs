@@ -316,6 +316,16 @@ fn multiple_funcs() {
     insta::assert_snapshot!(result, @"14");
 }
 
+#[test]
+fn simple_recursion() {
+    let program = r#"
+        fac = \n\ if n < 2 then 1 else (n * (fac (n - 1)));
+        return fac 5;
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"120");
+}
+
 fn eval_snapshot(program: &str) -> Value64 {
     let parser = ProgramParser::new();
     let prelude_ast = parser.parse(include_str!("../src/prelude.bovine")).unwrap();

@@ -311,10 +311,13 @@ impl JIT {
     }
 
     fn translate_func(&mut self, func: &FuncExpr) -> JITResult<()> {
+        self.ctx.func.collect_debug_info();
         self.ctx.func.signature.params.push(AbiParam::new(PTR)); // closure
         for _p in &*func.params {
             self.ctx.func.signature.params.push(AbiParam::new(VAL64));
         }
+
+        self.ctx.func.signature.params.push(AbiParam::new(VAL64)); // self (unused)
 
         self.ctx.func.signature.returns.push(AbiParam::new(VAL64));
 
@@ -381,15 +384,15 @@ impl<'a, 'b> VariableBuilder<'a, 'b> {
 
     fn declare_variables_in_func(&mut self, func: &FuncExpr, entry_block: Block) {
         let closure_ptr = self.builder.block_params(entry_block)[0];
-        for (i, var) in func.potential_captures.iter().enumerate() {
-            let var = self.declare_variable(&var.name);
+        for (i, var_ref) in func.potential_captures.iter().enumerate() {
+            let var = self.declare_variable(&var_ref.name);
             let val = self.builder.ins().load(
                 VAL64,
                 MemFlags::new(),
                 closure_ptr,
                 (i * size_of::<Value64>()) as i32,
             );
-            self.builder.def_var(var, val);
+            self.define_variable(var, val, &var_ref.name);
         }
         for (i, pattern) in func.params.iter().enumerate() {
             let name = match pattern.value {
@@ -400,7 +403,17 @@ impl<'a, 'b> VariableBuilder<'a, 'b> {
             };
             let val = self.builder.block_params(entry_block)[i + 1]; // actual params start at 1, first is closure
             let var = self.declare_variable(name);
-            self.builder.def_var(var, val);
+            self.define_variable(var, val, &name);
+        }
+        if let Some(name) = &func.name {
+            let val = self
+                .builder
+                .block_params(entry_block)
+                .last()
+                .copied()
+                .unwrap();
+            let var = self.declare_variable(name);
+            self.define_variable(var, val, &name);
         }
 
         self.declare_variables_in_expr(&func.body);
@@ -533,6 +546,17 @@ impl<'a, 'b> VariableBuilder<'a, 'b> {
         }
         var
     }
+
+    fn define_variable(&mut self, var: Variable, val: Value, name: &str) {
+        self.builder.try_def_var(var, val).unwrap_or_else(|error| {
+            panic!(
+                "Error defining variable {}: {}. Assigning value of type {}.",
+                name,
+                error,
+                self.builder.func.dfg.value_type(val)
+            );
+        })
+    }
 }
 
 struct FunctionTranslator<'a> {
@@ -648,7 +672,6 @@ impl<'a> FunctionTranslator<'a> {
             8,
             0,
         ));
-        // self.builder.ins().sta
         let closure_ptr_ptr_val = self
             .builder
             .ins()
@@ -664,11 +687,6 @@ impl<'a> FunctionTranslator<'a> {
             .builder
             .ins()
             .stack_load(types::I64, closure_ptr_slot, 0);
-        // let param_count_cmp =
-        //     self.builder
-        //         .ins()
-        //         .icmp_imm(IntCC::Equal, param_count, args.len() as i64);
-        // self.builder.ins().trapz(param_count_cmp, TrapCode::User(4));
 
         let mut sig = self.module.make_signature();
 
@@ -677,6 +695,8 @@ impl<'a> FunctionTranslator<'a> {
         for _arg in args {
             sig.params.push(AbiParam::new(VAL64));
         }
+
+        sig.params.push(AbiParam::new(VAL64));
 
         sig.returns.push(AbiParam::new(VAL64));
         let sig_ref = self.builder.import_signature(sig);
@@ -687,6 +707,7 @@ impl<'a> FunctionTranslator<'a> {
             let value = self.translate_expr(arg);
             arg_values.push(self.clone_val64(value))
         }
+        arg_values.push(self.clone_val64(callee_val));
         let call = self
             .builder
             .ins()
@@ -1028,7 +1049,8 @@ impl<'a> FunctionTranslator<'a> {
         for _ in 0..lambda.params.len() {
             ctx.func.signature.params.push(AbiParam::new(VAL64));
         }
-        ctx.func.signature.returns.push(AbiParam::new(VAL64));
+        ctx.func.signature.params.push(AbiParam::new(VAL64)); // self for recursion
+        ctx.func.signature.returns.push(AbiParam::new(VAL64)); // return value
 
         let mut builder_context = FunctionBuilderContext::new();
         let mut builder = FunctionBuilder::new(&mut ctx.func, &mut builder_context);
