@@ -117,8 +117,8 @@ impl VariableAnalyzer {
     fn analyze_statement(&mut self, stmt: &mut Statement) {
         match stmt {
             Statement::PatternAssignment(pattern, rhs) => {
-                self.analyze_pattern(&mut pattern.value, pattern.span);
                 self.analyze_expr(rhs);
+                self.analyze_pattern(&mut pattern.value, pattern.span);
             }
             Statement::Expression(expr) => self.analyze_expr(expr),
             Statement::Return(expr) => self.analyze_expr(expr),
