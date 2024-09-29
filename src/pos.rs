@@ -29,6 +29,13 @@ impl<T> Spanned<T> {
     pub fn new(span: Span, value: T) -> Self {
         Spanned { span, value }
     }
+
+    pub fn with_zero_span(value: T) -> Self {
+        Spanned {
+            span: Span::default(),
+            value,
+        }
+    }
 }
 
 impl<T: fmt::Debug> fmt::Debug for Spanned<T> {

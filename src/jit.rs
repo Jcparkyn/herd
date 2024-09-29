@@ -214,41 +214,15 @@ impl JIT {
         }
     }
 
-    pub fn compile_program(&mut self, program: &[SpannedStatement]) -> JITResult<()> {
-        for statement in program {
-            let func = match &statement.value {
-                ast::Statement::PatternAssignment(_, rhs) => match rhs.value {
-                    Expr::Lambda(ref f) => f,
-                    _ => panic!("Only function definitions are allowed at the top level"),
-                },
-                ast::Statement::Expression(e) => match e.value {
-                    // Ignore main () call, for compatibility with tree-walker
-                    Expr::Call { .. } => continue,
-                    _ => panic!("Only function definitions are allowed at the top level"),
-                },
-                _ => panic!("Only function definitions are allowed at the top level"),
-            };
-            self.compile_func(&func)?;
-        }
-        Ok(())
-    }
-
     pub fn compile_program_as_function(
         &mut self,
         program: &[SpannedStatement],
     ) -> JITResult<FuncId> {
-        let params = Rc::new(vec![]);
-        let body = Expr::Block(ast::Block {
+        let body = Spanned::with_zero_span(Expr::Block(ast::Block {
             statements: program.to_vec(),
             expression: None,
-        });
-        let func = LambdaExpr {
-            params,
-            body: Rc::new(Spanned::new(Span::new(0, 0), body)),
-            potential_captures: vec![],
-            name: Some("main".to_string()),
-        };
-        let func_id = self.compile_func(&func)?;
+        }));
+        let func_id = self.compile_main_func(&body)?;
         Ok(func_id)
     }
 
@@ -262,23 +236,15 @@ impl JIT {
         code_fn(input)
     }
 
-    fn compile_func(&mut self, func: &FuncExpr) -> JITResult<FuncId> {
+    fn compile_main_func(&mut self, body: &SpannedExpr) -> JITResult<FuncId> {
         // Then, translate the AST nodes into Cranelift IR.
-        self.translate_func(func)?;
+        self.translate_main_func(body)?;
 
         // Next, declare the function to jit. Functions must be declared
         // before they can be called, or defined.
-        //
-        // TODO: This may be an area where the API should be streamlined; should
-        // we have a version of `declare_function` that automatically declares
-        // the function?
         let id = self
             .module
-            .declare_function(
-                &func.name.clone().unwrap(),
-                Linkage::Export,
-                &self.ctx.func.signature,
-            )
+            .declare_function("MAIN", Linkage::Export, &self.ctx.func.signature)
             .map_err(JITError::Module)?;
 
         // Define the function to jit. This finishes compilation, although
@@ -310,39 +276,25 @@ impl JIT {
         }
     }
 
-    fn translate_func(&mut self, func: &FuncExpr) -> JITResult<()> {
+    fn translate_main_func(&mut self, body: &SpannedExpr) -> JITResult<()> {
         self.ctx.func.collect_debug_info();
-        self.ctx.func.signature.params.push(AbiParam::new(PTR)); // closure
-        for _p in &*func.params {
-            self.ctx.func.signature.params.push(AbiParam::new(VAL64));
-        }
-
-        self.ctx.func.signature.params.push(AbiParam::new(VAL64)); // self (unused)
-
+        self.ctx.func.signature.params.push(AbiParam::new(VAL64)); // program args
         self.ctx.func.signature.returns.push(AbiParam::new(VAL64));
 
-        // Create the builder to build a function.
         let mut builder = FunctionBuilder::new(&mut self.ctx.func, &mut self.builder_context);
 
-        // Create the entry block, to start emitting code in.
         let entry_block = builder.create_block();
-
-        // Since this is the entry block, add block parameters corresponding to
-        // the function's parameters.
         builder.append_block_params_for_function_params(entry_block);
-
-        // Tell the builder to emit code in this block.
         builder.switch_to_block(entry_block);
-
-        // And, tell the builder that this block will have no further
-        // predecessors. Since it's the entry block, it won't have any
-        // predecessors.
         builder.seal_block(entry_block);
 
         // Walk the AST and declare all implicitly-declared variables.
         let variables = {
+            let args_val = builder.block_params(entry_block)[0];
             let mut variable_builder = VariableBuilder::new(&mut builder);
-            variable_builder.declare_variables_in_func(func, entry_block);
+            let args_var = variable_builder.declare_variable("args");
+            variable_builder.declare_variables_in_expr(body);
+            variable_builder.define_variable(args_var, args_val, "args");
             variable_builder.variables
         };
 
@@ -356,7 +308,7 @@ impl JIT {
             natives: &self.natives,
             string_constants: &mut self.string_constants,
         };
-        let return_value = trans.translate_expr(&func.body);
+        let return_value = trans.translate_expr(body);
 
         // Emit the return instruction.
         trans.builder.ins().return_(&[return_value]);
@@ -602,9 +554,7 @@ impl<'a> FunctionTranslator<'a> {
             } => self.translate_if_else(condition, then_branch, else_branch),
             Expr::ForIn { iter, var, body } => self.translate_for_in(iter, var, body),
             Expr::While { condition, body } => self.translate_while_loop(condition, body),
-            // Expr::Call { callee, args } => self.translate_call(callee, args),
-            Expr::Call { callee, args } => self.translate_dynamic_call(callee, args),
-            // Expr::Call { .. } => self.string_literal("TODO function call".to_string()),
+            Expr::Call { callee, args } => self.translate_indirect_call(callee, args),
             Expr::CallNative { callee, args } => self.translate_native_call(*callee, args),
             Expr::List(l) => {
                 let len_value = self.builder.ins().iconst(types::I64, l.len() as i64);
@@ -664,29 +614,13 @@ impl<'a> FunctionTranslator<'a> {
         self.builder.inst_results(call)[0]
     }
 
-    fn translate_dynamic_call(&mut self, callee: &SpannedExpr, args: &Vec<SpannedExpr>) -> Value {
+    fn translate_indirect_call(&mut self, callee: &SpannedExpr, args: &Vec<SpannedExpr>) -> Value {
         let callee_val = self.translate_expr(callee);
 
-        let closure_ptr_slot = self.builder.create_sized_stack_slot(StackSlotData::new(
-            StackSlotKind::ExplicitSlot,
-            8,
-            0,
-        ));
-        let closure_ptr_ptr_val = self
-            .builder
-            .ins()
-            .stack_addr(types::I64, closure_ptr_slot, 0);
-        let arg_count_val = self.builder.ins().iconst(types::I32, args.len() as i64);
-        let func_ptr = self.call_native(
-            &self.natives.val_get_lambda_details,
-            &[callee_val, arg_count_val, closure_ptr_ptr_val],
-        )[0];
+        let (func_ptr, closure_ptr) = self.get_lambda_details(args, callee_val);
+
         // Null pointer means callee wasn't a lambda
         self.builder.ins().trapz(func_ptr, TrapCode::User(3));
-        let closure_ptr = self
-            .builder
-            .ins()
-            .stack_load(types::I64, closure_ptr_slot, 0);
 
         let mut sig = self.module.make_signature();
 
@@ -714,6 +648,26 @@ impl<'a> FunctionTranslator<'a> {
             .call_indirect(sig_ref, func_ptr, &arg_values);
 
         return self.builder.inst_results(call)[0];
+    }
+
+    fn get_lambda_details(
+        &mut self,
+        args: &Vec<Spanned<Expr>>,
+        callee_val: Value,
+    ) -> (Value, Value) {
+        let closure_ptr_slot = self.builder.create_sized_stack_slot(StackSlotData::new(
+            StackSlotKind::ExplicitSlot,
+            8,
+            0,
+        ));
+        let closure_ptr_ptr_val = self.builder.ins().stack_addr(I64, closure_ptr_slot, 0);
+        let arg_count_val = self.builder.ins().iconst(types::I32, args.len() as i64);
+        let func_ptr = self.call_native(
+            &self.natives.val_get_lambda_details,
+            &[callee_val, arg_count_val, closure_ptr_ptr_val],
+        )[0];
+        let closure_ptr = self.builder.ins().stack_load(I64, closure_ptr_slot, 0);
+        (func_ptr, closure_ptr)
     }
 
     fn translate_native_call(&mut self, callee: BuiltInFunction, args: &Vec<SpannedExpr>) -> Value {
@@ -1045,6 +999,7 @@ impl<'a> FunctionTranslator<'a> {
 
     fn translate_lambda_definition(&mut self, lambda: &LambdaExpr) -> Value {
         let mut ctx = self.module.make_context();
+        ctx.func.collect_debug_info();
         ctx.func.signature.params.push(AbiParam::new(PTR)); // closure
         for _ in 0..lambda.params.len() {
             ctx.func.signature.params.push(AbiParam::new(VAL64));
@@ -1122,6 +1077,67 @@ impl<'a> FunctionTranslator<'a> {
         )[0];
         return lambda_val;
     }
+
+    // fn translate_func(mut self, func: &FuncExpr, ctx: &mut Context, builder_context: &mut FunctionBuilderContext) -> JITResult<()> {
+    //     // let ctx = if reuse_ctx {
+    //     //     &mut self.ctx
+    //     // } else {
+    //     //     &mut self.module.make_context()
+    //     // };
+    //     ctx.func.collect_debug_info();
+    //     ctx.func.signature.params.push(AbiParam::new(PTR)); // closure
+    //     for _p in &*func.params {
+    //         ctx.func.signature.params.push(AbiParam::new(VAL64));
+    //     }
+
+    //     ctx.func.signature.params.push(AbiParam::new(VAL64)); // self (unused)
+
+    //     ctx.func.signature.returns.push(AbiParam::new(VAL64));
+
+    //     // Create the builder to build a function.
+    //     let mut builder = FunctionBuilder::new(&mut ctx.func, builder_context);
+
+    //     // Create the entry block, to start emitting code in.
+    //     let entry_block = builder.create_block();
+
+    //     // Since this is the entry block, add block parameters corresponding to
+    //     // the function's parameters.
+    //     builder.append_block_params_for_function_params(entry_block);
+
+    //     // Tell the builder to emit code in this block.
+    //     builder.switch_to_block(entry_block);
+
+    //     // And, tell the builder that this block will have no further
+    //     // predecessors. Since it's the entry block, it won't have any
+    //     // predecessors.
+    //     builder.seal_block(entry_block);
+
+    //     // Walk the AST and declare all implicitly-declared variables.
+    //     self.variables = {
+    //         let mut variable_builder = VariableBuilder::new(&mut builder);
+    //         variable_builder.declare_variables_in_func(func, entry_block);
+    //         variable_builder.variables
+    //     };
+
+    //     builder.seal_all_blocks();
+
+    //     // Now translate the statements of the function body.
+    //     // let mut trans = FunctionTranslator {
+    //     //     builder,
+    //     //     variables,
+    //     //     module: &mut self.module,
+    //     //     natives: &self.natives,
+    //     //     string_constants: &mut self.string_constants,
+    //     // };
+    //     let return_value = self.translate_expr(&func.body);
+
+    //     // Emit the return instruction.
+    //     self.builder.ins().return_(&[return_value]);
+
+    //     // Tell the builder we're done with this function.
+    //     self.builder.finalize();
+    //     Ok(())
+    // }
 
     fn call_native(&mut self, method: &NativeMethod, args: &[Value]) -> &[Value] {
         let local_callee = self
