@@ -1096,8 +1096,6 @@ impl<'a> FunctionTranslator<'a> {
             variable_builder.variables
         };
 
-        builder.seal_all_blocks(); // ??
-
         let mut trans = FunctionTranslator {
             builder,
             variables,
