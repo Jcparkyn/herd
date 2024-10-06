@@ -1078,67 +1078,6 @@ impl<'a> FunctionTranslator<'a> {
         return lambda_val;
     }
 
-    // fn translate_func(mut self, func: &FuncExpr, ctx: &mut Context, builder_context: &mut FunctionBuilderContext) -> JITResult<()> {
-    //     // let ctx = if reuse_ctx {
-    //     //     &mut self.ctx
-    //     // } else {
-    //     //     &mut self.module.make_context()
-    //     // };
-    //     ctx.func.collect_debug_info();
-    //     ctx.func.signature.params.push(AbiParam::new(PTR)); // closure
-    //     for _p in &*func.params {
-    //         ctx.func.signature.params.push(AbiParam::new(VAL64));
-    //     }
-
-    //     ctx.func.signature.params.push(AbiParam::new(VAL64)); // self (unused)
-
-    //     ctx.func.signature.returns.push(AbiParam::new(VAL64));
-
-    //     // Create the builder to build a function.
-    //     let mut builder = FunctionBuilder::new(&mut ctx.func, builder_context);
-
-    //     // Create the entry block, to start emitting code in.
-    //     let entry_block = builder.create_block();
-
-    //     // Since this is the entry block, add block parameters corresponding to
-    //     // the function's parameters.
-    //     builder.append_block_params_for_function_params(entry_block);
-
-    //     // Tell the builder to emit code in this block.
-    //     builder.switch_to_block(entry_block);
-
-    //     // And, tell the builder that this block will have no further
-    //     // predecessors. Since it's the entry block, it won't have any
-    //     // predecessors.
-    //     builder.seal_block(entry_block);
-
-    //     // Walk the AST and declare all implicitly-declared variables.
-    //     self.variables = {
-    //         let mut variable_builder = VariableBuilder::new(&mut builder);
-    //         variable_builder.declare_variables_in_func(func, entry_block);
-    //         variable_builder.variables
-    //     };
-
-    //     builder.seal_all_blocks();
-
-    //     // Now translate the statements of the function body.
-    //     // let mut trans = FunctionTranslator {
-    //     //     builder,
-    //     //     variables,
-    //     //     module: &mut self.module,
-    //     //     natives: &self.natives,
-    //     //     string_constants: &mut self.string_constants,
-    //     // };
-    //     let return_value = self.translate_expr(&func.body);
-
-    //     // Emit the return instruction.
-    //     self.builder.ins().return_(&[return_value]);
-
-    //     // Tell the builder we're done with this function.
-    //     self.builder.finalize();
-    //     Ok(())
-    // }
-
     fn call_native(&mut self, method: &NativeMethod, args: &[Value]) -> &[Value] {
         let local_callee = self
             .module
