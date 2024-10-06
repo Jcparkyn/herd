@@ -15,8 +15,8 @@ use types::I64;
 
 use crate::{
     ast::{
-        self, BuiltInFunction, Expr, LambdaExpr, MatchPattern, Opcode, SpannedExpr,
-        SpannedStatement, Statement,
+        self, BuiltInFunction, Expr, LambdaExpr, MatchConstant, MatchExpr, MatchPattern, Opcode,
+        SpannedExpr, SpannedStatement, Statement,
     },
     builtins,
     pos::{Span, Spanned},
@@ -442,7 +442,7 @@ impl<'a, 'b> VariableBuilder<'a, 'b> {
             Expr::Lambda(_) => {
                 // The lambda body is analyzed in a separate scope later on.
             }
-            Expr::Match(m) => todo!("Match expressions not supported: {:?}", m),
+            Expr::Match(m) => self.declare_variables_in_match(m),
         }
     }
 
@@ -454,6 +454,13 @@ impl<'a, 'b> VariableBuilder<'a, 'b> {
                 self.declare_variables_in_expr(rhs);
                 self.declare_variables_in_pattern(&pattern.value);
             }
+        }
+    }
+
+    fn declare_variables_in_match(&mut self, match_expr: &MatchExpr) {
+        for (pattern, body) in &match_expr.branches {
+            self.declare_variables_in_pattern(&pattern.value);
+            self.declare_variables_in_expr(body);
         }
     }
 
@@ -536,7 +543,7 @@ impl<'a> FunctionTranslator<'a> {
                 if let Some(ref expr) = b.expression {
                     return self.translate_expr(expr);
                 } else {
-                    return self.builder.ins().f64const(0.0);
+                    return self.const_nil();
                 }
             }
             Expr::Bool(b) => self.const_bool(*b),
@@ -578,7 +585,7 @@ impl<'a> FunctionTranslator<'a> {
                 dict
             }
             Expr::Lambda(l) => self.translate_lambda_definition(l),
-            Expr::Match(_) => todo!(),
+            Expr::Match(m) => self.translate_match_expr(m),
         }
     }
 
@@ -759,6 +766,59 @@ impl<'a> FunctionTranslator<'a> {
             _ => todo!("Pattern matching isn't supported here yet"),
         }
     }
+
+    fn translate_matches_pattern(&mut self, pattern: &MatchPattern, value: Value) -> Value {
+        let true_val = self.builder.ins().iconst(types::I8, 1);
+        let false_val = self.builder.ins().iconst(types::I8, 0);
+        match pattern {
+            MatchPattern::Discard => true_val,
+            MatchPattern::Declaration(_, _) => true_val,
+            MatchPattern::Assignment(_) => true_val,
+            MatchPattern::Constant(c) => self.translate_matches_constant(c, value),
+            MatchPattern::SimpleList(parts) => {
+                let value_len = self.call_native(&self.natives.list_len_u64, &[value])[0];
+                let len_eq =
+                    self.builder
+                        .ins()
+                        .icmp_imm(IntCC::Equal, value_len, parts.len() as i64);
+
+                let merge_block = self.builder.create_block();
+                self.builder.append_block_param(merge_block, types::I8);
+
+                let block1 = self.builder.create_block();
+                self.builder
+                    .ins()
+                    .brif(len_eq, block1, &[], merge_block, &[false_val]);
+                self.builder.switch_to_block(block1);
+                self.builder.seal_block(block1);
+                let mut matches_all = self.builder.ins().iconst(types::I8, 1);
+                for (i, part) in parts.iter().enumerate() {
+                    let ival = self.builder.ins().iconst(I64, i as i64);
+                    let element = self.call_native(&self.natives.list_get_u64, &[value, ival])[0];
+                    let matches = self.translate_matches_pattern(part, element);
+                    // TODO short-circuit
+                    matches_all = self.builder.ins().band(matches_all, matches);
+                }
+                self.builder.ins().jump(merge_block, &[matches_all]);
+
+                self.builder.switch_to_block(merge_block);
+                self.builder.seal_block(merge_block);
+                let phi = self.builder.block_params(merge_block)[0];
+                phi
+            }
+            _ => todo!("Pattern matching isn't supported here yet"),
+        }
+    }
+
+    fn translate_matches_constant(&mut self, _c: &MatchConstant, _value: Value) -> Value {
+        todo!()
+    }
+
+    // fn translate_match_slice(&mut self, parts: &[MatchPattern], values: &[Value]) {
+    //     for (part, value) in parts.iter().zip(values) {
+    //         self.translate_match_pattern(part, *value);
+    //     }
+    // }
 
     fn translate_assignment(&mut self, target: &ast::AssignmentTarget, rhs: Value) {
         let mut path_values = vec![];
@@ -1091,6 +1151,63 @@ impl<'a> FunctionTranslator<'a> {
             ],
         )[0];
         return lambda_val;
+    }
+
+    fn translate_match_expr(&mut self, match_expr: &MatchExpr) -> Value {
+        let merge_block = self.builder.create_block();
+        self.builder.append_block_param(merge_block, VAL64);
+
+        let mut branch_check_blocks = vec![];
+        let mut branch_body_blocks = vec![];
+        for _ in &match_expr.branches {
+            let check_block = self.builder.create_block();
+            let body_block = self.builder.create_block();
+            branch_check_blocks.push(check_block);
+            branch_body_blocks.push(body_block);
+        }
+
+        // self.builder
+        //     .seal_block(self.builder.current_block().unwrap());
+        let subject = self.translate_expr(&match_expr.condition);
+        self.builder.ins().jump(branch_check_blocks[0], &[]);
+        // let mut arms = Vec::new();
+        for (i, (pattern, body)) in match_expr.branches.iter().enumerate() {
+            let is_last_branch = i == match_expr.branches.len() - 1;
+            self.builder.switch_to_block(branch_check_blocks[i]);
+            self.set_src_span(&pattern.span);
+            let matches = self.translate_matches_pattern(&pattern.value, subject);
+            if is_last_branch {
+                self.builder.ins().trapz(matches, TrapCode::User(5));
+                self.builder.ins().jump(branch_body_blocks[i], &[]);
+            } else {
+                self.builder.ins().brif(
+                    matches,
+                    branch_body_blocks[i],
+                    &[],
+                    branch_check_blocks[i + 1],
+                    &[],
+                );
+            };
+
+            self.builder.switch_to_block(branch_body_blocks[i]);
+            self.translate_match_pattern(&pattern.value, subject);
+            let body_value = self.translate_expr(body);
+            self.builder.ins().jump(merge_block, &[body_value]);
+        }
+
+        // Seal all branch blocks
+        for block in branch_check_blocks {
+            self.builder.seal_block(block);
+        }
+        for block in branch_body_blocks {
+            self.builder.seal_block(block);
+        }
+
+        // Get value from merge block
+        self.builder.switch_to_block(merge_block);
+        self.builder.seal_block(merge_block);
+        let phi = self.builder.block_params(merge_block)[0];
+        phi
     }
 
     fn call_native(&mut self, method: &NativeMethod, args: &[Value]) -> &[Value] {

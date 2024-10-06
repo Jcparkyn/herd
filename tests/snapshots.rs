@@ -386,6 +386,24 @@ fn pattern_assignment_nested() {
     insta::assert_snapshot!(result, @"[1, 2, 3]");
 }
 
+#[test]
+fn match_expression() {
+    let program = r#"
+        a = [2, 3];
+        b = switch a {
+            [] => 0,
+            [x, y] => x + y,
+        };
+        c = switch [] {
+            [] => 0,
+            [x, y] => x + y,
+        };
+        return [b, c];
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"[5, 0]");
+}
+
 fn eval_snapshot(program: &str) -> Value64 {
     let parser = ProgramParser::new();
     let prelude_ast = parser.parse(include_str!("../src/prelude.bovine")).unwrap();
