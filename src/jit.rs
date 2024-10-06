@@ -749,7 +749,10 @@ impl<'a> FunctionTranslator<'a> {
             MatchPattern::Assignment(target) => {
                 self.translate_assignment(target, value);
             }
-            MatchPattern::Constant(_) => {} // TODO
+            MatchPattern::Constant(c) => {
+                let matches = self.translate_matches_constant(c, value);
+                self.builder.ins().trapz(matches, TrapCode::User(6));
+            }
             MatchPattern::SimpleList(parts) => {
                 let value_len = self.call_native(&self.natives.list_len_u64, &[value])[0];
                 let len_eq =
@@ -810,15 +813,23 @@ impl<'a> FunctionTranslator<'a> {
         }
     }
 
-    fn translate_matches_constant(&mut self, _c: &MatchConstant, _value: Value) -> Value {
-        todo!()
+    fn translate_matches_constant(&mut self, c: &MatchConstant, value: Value) -> Value {
+        match c {
+            MatchConstant::Nil => self.is_nil(value),
+            MatchConstant::Bool(b) => {
+                let expected_bits = if *b {
+                    value64::TRUE_VALUE
+                } else {
+                    value64::FALSE_VALUE
+                };
+                self.cmp_bits_imm(IntCC::Equal, value, expected_bits)
+            }
+            MatchConstant::Number(f) => self.cmp_bits_imm(IntCC::Equal, value, (*f).to_bits()),
+            MatchConstant::String(_s) => {
+                todo!()
+            }
+        }
     }
-
-    // fn translate_match_slice(&mut self, parts: &[MatchPattern], values: &[Value]) {
-    //     for (part, value) in parts.iter().zip(values) {
-    //         self.translate_match_pattern(part, *value);
-    //     }
-    // }
 
     fn translate_assignment(&mut self, target: &ast::AssignmentTarget, rhs: Value) {
         let mut path_values = vec![];
@@ -1242,6 +1253,16 @@ impl<'a> FunctionTranslator<'a> {
 
     fn is_truthy(&mut self, val: Value) -> Value {
         self.call_native(&self.natives.val_truthy, &[val])[0]
+    }
+
+    fn is_nil(&mut self, val: Value) -> Value {
+        self.cmp_bits_imm(IntCC::Equal, val, value64::NIL_VALUE)
+    }
+
+    fn cmp_bits_imm(&mut self, cond: IntCC, lhs: Value, rhs: u64) -> Value {
+        let lhs_bits = self.builder.ins().bitcast(I64, MemFlags::new(), lhs);
+        let rhs_bits = self.builder.ins().iconst(I64, rhs as i64);
+        self.builder.ins().icmp(cond, lhs_bits, rhs_bits)
     }
 
     fn bool_to_val64(&mut self, b: Value) -> Value {

@@ -417,6 +417,30 @@ fn match_expression() {
     insta::assert_snapshot!(result, @"[5, 0]");
 }
 
+#[test]
+fn match_constant() {
+    let program = r#"
+        f = \x\ switch x {
+            [] => 'empty',
+            [()] => 'nil',
+            [a] => 'singleton',
+            [0, a] => 'zero',
+            [1, a] => 'one',
+            [_, a] => a,
+        };
+        return [
+            f [],
+            f [()],
+            f [42],
+            f [0, 1],
+            f [1, 2],
+            f [3, 4],
+        ];
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"['empty', 'nil', 'singleton', 'zero', 'one', 4]");
+}
+
 fn eval_snapshot(program: &str) -> Value64 {
     let parser = ProgramParser::new();
     let prelude_ast = parser.parse(include_str!("../src/prelude.bovine")).unwrap();
