@@ -89,6 +89,21 @@ fn cmp_gt() {
 }
 
 #[test]
+fn blocks() {
+    let program = r#"
+        x = (a = 1; a);
+        y = (a = 2; a + x);
+        var z = 1;
+        (
+            set z = z + 1;
+        );
+        return [x, y, z];
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"[1, 3, 2]");
+}
+
+#[test]
 fn index_list() {
     let program = r#"
         return [1, 2, 3].[1];
