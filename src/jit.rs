@@ -440,9 +440,7 @@ impl<'a, 'b> VariableBuilder<'a, 'b> {
                 self.declare_variables_in_expr(val);
             }
             Expr::Lambda(_) => {
-                // for capture in l.potential_captures {
-                //     self.declare_variable(&capture.name);
-                // }
+                // The lambda body is analyzed in a separate scope later on.
             }
             Expr::Match(m) => todo!("Match expressions not supported: {:?}", m),
         }

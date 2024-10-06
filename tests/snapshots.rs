@@ -317,6 +317,20 @@ fn multiple_funcs() {
 }
 
 #[test]
+fn func_with_locals() {
+    let program = r#"
+        a = 6;
+        f = \x\ (
+            b = x + 1;
+            b * 2
+        );
+        return f 2;
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"6");
+}
+
+#[test]
 fn simple_recursion() {
     let program = r#"
         fac = \n\ if n < 2 then 1 else (n * (fac (n - 1)));
