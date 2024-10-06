@@ -346,6 +346,19 @@ fn func_with_locals() {
 }
 
 #[test]
+fn func_with_pattern_matching() {
+    let program = r#"
+        a = 6;
+        f = \[x, y]\ (
+            x + y * 2
+        );
+        return f [3, 4];
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"11");
+}
+
+#[test]
 fn simple_recursion() {
     let program = r#"
         fac = \n\ if n < 2 then 1 else (n * (fac (n - 1)));

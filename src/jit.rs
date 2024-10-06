@@ -346,16 +346,9 @@ impl<'a, 'b> VariableBuilder<'a, 'b> {
             );
             self.define_variable(var, val, &var_ref.name);
         }
-        for (i, pattern) in func.params.iter().enumerate() {
-            let name = match pattern.value {
-                MatchPattern::Declaration(ref var, _) => &var.name,
-                MatchPattern::Discard => continue,
-                MatchPattern::Constant(_) => continue,
-                _ => todo!("Pattern matching in functions isn't supported"),
-            };
-            let val = self.builder.block_params(entry_block)[i + 1]; // actual params start at 1, first is closure
-            let var = self.declare_variable(name);
-            self.define_variable(var, val, &name);
+        for pattern in &*func.params {
+            self.declare_variables_in_pattern(&pattern.value);
+            // Actual match is done in function body.
         }
         if let Some(name) = &func.name {
             let val = self
@@ -524,6 +517,13 @@ struct FunctionTranslator<'a> {
 }
 
 impl<'a> FunctionTranslator<'a> {
+    fn translate_function_params(&mut self, params: &[Spanned<MatchPattern>], entry_block: Block) {
+        for (i, pattern) in params.iter().enumerate() {
+            let value = self.builder.block_params(entry_block)[i + 1];
+            self.translate_match_pattern(&pattern.value, value);
+        }
+    }
+
     /// When you write out instructions in Cranelift, you get back `Value`s. You
     /// can then use these references in other instructions.
     fn translate_expr(&mut self, expr: &SpannedExpr) -> Value {
@@ -1103,6 +1103,7 @@ impl<'a> FunctionTranslator<'a> {
             natives: &self.natives,
             string_constants: &mut self.string_constants,
         };
+        trans.translate_function_params(&*lambda.params, entry_block);
         let return_value = trans.translate_expr(&lambda.body);
 
         trans.builder.ins().return_(&[return_value]);
