@@ -326,6 +326,37 @@ fn simple_recursion() {
     insta::assert_snapshot!(result, @"120");
 }
 
+#[test]
+fn pattern_assignment_simple() {
+    let program = r#"
+        ![a, b] = [1, 2];
+        return [b, a];
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"[2, 1]");
+}
+
+#[test]
+fn pattern_assignment_set() {
+    let program = r#"
+        var a = 3;
+        ![set a, b] = [1, 2];
+        return [b, a];
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"[2, 1]");
+}
+
+#[test]
+fn pattern_assignment_nested() {
+    let program = r#"
+        ![[a, b], c] = [[1, 2], 3];
+        return [a, b, c];
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"[1, 2, 3]");
+}
+
 fn eval_snapshot(program: &str) -> Value64 {
     let parser = ProgramParser::new();
     let prelude_ast = parser.parse(include_str!("../src/prelude.bovine")).unwrap();

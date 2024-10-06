@@ -454,8 +454,7 @@ impl<'a, 'b> VariableBuilder<'a, 'b> {
             Statement::Return(e) => self.declare_variables_in_expr(e),
             Statement::PatternAssignment(pattern, rhs) => {
                 self.declare_variables_in_expr(rhs);
-                let (var_ref, _) = pattern.expect_declaration();
-                self.declare_variable(&var_ref.name);
+                self.declare_variables_in_pattern(&pattern.value);
             }
         }
     }
@@ -729,17 +728,35 @@ impl<'a> FunctionTranslator<'a> {
         pattern: &Spanned<MatchPattern>,
     ) {
         let rhs_value = self.translate_expr(rhs);
-        match &pattern.value {
+        self.translate_match_pattern(&pattern.value, rhs_value);
+    }
+
+    fn translate_match_pattern(&mut self, pattern: &MatchPattern, value: Value) {
+        match pattern {
             MatchPattern::Discard => {}
             MatchPattern::Declaration(var_ref, _) => {
                 let variable = self
                     .variables
                     .get(&var_ref.name)
                     .expect("variable not defined");
-                self.builder.def_var(*variable, rhs_value);
+                self.builder.def_var(*variable, value);
             }
             MatchPattern::Assignment(target) => {
-                self.translate_assignment(target, rhs_value);
+                self.translate_assignment(target, value);
+            }
+            MatchPattern::Constant(_) => {} // TODO
+            MatchPattern::SimpleList(parts) => {
+                let value_len = self.call_native(&self.natives.list_len_u64, &[value])[0];
+                let len_eq =
+                    self.builder
+                        .ins()
+                        .icmp_imm(IntCC::Equal, value_len, parts.len() as i64);
+                self.builder.ins().trapz(len_eq, TrapCode::User(4));
+                for (i, part) in parts.iter().enumerate() {
+                    let ival = self.builder.ins().iconst(I64, i as i64);
+                    let element = self.call_native(&self.natives.list_get_u64, &[value, ival])[0];
+                    self.translate_match_pattern(part, element);
+                }
             }
             _ => todo!("Pattern matching isn't supported here yet"),
         }
