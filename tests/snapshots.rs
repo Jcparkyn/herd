@@ -421,16 +421,20 @@ fn match_expression() {
 fn match_constant() {
     let program = r#"
         f = \x\ switch x {
+            () => 'nil',
             [] => 'empty',
-            [()] => 'nil',
+            'foo' => 'foo',
+            'bar' => 'bar',
             [a] => 'singleton',
             [0, a] => 'zero',
             [1, a] => 'one',
             [_, a] => a,
         };
         return [
+            f (),
             f [],
-            f [()],
+            f 'foo',
+            f 'bar',
             f [42],
             f [0, 1],
             f [1, 2],
@@ -438,7 +442,7 @@ fn match_constant() {
         ];
     "#;
     let result = eval_snapshot_str(program);
-    insta::assert_snapshot!(result, @"['empty', 'nil', 'singleton', 'zero', 'one', 4]");
+    insta::assert_snapshot!(result, @"['nil', 'empty', 'foo', 'bar', 'singleton', 'zero', 'one', 4]");
 }
 
 fn eval_snapshot(program: &str) -> Value64 {

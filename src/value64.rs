@@ -33,7 +33,7 @@ pub enum PointerTag {
     Lambda,
 }
 
-const fn pointer_mask(tag: PointerTag) -> u64 {
+pub const fn pointer_mask(tag: PointerTag) -> u64 {
     ((tag as u64) << 48) | 0xFFFC_0000_0000_0000
 }
 
@@ -66,7 +66,7 @@ const fn is_safe_addr(ptr: u64) -> bool {
 
 const QNAN: u64 = 0x7FF8000000000000;
 pub const NANISH: u64 = 0x7FFC000000000000;
-const NANISH_MASK: u64 = 0xFFFF000000000000;
+pub const NANISH_MASK: u64 = 0xFFFF000000000000;
 const TAG_MASK: u64 = 0xFFFF000000000000;
 
 pub const TRUE_VALUE: u64 = 0x7FFE000000000003;

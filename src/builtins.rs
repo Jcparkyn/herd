@@ -117,6 +117,10 @@ pub extern "C" fn val_eq(val1: Value64Ref, val2: Value64Ref) -> Value64 {
     Value64::from_bool(*val1 == *val2)
 }
 
+pub extern "C" fn val_eq_u8(val1: Value64Ref, val2: Value64Ref) -> u8 {
+    (*val1 == *val2) as u8
+}
+
 pub extern "C" fn val_truthy(val: Value64Ref) -> i8 {
     val.truthy() as i8
 }

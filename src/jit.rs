@@ -20,7 +20,7 @@ use crate::{
     },
     builtins,
     pos::{Span, Spanned},
-    value64::{self},
+    value64::{self, PointerTag},
     Value64,
 };
 
@@ -94,6 +94,7 @@ struct NativeMethods {
     val_get_lambda_details: NativeMethod,
     construct_lambda: NativeMethod,
     list_borrow_u64: NativeMethod,
+    val_eq_u8: NativeMethod,
 }
 
 fn make_sig(module: &mut JITModule, params: &[ir::Type], returns: &[ir::Type]) -> ir::Signature {
@@ -142,6 +143,7 @@ fn get_native_methods<'a, 'b>(module: &'b mut JITModule) -> NativeMethods {
             &[VAL64],
         ),
         val_eq: make_method(module, "NATIVE:val_eq", &[VAL64, VAL64], &[VAL64]),
+        val_eq_u8: make_method(module, "NATIVE:val_eq_u8", &[VAL64, VAL64], &[types::I8]),
         val_truthy: make_method(module, "NATIVE:val_truthy", &[VAL64], &[types::I8]),
         val_get_lambda_details: make_method(
             module,
@@ -192,6 +194,7 @@ impl JIT {
         builder.symbol("NATIVE:val_get_index", builtins::val_get_index as *const u8);
         builder.symbol("NATIVE:val_set_index", builtins::val_set_index as *const u8);
         builder.symbol("NATIVE:val_eq", builtins::val_eq as *const u8);
+        builder.symbol("NATIVE:val_eq_u8", builtins::val_eq_u8 as *const u8);
         builder.symbol("NATIVE:val_truthy", builtins::val_truthy as *const u8);
         builder.symbol(
             "NATIVE:val_get_lambda_details",
@@ -560,7 +563,10 @@ impl<'a> FunctionTranslator<'a> {
             }
             Expr::Bool(b) => self.const_bool(*b),
             Expr::Number(f) => self.builder.ins().f64const(*f),
-            Expr::String(s) => self.string_literal(s.deref().clone()),
+            Expr::String(s) => {
+                let val = self.string_literal_borrow(s.deref().clone());
+                self.clone_val64(val)
+            }
             Expr::Nil => self.const_nil(),
             Expr::Op { op, lhs, rhs } => self.translate_op(*op, lhs, rhs),
             Expr::If {
@@ -768,6 +774,8 @@ impl<'a> FunctionTranslator<'a> {
                 self.builder.ins().trapz(matches, TrapCode::User(6));
             }
             MatchPattern::SimpleList(parts) => {
+                let is_list = self.is_ptr_type(value, PointerTag::List);
+                self.builder.ins().trapz(is_list, TrapCode::User(4));
                 let value_len = self.call_native(&self.natives.list_len_u64, &[value])[0];
                 let len_eq =
                     self.builder
@@ -797,16 +805,26 @@ impl<'a> FunctionTranslator<'a> {
             MatchPattern::Assignment(_) => true_val,
             MatchPattern::Constant(c) => self.translate_matches_constant(c, value),
             MatchPattern::SimpleList(parts) => {
+                let block0 = self.builder.create_block();
+                let block1 = self.builder.create_block();
+                let merge_block = self.builder.create_block();
+                self.builder.append_block_param(merge_block, types::I8);
+
+                // Return false if not a list
+                let is_list = self.is_ptr_type(value, PointerTag::List);
+                self.builder
+                    .ins()
+                    .brif(is_list, block0, &[], merge_block, &[false_val]);
+                self.builder.switch_to_block(block0);
+                self.builder.seal_block(block0);
+
+                // Return false if length doesn't match
                 let value_len = self.call_native(&self.natives.list_len_u64, &[value])[0];
                 let len_eq =
                     self.builder
                         .ins()
                         .icmp_imm(IntCC::Equal, value_len, parts.len() as i64);
 
-                let merge_block = self.builder.create_block();
-                self.builder.append_block_param(merge_block, types::I8);
-
-                let block1 = self.builder.create_block();
                 self.builder
                     .ins()
                     .brif(len_eq, block1, &[], merge_block, &[false_val]);
@@ -844,8 +862,9 @@ impl<'a> FunctionTranslator<'a> {
                 self.cmp_bits_imm(IntCC::Equal, value, expected_bits)
             }
             MatchConstant::Number(f) => self.cmp_bits_imm(IntCC::Equal, value, (*f).to_bits()),
-            MatchConstant::String(_s) => {
-                todo!()
+            MatchConstant::String(s) => {
+                let comp_val = self.string_literal_borrow(s.clone());
+                self.call_native(&self.natives.val_eq_u8, &[comp_val, value])[0]
             }
         }
     }
@@ -1290,6 +1309,20 @@ impl<'a> FunctionTranslator<'a> {
         self.builder.ins().select(b, t, f)
     }
 
+    fn is_ptr_type(&mut self, val: BValue, tag: PointerTag) -> Value {
+        let mask = value64::NANISH_MASK as i64;
+        let val_int = self.builder.ins().bitcast(I64, MemFlags::new(), val);
+        let and = self.builder.ins().band_imm(val_int, mask);
+        self.builder
+            .ins()
+            .icmp_imm(IntCC::Equal, and, value64::pointer_mask(tag) as i64)
+    }
+
+    fn guard_ptr_type(&mut self, val: BValue, tag: PointerTag) {
+        let is_ptr = self.is_ptr_type(val, tag);
+        self.builder.ins().trapz(is_ptr, TrapCode::User(1));
+    }
+
     fn guard_f64(&mut self, val: Value) {
         let val_int = self.builder.ins().bitcast(I64, MemFlags::new(), val);
         let nanish = self.builder.ins().iconst(I64, value64::NANISH as i64);
@@ -1298,13 +1331,13 @@ impl<'a> FunctionTranslator<'a> {
         self.builder.ins().trapz(is_f64, TrapCode::User(2));
     }
 
-    fn string_literal(&mut self, string: String) -> Value {
+    fn string_literal_borrow(&mut self, string: String) -> BValue {
         let string_val64 = self
             .string_constants
             .entry(string)
             .or_insert_with_key(|key| Value64::from_string(Rc::new(key.clone())));
         let string_val = self.builder.ins().f64const(string_val64.bits_f64());
-        self.clone_val64(string_val)
+        string_val
     }
 }
 
