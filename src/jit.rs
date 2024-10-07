@@ -1159,9 +1159,15 @@ impl<'a> FunctionTranslator<'a> {
 
         trans.builder.finalize();
 
+        // Using a name here (instead of declare_anonymouser_function) for profiling info on Linux.
+        let func_name = format!(
+            "USER:{}:{}",
+            lambda.name.as_deref().unwrap_or("lambda"),
+            lambda.body.span.start,
+        );
         let func_id = self
             .module
-            .declare_anonymous_function(&ctx.func.signature)
+            .declare_function(&func_name, Linkage::Export, &ctx.func.signature)
             .unwrap();
 
         self.module.define_function(func_id, &mut ctx).unwrap();
