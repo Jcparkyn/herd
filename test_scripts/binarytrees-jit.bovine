@@ -6,9 +6,10 @@ makeTree = \d\ if d > 0 then (
   [(), ()]
 );
 
-checkTree = \node\ if node.[0]
-  then (1 + (checkTree node.[0]) + (checkTree node.[1]))
-  else 1;
+checkTree = \node\ switch node {
+  [(), _] => 1,
+  [l, r] => 1 + (checkTree l) + (checkTree r),
+};
 
 makeCheck = \d\ checkTree (makeTree d);
 

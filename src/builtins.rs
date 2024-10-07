@@ -11,6 +11,12 @@ use crate::{
 #[repr(transparent)]
 pub struct Value64Ref(ManuallyDrop<Value64>);
 
+impl Value64Ref {
+    pub fn from_ref(val: &Value64) -> Self {
+        Self(ManuallyDrop::new(unsafe { std::ptr::read(val) }))
+    }
+}
+
 impl Deref for Value64Ref {
     type Target = Value64;
 
@@ -39,6 +45,11 @@ pub extern "C" fn list_len_u64(list: Value64Ref) -> u64 {
 pub extern "C" fn list_get_u64(list: Value64Ref, index: u64) -> Value64 {
     let list2 = list.as_list().unwrap();
     list2.values[index as usize].clone()
+}
+
+pub extern "C" fn list_borrow_u64(list: Value64Ref, index: u64) -> Value64Ref {
+    let list2 = list.as_list().unwrap();
+    Value64Ref::from_ref(&list2.values[index as usize])
 }
 
 pub extern "C" fn dict_new(capacity: u64) -> Value64 {

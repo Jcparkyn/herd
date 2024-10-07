@@ -60,6 +60,12 @@ pub struct JIT {
     string_constants: HashMap<String, Value64>,
 }
 
+/// An owned Value64
+type OValue = Value;
+
+/// A borrowed Value64
+type BValue = Value;
+
 #[derive(Debug, Clone)]
 struct NativeMethod {
     func: FuncId,
@@ -87,6 +93,7 @@ struct NativeMethods {
     val_set_index: NativeMethod,
     val_get_lambda_details: NativeMethod,
     construct_lambda: NativeMethod,
+    list_borrow_u64: NativeMethod,
 }
 
 fn make_sig(module: &mut JITModule, params: &[ir::Type], returns: &[ir::Type]) -> ir::Signature {
@@ -119,6 +126,7 @@ fn get_native_methods<'a, 'b>(module: &'b mut JITModule) -> NativeMethods {
         list_push: make_method(module, "NATIVE:list_push", &[VAL64, VAL64], &[VAL64]),
         list_len_u64: make_method(module, "NATIVE:list_len_u64", &[VAL64], &[I64]),
         list_get_u64: make_method(module, "NATIVE:list_get_u64", &[VAL64, I64], &[VAL64]),
+        list_borrow_u64: make_method(module, "NATIVE:list_borrow_u64", &[VAL64, I64], &[VAL64]),
         dict_new: make_method(module, "NATIVE:dict_new", &[I64], &[VAL64]),
         dict_insert: make_method(
             module,
@@ -175,6 +183,10 @@ impl JIT {
         builder.symbol("NATIVE:list_push", builtins::list_push as *const u8);
         builder.symbol("NATIVE:list_len_u64", builtins::list_len_u64 as *const u8);
         builder.symbol("NATIVE:list_get_u64", builtins::list_get_u64 as *const u8);
+        builder.symbol(
+            "NATIVE:list_borrow_u64",
+            builtins::list_borrow_u64 as *const u8,
+        );
         builder.symbol("NATIVE:dict_new", builtins::dict_new as *const u8);
         builder.symbol("NATIVE:dict_insert", builtins::dict_insert as *const u8);
         builder.symbol("NATIVE:val_get_index", builtins::val_get_index as *const u8);
@@ -736,17 +748,19 @@ impl<'a> FunctionTranslator<'a> {
         self.translate_match_pattern(&pattern.value, rhs_value);
     }
 
-    fn translate_match_pattern(&mut self, pattern: &MatchPattern, value: Value) {
+    fn translate_match_pattern(&mut self, pattern: &MatchPattern, value: BValue) {
         match pattern {
             MatchPattern::Discard => {}
             MatchPattern::Declaration(var_ref, _) => {
-                let variable = self
+                let variable = *self
                     .variables
                     .get(&var_ref.name)
                     .expect("variable not defined");
-                self.builder.def_var(*variable, value);
+                let value = self.clone_val64(value);
+                self.builder.def_var(variable, value);
             }
             MatchPattern::Assignment(target) => {
+                let value = self.clone_val64(value);
                 self.translate_assignment(target, value);
             }
             MatchPattern::Constant(c) => {
@@ -762,15 +776,19 @@ impl<'a> FunctionTranslator<'a> {
                 self.builder.ins().trapz(len_eq, TrapCode::User(4));
                 for (i, part) in parts.iter().enumerate() {
                     let ival = self.builder.ins().iconst(I64, i as i64);
-                    let element = self.call_native(&self.natives.list_get_u64, &[value, ival])[0];
+                    let element =
+                        self.call_native(&self.natives.list_borrow_u64, &[value, ival])[0];
                     self.translate_match_pattern(part, element);
                 }
             }
-            _ => todo!("Pattern matching isn't supported here yet"),
+            MatchPattern::SpreadList(_) => {
+                todo!("Pattern matching with ... isn't supported here yet")
+            }
         }
     }
 
-    fn translate_matches_pattern(&mut self, pattern: &MatchPattern, value: Value) -> Value {
+    fn translate_matches_pattern(&mut self, pattern: &MatchPattern, value: BValue) -> Value {
+        // value is borrowed
         let true_val = self.builder.ins().iconst(types::I8, 1);
         let false_val = self.builder.ins().iconst(types::I8, 0);
         match pattern {
@@ -797,7 +815,8 @@ impl<'a> FunctionTranslator<'a> {
                 let mut matches_all = self.builder.ins().iconst(types::I8, 1);
                 for (i, part) in parts.iter().enumerate() {
                     let ival = self.builder.ins().iconst(I64, i as i64);
-                    let element = self.call_native(&self.natives.list_get_u64, &[value, ival])[0];
+                    let element =
+                        self.call_native(&self.natives.list_borrow_u64, &[value, ival])[0];
                     let matches = self.translate_matches_pattern(part, element);
                     // TODO short-circuit
                     matches_all = self.builder.ins().band(matches_all, matches);
@@ -813,7 +832,7 @@ impl<'a> FunctionTranslator<'a> {
         }
     }
 
-    fn translate_matches_constant(&mut self, c: &MatchConstant, value: Value) -> Value {
+    fn translate_matches_constant(&mut self, c: &MatchConstant, value: BValue) -> Value {
         match c {
             MatchConstant::Nil => self.is_nil(value),
             MatchConstant::Bool(b) => {
@@ -831,7 +850,7 @@ impl<'a> FunctionTranslator<'a> {
         }
     }
 
-    fn translate_assignment(&mut self, target: &ast::AssignmentTarget, rhs: Value) {
+    fn translate_assignment(&mut self, target: &ast::AssignmentTarget, rhs: OValue) {
         let mut path_values = vec![];
         for index in &target.path {
             let value = self.translate_expr(index);
@@ -853,7 +872,7 @@ impl<'a> FunctionTranslator<'a> {
         self.builder.def_var(variable, new_val);
     }
 
-    fn assign_part(&mut self, val: Value, index: Value, rest_path: &[Value], rhs: Value) -> Value {
+    fn assign_part(&mut self, val: Value, index: Value, rest_path: &[Value], rhs: OValue) -> Value {
         match rest_path {
             [] => {
                 return self.call_native(&self.natives.val_set_index, &[val, index, rhs])[0];
@@ -1242,7 +1261,7 @@ impl<'a> FunctionTranslator<'a> {
         })
     }
 
-    fn clone_val64(&mut self, val: Value) -> Value {
+    fn clone_val64(&mut self, val: Value) -> OValue {
         self.call_native(&self.natives.clone, &[val])[0]
     }
 
