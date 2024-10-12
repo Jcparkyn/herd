@@ -692,6 +692,36 @@ impl<'a> FunctionTranslator<'a> {
     }
 
     fn translate_native_call(&mut self, callee: BuiltInFunction, args: &Vec<SpannedExpr>) -> Value {
+        use BuiltInFunction::*;
+        match callee {
+            Print => self.call_native_eval(&self.natives.print, args),
+            Range => self.call_native_eval(&self.natives.range, args),
+            Len => self.call_native_eval(&self.natives.len, args),
+            ShiftLeft => self.call_native_eval(&self.natives.val_shift_left, args),
+            XOR => self.call_native_eval(&self.natives.val_xor, args),
+            Not => self.call_native_eval(&self.natives.val_not, args),
+            Push => self.call_native_eval(&self.natives.list_push, args),
+            Floor => {
+                assert!(args.len() == 1);
+                let val = self.translate_expr(&args[0]);
+                self.guard_f64(val);
+                self.builder.ins().floor(val)
+            }
+            _ => {
+                // FIXME: using trapz because trap makes it impossible to return Value
+                let message = self
+                    .string_literal_borrow(format!("ERROR: Method not implemented ({})", callee));
+                self.clone_val64(message);
+                self.call_native(&self.natives.print, &[message]);
+                let zero = self.builder.ins().iconst(types::I8, 0);
+                self.builder.ins().trapz(zero, TrapCode::User(1));
+                return self.const_nil();
+            }
+        }
+    }
+
+    /// Wraps [Self::call_native] and evaluates arguments
+    fn call_native_eval(&mut self, method: &NativeMethod, args: &Vec<SpannedExpr>) -> Value {
         let mut sig = self.module.make_signature();
 
         for _arg in args {
@@ -700,20 +730,9 @@ impl<'a> FunctionTranslator<'a> {
 
         sig.returns.push(AbiParam::new(VAL64));
 
-        let method = match get_native_method_for_builtin(&self.natives, callee) {
-            Some(m) => m,
-            None => {
-                // FIXME: using trapz because trap makes it impossible to return Value
-                let zero = self.builder.ins().iconst(types::I8, 0);
-                self.builder.ins().trapz(zero, TrapCode::User(1));
-                return self.const_nil();
-            }
-        };
-
         let mut arg_values = Vec::new();
         for arg in args {
-            let value = self.translate_expr(arg);
-            arg_values.push(self.clone_val64(value))
+            arg_values.push(self.translate_expr(arg))
         }
         match self.call_native(method, &arg_values) {
             [val] => *val,
