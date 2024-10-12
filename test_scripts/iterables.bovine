@@ -5,12 +5,12 @@ iterRange = \start stop\ [
   next: \state\ if state == stop - 1 then () else (state + 1),
 ];
 
-iterToArray = \iter\ (
+iterToList = \iter\ (
   var arr = [];
   var state = iter.init;
   getCurrent = iter.current;
   getNext = iter.next;
-  for _ in range 0 20 do (
+  while true do (
     if state == () then (
       return arr;
     )
@@ -23,11 +23,13 @@ iterToArray = \iter\ (
 iterStep = \var iter n\ (
   next = iter.next;
   set iter.next = \var state\ (
-    for _ in range 0 n do (
+    var i = 0;
+    while i < n do (
       set state = next state;
       if state == () then (
         return ();
       )
+      set i = i + 1;
     )
     return state;
   );
@@ -41,27 +43,27 @@ iterMap = \var iter f\ (
 );
 
 iterRepeat = \iter iterations\ [
-  init: [1, iter.init],
-  current: \[_, i]\ iter.current i,
-  next: \var state\ (
-    ![iteration, var innerState] = state;
-    set innerState = iter.next innerState;
-    if innerState == () then (
-      if iteration < iterations then (
-        set state.[0] = iteration + 1;
-        set state.[1] = iter.init;
-        return state;
-      ) else (
-        return ();
+    init: [1, iter.init],
+    current: \[_, i]\ iter.current i,
+    next: \var state\ (
+      ![iteration, var innerState] = state;
+      set innerState = iter.next innerState;
+      if innerState == () then (
+        if iteration < iterations then (
+          set state.[0] = iteration + 1;
+          set state.[1] = iter.init;
+          return state;
+        ) else (
+          return ();
+        )
       )
+      set state.[1] = innerState;
+      state
     )
-    set state.[1] = innerState;
-    state
-  )
-];
+  ];
 
-iter2 = iterRange 1 7
-  | iterStep 2
-  | iterMap \(0 - _)
-  | iterRepeat 2;
-println (iterToArray iter2);
+iter2 = iterRange 0 100000000
+  | iterMap (\x\ 0 - x)
+  | iterRepeat 2
+  | iterStep 10000000;
+println (iterToList iter2);
