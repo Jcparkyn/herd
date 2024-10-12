@@ -412,8 +412,7 @@ impl<'a, 'b> VariableBuilder<'a, 'b> {
             }
             Expr::ForIn { iter, var, body } => {
                 self.declare_variables_in_expr(iter);
-                let (var_ref, _) = var.expect_declaration();
-                self.declare_variable(&var_ref.name);
+                self.declare_variables_in_pattern(&var.value);
                 self.declare_variables_in_expr(body);
             }
             Expr::While { condition, body } => {
@@ -975,7 +974,6 @@ impl<'a> FunctionTranslator<'a> {
         let header_block = self.builder.create_block();
         let body_block = self.builder.create_block();
         let exit_block = self.builder.create_block();
-        let (var_ref, _) = var.expect_declaration();
 
         let iter_value = self.translate_expr(iter);
         let len_value = self.call_native(&self.natives.list_len_u64, &[iter_value])[0];
@@ -1010,11 +1008,7 @@ impl<'a> FunctionTranslator<'a> {
         let current_item =
             self.call_native(&self.natives.list_get_u64, &[iter_value, current_index])[0];
         self.clone_val64(current_item);
-        let variable = self
-            .variables
-            .get(&var_ref.name)
-            .expect("variable not defined");
-        self.builder.def_var(*variable, current_item);
+        self.translate_match_pattern(&var.value, current_item);
         self.translate_expr(body);
         let next_index = self.builder.ins().iadd_imm(current_index, 1);
         self.builder.ins().jump(header_block, &[next_index]);
