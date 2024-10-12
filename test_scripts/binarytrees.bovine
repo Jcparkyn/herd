@@ -13,7 +13,7 @@ checkTree = \node\ switch node {
 
 makeCheck = \d\ checkTree (makeTree d);
 
-main = \n\ (
+run = \n\ (
   minDepth = 4;
   maxDepth = n;
   stretchDepth = maxDepth + 1;
@@ -31,4 +31,6 @@ main = \n\ (
   printf ['long lived tree of depth ', maxDepth, ' check: ', (checkTree longLivedTree)];
 );
 
-main 15;
+main = \\ run 18;
+
+main ();

@@ -659,8 +659,7 @@ impl<'a> FunctionTranslator<'a> {
         let mut arg_values = Vec::new();
         arg_values.push(closure_ptr);
         for arg in args {
-            let value = self.translate_expr(arg);
-            arg_values.push(self.clone_val64(value))
+            arg_values.push(self.translate_expr(arg))
         }
         arg_values.push(self.clone_val64(callee_val));
         let call = self
