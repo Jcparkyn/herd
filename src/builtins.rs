@@ -31,7 +31,7 @@ pub extern "C" fn list_new(capacity: u64) -> Value64 {
     ))))
 }
 
-pub extern "C" fn list_push(list: Value64, val: Value64) -> Value64 {
+pub extern "C" fn public_list_push(list: Value64, val: Value64) -> Value64 {
     let mut list = list.try_into_list().unwrap();
     let mut_list = Rc::make_mut(&mut list);
     mut_list.values.push(val);

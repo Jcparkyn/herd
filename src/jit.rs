@@ -182,7 +182,7 @@ impl JIT {
         let isa = isa_builder.finish(flags).unwrap();
         let mut builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
         builder.symbol("NATIVE:list_new", builtins::list_new as *const u8);
-        builder.symbol("NATIVE:list_push", builtins::list_push as *const u8);
+        builder.symbol("NATIVE:list_push", builtins::public_list_push as *const u8);
         builder.symbol("NATIVE:list_len_u64", builtins::list_len_u64 as *const u8);
         builder.symbol("NATIVE:list_get_u64", builtins::list_get_u64 as *const u8);
         builder.symbol(
@@ -1352,6 +1352,7 @@ fn get_native_method_for_builtin(
         BuiltInFunction::ShiftLeft => Some(&methods.val_shift_left),
         BuiltInFunction::XOR => Some(&methods.val_xor),
         BuiltInFunction::Not => Some(&methods.val_not),
+        BuiltInFunction::Push => Some(&methods.list_push),
         _ => None,
     }
 }
