@@ -123,7 +123,7 @@ fn get_native_methods<'a, 'b>(module: &'b mut JITModule) -> NativeMethods {
     }
 
     let native_methods = NativeMethods {
-        list_new: make_method(module, "NATIVE:list_new", &[I64], &[VAL64]),
+        list_new: make_method(module, "NATIVE:list_new", &[I64, PTR], &[VAL64]),
         list_push: make_method(module, "NATIVE:list_push", &[VAL64, VAL64], &[VAL64]),
         list_len_u64: make_method(module, "NATIVE:list_len_u64", &[VAL64], &[I64]),
         list_get_u64: make_method(module, "NATIVE:list_get_u64", &[VAL64, I64], &[VAL64]),
@@ -578,13 +578,18 @@ impl<'a> FunctionTranslator<'a> {
             Expr::Call { callee, args } => self.translate_indirect_call(callee, args),
             Expr::CallNative { callee, args } => self.translate_native_call(*callee, args),
             Expr::List(l) => {
-                let len_value = self.builder.ins().iconst(types::I64, l.len() as i64);
-                let mut list = self.call_native(&self.natives.list_new, &[len_value])[0];
-                for item in l {
+                let slot = self.builder.create_sized_stack_slot(StackSlotData::new(
+                    StackSlotKind::ExplicitSlot,
+                    8 * l.len() as u32,
+                    0,
+                ));
+                for (i, item) in l.iter().enumerate() {
                     let val = self.translate_expr(item);
-                    list = self.call_native(&self.natives.list_push, &[list, val])[0];
+                    self.builder.ins().stack_store(val, slot, 8 * i as i32);
                 }
-                list
+                let len_value = self.builder.ins().iconst(types::I64, l.len() as i64);
+                let items_ptr = self.builder.ins().stack_addr(PTR, slot, 0);
+                self.call_native(&self.natives.list_new, &[len_value, items_ptr])[0]
             }
             Expr::GetIndex(val, index) => {
                 let index = self.translate_expr(index);

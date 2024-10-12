@@ -25,10 +25,9 @@ impl Deref for Value64Ref {
     }
 }
 
-pub extern "C" fn list_new(capacity: u64) -> Value64 {
-    Value64::from_list(Rc::new(ListInstance::new(Vec::with_capacity(
-        capacity as usize,
-    ))))
+pub extern "C" fn list_new(len: u64, items: *const Value64) -> Value64 {
+    let items_slice = unsafe { std::slice::from_raw_parts(items, len as usize) };
+    Value64::from_list(Rc::new(ListInstance::new(items_slice.to_vec())))
 }
 
 pub extern "C" fn public_list_push(list: Value64, val: Value64) -> Value64 {
