@@ -1409,8 +1409,21 @@ impl<'a> FunctionTranslator<'a> {
     }
 
     fn drop_val64(&mut self, val: OValue) {
-        // TODO: short-circuit value types
+        let is_ptr = self.is_ptr_val(val);
+        let drop_block = self.builder.create_block();
+        // Short-circuit if it's not a reference type
+        let after_block = self.builder.create_block();
+
+        self.builder
+            .ins()
+            .brif(is_ptr, drop_block, &[], after_block, &[]);
+        self.builder.switch_to_block(drop_block);
+        self.builder.seal_block(drop_block);
         self.call_native(&self.natives.drop, &[val]);
+        self.builder.ins().jump(after_block, &[]);
+
+        self.builder.switch_to_block(after_block);
+        self.builder.seal_block(after_block);
     }
 
     fn set_src_span(&mut self, span: &Span) {
@@ -1435,6 +1448,15 @@ impl<'a> FunctionTranslator<'a> {
         let t = self.const_bool(true);
         let f = self.const_bool(false);
         self.builder.ins().select(b, t, f)
+    }
+
+    fn is_ptr_val(&mut self, val: BValue) -> Value {
+        let val_int = self.builder.ins().bitcast(I64, MemFlags::new(), val);
+        let and = self
+            .builder
+            .ins()
+            .band_imm(val_int, 0xFFFC000000000000u64 as i64);
+        self.cmp_bits_imm(IntCC::Equal, and, 0xFFFC000000000000)
     }
 
     fn is_ptr_type(&mut self, val: BValue, tag: PointerTag) -> Value {
