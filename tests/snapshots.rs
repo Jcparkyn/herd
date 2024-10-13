@@ -34,10 +34,9 @@ fn assert_rcs_dropped() {
         for s in tracker.strings.0.iter() {
             assert_rc_dropped(&s);
         }
-        // TODO
-        // for l in tracker.lambdas.0.iter() {
-        //     assert_rc_dropped(&l);
-        // }
+        for l in tracker.lambdas.0.iter() {
+            assert_rc_dropped(&l);
+        }
     });
 }
 

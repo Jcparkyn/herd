@@ -543,8 +543,13 @@ struct FunctionTranslator<'a> {
 }
 
 impl<'a> FunctionTranslator<'a> {
-    fn translate_function_params(&mut self, params: &[Spanned<MatchPattern>], entry_block: Block) {
-        for (i, pattern) in params.iter().enumerate() {
+    fn translate_function_entry(&mut self, lambda: &LambdaExpr, entry_block: Block) {
+        for var in &lambda.potential_captures {
+            let var = *self.variables.get(&var.name).unwrap();
+            let val = self.builder.use_var(var);
+            self.clone_val64(val);
+        }
+        for (i, pattern) in lambda.params.iter().enumerate() {
             let value = self.builder.block_params(entry_block)[i + 1];
             self.translate_match_pattern(&pattern.value, value);
         }
@@ -594,7 +599,7 @@ impl<'a> FunctionTranslator<'a> {
                 let slot = self.builder.create_sized_stack_slot(StackSlotData::new(
                     StackSlotKind::ExplicitSlot,
                     8 * l.len() as u32,
-                    0,
+                    8,
                 ));
                 for (i, item) in l.iter().enumerate() {
                     let val = self.translate_expr(item);
@@ -687,15 +692,11 @@ impl<'a> FunctionTranslator<'a> {
         });
 
         let mut sig = self.module.make_signature();
-
         sig.params.push(AbiParam::new(I64)); // closure pointer
-
         for _arg in args {
             sig.params.push(AbiParam::new(VAL64));
         }
-
         sig.params.push(AbiParam::new(VAL64));
-
         sig.returns.push(AbiParam::new(VAL64));
         let sig_ref = self.builder.import_signature(sig);
 
@@ -704,7 +705,9 @@ impl<'a> FunctionTranslator<'a> {
         for arg in args {
             arg_values.push(self.translate_expr(arg))
         }
-        arg_values.push(self.clone_val64(callee_val));
+        // Add the function itself as a parameter, to support recursion.
+        // HACK: we rely on the function itself to drop this before it returns, which means we don't drop callee_val here.
+        arg_values.push(callee_val);
         let call = self
             .builder
             .ins()
@@ -731,7 +734,7 @@ impl<'a> FunctionTranslator<'a> {
         let closure_ptr_slot = self.builder.create_sized_stack_slot(StackSlotData::new(
             StackSlotKind::ExplicitSlot,
             8,
-            0,
+            8,
         ));
         let closure_ptr_ptr_val = self.builder.ins().stack_addr(I64, closure_ptr_slot, 0);
         let arg_count_val = self.builder.ins().iconst(types::I32, args.len() as i64);
@@ -1237,7 +1240,10 @@ impl<'a> FunctionTranslator<'a> {
             string_constants: &mut self.string_constants,
             return_block,
         };
-        trans.translate_function_params(&*lambda.params, entry_block);
+        trans.translate_function_entry(lambda, entry_block);
+        for var in lambda.potential_captures.iter() {
+            trans.variables.get(&var.name).unwrap();
+        }
         let return_value = trans.translate_expr(&lambda.body);
 
         trans
@@ -1274,7 +1280,7 @@ impl<'a> FunctionTranslator<'a> {
         let closure_slot = self.builder.create_sized_stack_slot(StackSlotData::new(
             StackSlotKind::ExplicitSlot,
             (8 * lambda.potential_captures.len()) as u32,
-            0,
+            8,
         ));
         for (i, var_ref) in lambda.potential_captures.iter().enumerate() {
             let var = self.variables.get(&var_ref.name).unwrap();
