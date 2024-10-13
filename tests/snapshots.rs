@@ -1,7 +1,29 @@
 use bovine::analysis::Analyzer;
 use bovine::jit;
 use bovine::lang::ProgramParser;
-use bovine::value64::Value64;
+use bovine::value64::{Value64, RC_TRACKER};
+
+fn reset_tracker() {
+    RC_TRACKER.with(|tracker| {
+        let mut tracker = tracker.borrow_mut();
+        tracker.lists.clear();
+    });
+}
+
+fn assert_rcs_dropped() {
+    RC_TRACKER.with(|tracker| {
+        let tracker = tracker.borrow_mut();
+        for l in tracker.lists.iter() {
+            assert_eq!(
+                0,
+                l.strong_count(),
+                "This Rc still has {} references: {}",
+                l.strong_count(),
+                l.upgrade().unwrap()
+            );
+        }
+    });
+}
 
 #[test]
 fn add() {
@@ -10,6 +32,7 @@ fn add() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"3");
+    assert_rcs_dropped();
 }
 
 #[test]
@@ -19,6 +42,7 @@ fn sub() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"-1");
+    assert_rcs_dropped();
 }
 
 #[test]
@@ -28,6 +52,7 @@ fn bodmas() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"3");
+    assert_rcs_dropped();
 }
 
 #[test]
@@ -37,6 +62,7 @@ fn array_literal() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"[1, 2, 3]");
+    assert_rcs_dropped();
 }
 
 #[test]
@@ -50,6 +76,7 @@ fn variables() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"3");
+    assert_rcs_dropped();
 }
 
 #[test]
@@ -62,6 +89,7 @@ fn equals() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"[false, true, false, true, false, true]");
+    // assert_rcs_dropped();
 }
 
 #[test]
@@ -74,6 +102,7 @@ fn cmp_lt() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"[true, false, false, false, true, true, false, false]");
+    assert_rcs_dropped();
 }
 
 #[test]
@@ -86,6 +115,7 @@ fn cmp_gt() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"[false, false, false, false, false, true, false, false]");
+    assert_rcs_dropped();
 }
 
 #[test]
@@ -101,6 +131,7 @@ fn blocks() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"[1, 3, 2]");
+    assert_rcs_dropped();
 }
 
 #[test]
@@ -110,6 +141,7 @@ fn index_list() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"2");
+    // assert_rcs_dropped();
 }
 
 #[test]
@@ -124,6 +156,7 @@ fn if_else() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"[1, 1, 0, ()]");
+    assert_rcs_dropped();
 }
 
 #[test]
@@ -138,6 +171,7 @@ fn logic_and() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"[true, false, false, false]");
+    assert_rcs_dropped();
 }
 
 #[test]
@@ -152,6 +186,7 @@ fn logic_or() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"[true, true, true, false]");
+    assert_rcs_dropped();
 }
 
 #[test]
@@ -165,6 +200,7 @@ fn for_in_loop() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"6");
+    // assert_rcs_dropped();
 }
 
 #[test]
@@ -178,6 +214,7 @@ fn while_loop() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"16");
+    assert_rcs_dropped();
 }
 
 #[test]
@@ -188,6 +225,7 @@ fn user_functions() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"9");
+    assert_rcs_dropped();
 }
 
 #[test]
@@ -201,6 +239,7 @@ fn user_functions_2() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"[12, 30]");
+    assert_rcs_dropped();
 }
 
 #[test]
@@ -210,6 +249,7 @@ fn builtin_range() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"[-1, 0, 1, 2]");
+    assert_rcs_dropped();
 }
 
 #[test]
@@ -219,6 +259,7 @@ fn builtin_not() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"[false, false, true]");
+    assert_rcs_dropped();
 }
 
 #[test]
@@ -229,6 +270,7 @@ fn early_return_if() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"[[1], 0]");
+    // assert_rcs_dropped();
 }
 
 #[test]
@@ -455,6 +497,7 @@ fn eval_snapshot(program: &str) -> Value64 {
 
     let mut jit = jit::JIT::new();
     let main_func = jit.compile_program_as_function(&program_ast).unwrap();
+    reset_tracker();
     let result = unsafe { jit.run_func(main_func, Value64::NIL) };
 
     result

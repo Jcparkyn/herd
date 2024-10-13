@@ -6,6 +6,9 @@ use crate::{
     value64::{DictInstance, LambdaFunction, ListInstance, Value64},
 };
 
+#[cfg(debug_assertions)]
+use crate::value64::RC_TRACKER;
+
 // Not using &Value64, so that the ABI for these functions still takes
 // regular f64 values.
 #[repr(transparent)]
@@ -25,15 +28,38 @@ impl Deref for Value64Ref {
     }
 }
 
+fn rc_new_list(val: ListInstance) -> Rc<ListInstance> {
+    let rc = Rc::new(val);
+    #[cfg(debug_assertions)]
+    RC_TRACKER.with(|tracker| {
+        let mut tracker = tracker.borrow_mut();
+        tracker.lists.push(Rc::downgrade(&rc));
+    });
+    rc
+}
+
+fn rc_mutate_list<T: FnOnce(&mut ListInstance)>(list: &mut Rc<ListInstance>, action: T) {
+    #[cfg(debug_assertions)]
+    let will_clone = Rc::strong_count(list) > 1;
+    let mut_val = Rc::make_mut(list);
+    action(mut_val);
+    #[cfg(debug_assertions)]
+    if will_clone {
+        RC_TRACKER.with(|tracker| {
+            let mut tracker = tracker.borrow_mut();
+            tracker.lists.push(Rc::downgrade(&list));
+        });
+    }
+}
+
 pub extern "C" fn list_new(len: u64, items: *const Value64) -> Value64 {
     let items_slice = unsafe { std::slice::from_raw_parts(items, len as usize) };
-    Value64::from_list(Rc::new(ListInstance::new(items_slice.to_vec())))
+    Value64::from_list(rc_new_list(ListInstance::new(items_slice.to_vec())))
 }
 
 pub extern "C" fn public_list_push(list: Value64, val: Value64) -> Value64 {
     let mut list = list.try_into_list().unwrap();
-    let mut_list = Rc::make_mut(&mut list);
-    mut_list.values.push(val);
+    rc_mutate_list(&mut list, |l| l.values.push(val));
     Value64::from_list(list)
 }
 
@@ -71,7 +97,7 @@ pub extern "C" fn public_range(start: Value64, stop: Value64) -> Value64 {
     for i in start_int..stop_int {
         values.push(Value64::from_f64(i as f64));
     }
-    return Value64::from_list(Rc::new(ListInstance::new(values)));
+    return Value64::from_list(rc_new_list(ListInstance::new(values)));
 }
 
 pub extern "C" fn public_len(list: Value64) -> Value64 {

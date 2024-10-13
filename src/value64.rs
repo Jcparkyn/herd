@@ -5,6 +5,9 @@ use std::{
     rc::Rc,
 };
 
+#[cfg(debug_assertions)]
+use std::{cell::RefCell, rc::Weak};
+
 use crate::{
     ast::{MatchPattern, SpannedExpr},
     pos::Spanned,
@@ -422,6 +425,18 @@ impl std::hash::Hash for Value64 {
             None => self.bits().hash(state),
         }
     }
+}
+
+#[cfg(debug_assertions)]
+pub struct RcTracker {
+    pub lists: Vec<Weak<ListInstance>>,
+}
+
+#[cfg(debug_assertions)]
+thread_local! {
+    pub static RC_TRACKER: RefCell<RcTracker> = RefCell::new(
+        RcTracker { lists: Vec::new() }
+    );
 }
 
 impl Clone for Value64 {
