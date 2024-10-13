@@ -96,6 +96,7 @@ struct NativeMethods {
     construct_lambda: NativeMethod,
     list_borrow_u64: NativeMethod,
     val_eq_u8: NativeMethod,
+    drop: NativeMethod,
 }
 
 fn make_sig(module: &mut JITModule, params: &[ir::Type], returns: &[ir::Type]) -> ir::Signature {
@@ -163,6 +164,7 @@ fn get_native_methods<'a, 'b>(module: &'b mut JITModule) -> NativeMethods {
         range: make_method(module, "NATIVE:range", &[VAL64, VAL64], &[VAL64]),
         len: make_method(module, "NATIVE:len", &[VAL64], &[VAL64]),
         clone: make_method(module, "NATIVE:clone", &[VAL64], &[VAL64]),
+        drop: make_method(module, "NATIVE:drop", &[VAL64], &[]),
         print: make_method(module, "NATIVE:print", &[VAL64], &[]),
         val_not: make_method(module, "NATIVE:val_not", &[VAL64], &[VAL64]),
     };
@@ -213,6 +215,7 @@ impl JIT {
         builder.symbol("NATIVE:range", builtins::public_range as *const u8);
         builder.symbol("NATIVE:len", builtins::public_len as *const u8);
         builder.symbol("NATIVE:clone", builtins::clone as *const u8);
+        builder.symbol("NATIVE:drop", builtins::drop as *const u8);
         builder.symbol("NATIVE:print", builtins::public_print as *const u8);
         builder.symbol("NATIVE:val_not", builtins::public_val_not as *const u8);
 
@@ -308,9 +311,8 @@ impl JIT {
         let variables = {
             let args_val = builder.block_params(entry_block)[0];
             let mut variable_builder = VariableBuilder::new(&mut builder);
-            let args_var = variable_builder.declare_variable("args");
+            variable_builder.create_variable("args", args_val);
             variable_builder.declare_variables_in_expr(body);
-            variable_builder.define_variable(args_var, args_val, "args");
             variable_builder.variables
         };
 
@@ -352,19 +354,18 @@ impl<'a, 'b> VariableBuilder<'a, 'b> {
 
     fn declare_variables_in_func(&mut self, func: &FuncExpr, entry_block: Block) {
         let closure_ptr = self.builder.block_params(entry_block)[0];
-        for (i, var_ref) in func.potential_captures.iter().enumerate() {
-            let var = self.declare_variable(&var_ref.name);
+        for (i, var) in func.potential_captures.iter().enumerate() {
             let val = self.builder.ins().load(
                 VAL64,
                 MemFlags::new(),
                 closure_ptr,
                 (i * size_of::<Value64>()) as i32,
             );
-            self.define_variable(var, val, &var_ref.name);
+            self.create_variable(&var.name, val);
         }
         for pattern in &*func.params {
             self.declare_variables_in_pattern(&pattern.value);
-            // Actual match is done in function body.
+            // Actual match is done in function body, so we can reuse the logic from FunctionTranslator.
         }
         if let Some(name) = &func.name {
             let val = self
@@ -373,8 +374,7 @@ impl<'a, 'b> VariableBuilder<'a, 'b> {
                 .last()
                 .copied()
                 .unwrap();
-            let var = self.declare_variable(name);
-            self.define_variable(var, val, &name);
+            self.create_variable(name, val);
         }
 
         self.declare_variables_in_expr(&func.body);
@@ -475,7 +475,11 @@ impl<'a, 'b> VariableBuilder<'a, 'b> {
     fn declare_variables_in_pattern(&mut self, pattern: &MatchPattern) {
         match pattern {
             MatchPattern::Declaration(var, _) => {
-                self.declare_variable(&var.name);
+                let nil = self
+                    .builder
+                    .ins()
+                    .f64const(f64::from_bits(value64::NIL_VALUE));
+                self.create_variable(&var.name, nil);
             }
             MatchPattern::Discard => {}
             MatchPattern::Constant(_) => {}
@@ -501,14 +505,14 @@ impl<'a, 'b> VariableBuilder<'a, 'b> {
         }
     }
 
-    fn declare_variable(&mut self, name: &str) -> Variable {
-        let var = Variable::new(self.index);
+    fn create_variable(&mut self, name: &str, default_value: Value) {
         if !self.variables.contains_key(name) {
+            let var = Variable::new(self.index);
             self.variables.insert(name.into(), var);
             self.builder.declare_var(var, VAL64);
             self.index += 1;
+            self.define_variable(var, default_value, name);
         }
-        var
     }
 
     fn define_variable(&mut self, var: Variable, val: Value, name: &str) {
@@ -802,6 +806,8 @@ impl<'a> FunctionTranslator<'a> {
                     .variables
                     .get(&var_ref.name)
                     .expect("variable not defined");
+                let old_value = self.builder.use_var(variable);
+                self.drop_val64(old_value);
                 let value = self.clone_val64(value);
                 self.builder.def_var(variable, value);
             }
@@ -936,6 +942,8 @@ impl<'a> FunctionTranslator<'a> {
                 self.assign_part(old_val, *index, rest, rhs)
             }
         };
+        let old_val = self.builder.use_var(variable);
+        self.drop_val64(old_val);
         self.builder.def_var(variable, new_val);
     }
 
@@ -1357,8 +1365,14 @@ impl<'a> FunctionTranslator<'a> {
         })
     }
 
-    fn clone_val64(&mut self, val: Value) -> OValue {
+    fn clone_val64(&mut self, val: BValue) -> OValue {
+        // TODO: short-circuit value types
         self.call_native(&self.natives.clone, &[val])[0]
+    }
+
+    fn drop_val64(&mut self, val: OValue) {
+        // TODO: short-circuit value types
+        self.call_native(&self.natives.drop, &[val]);
     }
 
     fn set_src_span(&mut self, span: &Span) {

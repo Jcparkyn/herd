@@ -108,6 +108,10 @@ pub extern "C" fn clone(val: Value64Ref) -> Value64 {
     val.clone()
 }
 
+pub extern "C" fn drop(val: Value64) {
+    std::mem::drop(val);
+}
+
 pub extern "C" fn val_get_index(val: Value64Ref, index: Value64Ref) -> Value64 {
     if let Some(list) = val.as_list() {
         list.values
