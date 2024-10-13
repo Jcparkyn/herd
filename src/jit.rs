@@ -560,7 +560,8 @@ impl<'a> FunctionTranslator<'a> {
                     .variables
                     .get(&var.name)
                     .unwrap_or_else(|| panic!("variable {} not defined", var.name));
-                self.builder.use_var(*variable)
+                let val = self.builder.use_var(*variable);
+                self.clone_val64(val)
             }
             Expr::Block(b) => {
                 for stmt in &b.statements {
@@ -606,7 +607,10 @@ impl<'a> FunctionTranslator<'a> {
             Expr::GetIndex(val, index) => {
                 let index = self.translate_expr(index);
                 let val = self.translate_expr(val);
-                self.call_native(&self.natives.val_get_index, &[val, index])[0]
+                let result = self.call_native(&self.natives.val_get_index, &[val, index])[0];
+                self.drop_val64(index);
+                self.drop_val64(val);
+                result
             }
             Expr::Dict(d) => {
                 let len_value = self.builder.ins().iconst(types::I64, d.len() as i64);
@@ -1094,6 +1098,7 @@ impl<'a> FunctionTranslator<'a> {
 
         // EXIT BLOCK
         self.builder.switch_to_block(exit_block);
+        self.drop_val64(iter_value);
 
         // We've reached the bottom of the loop, so there will be no
         // more backedges to the header to exits to the bottom.

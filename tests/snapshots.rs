@@ -157,7 +157,7 @@ fn index_list() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"2");
-    // assert_rcs_dropped();
+    assert_rcs_dropped();
 }
 
 #[test]
@@ -216,7 +216,7 @@ fn for_in_loop() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"6");
-    // assert_rcs_dropped();
+    assert_rcs_dropped();
 }
 
 #[test]
