@@ -52,7 +52,12 @@ fn rc_mutate<T: Boxable + Clone, F: FnOnce(&mut T)>(rc: &mut Rc<T>, action: F) {
 
 pub extern "C" fn list_new(len: u64, items: *const Value64) -> Value64 {
     let items_slice = unsafe { std::slice::from_raw_parts(items, len as usize) };
-    Value64::from_list(rc_new(ListInstance::new(items_slice.to_vec())))
+    let mut items = Vec::with_capacity(len as usize);
+    for item in items_slice {
+        // values in items array are all owned, so we don't need to clone them
+        items.push(unsafe { item.cheeky_copy() });
+    }
+    Value64::from_list(rc_new(ListInstance::new(items)))
 }
 
 pub extern "C" fn public_list_push(list: Value64, val: Value64) -> Value64 {

@@ -82,6 +82,16 @@ fn array_literal() {
 }
 
 #[test]
+fn nested_array_literal() {
+    let program = r#"
+        return [[1, 2], [3]];
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"[[1, 2], [3]]");
+    assert_rcs_dropped();
+}
+
+#[test]
 fn variables() {
     let program = r#"
         return (
@@ -286,7 +296,7 @@ fn early_return_if() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"[[1], 0]");
-    // assert_rcs_dropped();
+    assert_rcs_dropped();
 }
 
 #[test]

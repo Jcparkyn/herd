@@ -180,6 +180,10 @@ impl Value64 {
         }
     }
 
+    pub unsafe fn cheeky_copy(&self) -> Self {
+        Self { val: self.val }
+    }
+
     pub fn truthy(&self) -> bool {
         let bits = self.bits();
         match try_get_ptr_tag(bits) {
