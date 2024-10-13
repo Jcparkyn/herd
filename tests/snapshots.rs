@@ -306,6 +306,7 @@ fn string_literal() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @r#"['hello', 'world']"#);
+    assert_rcs_dropped();
 }
 
 #[test]
@@ -318,6 +319,8 @@ fn string_interning() {
     let list = result.try_into_list().unwrap();
     // This is a dirty way to check that the pointers are equal.
     assert_eq!(list.values[0].bits(), list.values[1].bits());
+    drop(list);
+    assert_rcs_dropped();
 }
 
 #[test]
@@ -328,6 +331,7 @@ fn dict_literal() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"[[a: 1, b: 2], 1, 2]");
+    assert_rcs_dropped();
 }
 
 #[test]
@@ -375,17 +379,19 @@ fn lambda_func() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"8");
+    assert_rcs_dropped();
 }
 
 #[test]
 fn func_with_captures() {
     let program = r#"
-        a = 6;
+        a = 'a';
         f = \x\ [x, a];
-        return f 2;
+        return f 'b';
     "#;
     let result = eval_snapshot_str(program);
-    insta::assert_snapshot!(result, @"[2, 6]");
+    insta::assert_snapshot!(result, @"['b', 'a']");
+    assert_rcs_dropped();
 }
 
 #[test]
@@ -397,6 +403,7 @@ fn multiple_funcs() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"14");
+    assert_rcs_dropped();
 }
 
 #[test]
@@ -411,6 +418,7 @@ fn func_with_locals() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"6");
+    assert_rcs_dropped();
 }
 
 #[test]
@@ -424,6 +432,7 @@ fn func_with_pattern_matching() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"11");
+    // assert_rcs_dropped();
 }
 
 #[test]
@@ -434,6 +443,7 @@ fn simple_recursion() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"120");
+    assert_rcs_dropped();
 }
 
 #[test]
@@ -444,6 +454,7 @@ fn pattern_assignment_simple() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"[2, 1]");
+    // assert_rcs_dropped();
 }
 
 #[test]
@@ -455,6 +466,7 @@ fn pattern_assignment_set() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"[2, 1]");
+    // assert_rcs_dropped();
 }
 
 #[test]
@@ -465,6 +477,7 @@ fn pattern_assignment_nested() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"[1, 2, 3]");
+    // assert_rcs_dropped();
 }
 
 #[test]
@@ -483,6 +496,7 @@ fn match_expression() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"[5, 0]");
+    // assert_rcs_dropped();
 }
 
 #[test]
@@ -511,6 +525,7 @@ fn match_constant() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"['nil', 'empty', 'foo', 'bar', 'singleton', 'zero', 'one', 4]");
+    // assert_rcs_dropped();
 }
 
 fn eval_snapshot(program: &str) -> Value64 {
