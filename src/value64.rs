@@ -72,6 +72,7 @@ const TAG_MASK: u64 = 0xFFFF000000000000;
 pub const TRUE_VALUE: u64 = 0x7FFE000000000003;
 pub const FALSE_VALUE: u64 = 0x7FFE000000000002;
 pub const NIL_VALUE: u64 = 0x7FFE000000000000;
+pub const ERROR_VALUE: u64 = 0x7FFE000000000004;
 
 pub trait Boxable {
     const TAG: PointerTag;
@@ -363,6 +364,12 @@ impl Value64 {
     pub fn as_lambda(&self) -> Option<&LambdaFunction> {
         self.as_ref()
     }
+
+    // ERRORS
+
+    pub fn is_error(&self) -> bool {
+        self.bits() == ERROR_VALUE
+    }
 }
 
 impl PartialEq for Value64 {
@@ -485,6 +492,8 @@ impl Display for Value64 {
                     write!(f, "false")
                 } else if bits == NIL_VALUE {
                     write!(f, "()")
+                } else if self.is_error() {
+                    write!(f, "<error value>")
                 } else {
                     write!(f, "<unknown value: {}>", bits)
                 }

@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 use codegen::ir::{self};
+use core::panic;
 use cranelift::prelude::*;
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{DataDescription, FuncId, FuncOrDataId, Linkage, Module, ModuleError};
@@ -646,7 +647,14 @@ impl<'a> FunctionTranslator<'a> {
         let (func_ptr, closure_ptr) = self.get_lambda_details(args, callee_val);
 
         // Null pointer means callee wasn't a lambda
-        self.builder.ins().trapz(func_ptr, TrapCode::User(3));
+        self.assert(func_ptr, |s| {
+            s.print_string_constant(format!(
+                "ERROR (at {}): Tried to call something that isn't a function (or wrong parameter count): ",
+                callee.span.start
+            ));
+            s.call_native(&s.natives.print, &[callee_val]);
+            s.print_string_constant("\n".to_string());
+        });
 
         let mut sig = self.module.make_signature();
 
@@ -672,7 +680,17 @@ impl<'a> FunctionTranslator<'a> {
             .ins()
             .call_indirect(sig_ref, func_ptr, &arg_values);
 
-        return self.builder.inst_results(call)[0];
+        let call_result = self.builder.inst_results(call)[0];
+        let is_ok = self.cmp_bits_imm(IntCC::NotEqual, call_result, value64::ERROR_VALUE);
+
+        self.assert(is_ok, |s| {
+            s.print_string_constant(format!(
+                "ERROR (at {}): Function call failed\n",
+                callee.span.start
+            ));
+        });
+
+        return call_result;
     }
 
     fn get_lambda_details(
@@ -793,17 +811,25 @@ impl<'a> FunctionTranslator<'a> {
             }
             MatchPattern::Constant(c) => {
                 let matches = self.translate_matches_constant(c, value);
-                self.builder.ins().trapz(matches, TrapCode::User(6));
+                self.assert(matches, |s| {
+                    s.print_string_constant("ERROR: pattern match failed on constant".to_string());
+                });
             }
             MatchPattern::SimpleList(parts) => {
                 let is_list = self.is_ptr_type(value, PointerTag::List);
-                self.builder.ins().trapz(is_list, TrapCode::User(4));
+                self.assert(is_list, |s| {
+                    s.print_string_constant("ERROR: pattern match failed on non-list".to_string());
+                });
                 let value_len = self.call_native(&self.natives.list_len_u64, &[value])[0];
                 let len_eq =
                     self.builder
                         .ins()
                         .icmp_imm(IntCC::Equal, value_len, parts.len() as i64);
-                self.builder.ins().trapz(len_eq, TrapCode::User(4));
+                self.assert(len_eq, |s| {
+                    s.print_string_constant(
+                        "ERROR: pattern match failed on list of wrong length".to_string(),
+                    );
+                });
                 for (i, part) in parts.iter().enumerate() {
                     let ival = self.builder.ins().iconst(I64, i as i64);
                     let element =
@@ -1248,7 +1274,9 @@ impl<'a> FunctionTranslator<'a> {
             self.set_src_span(&pattern.span);
             let matches = self.translate_matches_pattern(&pattern.value, subject);
             if is_last_branch {
-                self.builder.ins().trapz(matches, TrapCode::User(5));
+                self.assert(matches, |s| {
+                    s.print_string_constant("ERROR: No branches matched".to_string());
+                });
                 self.builder.ins().jump(branch_body_blocks[i], &[]);
             } else {
                 self.builder.ins().brif(
@@ -1289,6 +1317,32 @@ impl<'a> FunctionTranslator<'a> {
         self.builder.inst_results(call)
     }
 
+    /// Returns a sentinal value if the assertion is zero.
+    /// `on_fail` is used for printing an error message.
+    /// This is a temporary solution, and should ideally store the error information somewhere instead of printing.
+    fn assert(&mut self, assertion: Value, on_fail: impl FnOnce(&mut Self)) {
+        let before_block = self.builder.current_block().unwrap();
+        let fail_block = self.builder.create_block();
+        let ok_block = self.builder.create_block();
+        self.builder.set_cold_block(fail_block);
+        self.builder
+            .ins()
+            .brif(assertion, ok_block, &[], fail_block, &[]);
+
+        self.builder.switch_to_block(fail_block);
+        self.builder.seal_block(fail_block);
+        on_fail(self);
+        let err_val = self
+            .builder
+            .ins()
+            .f64const(f64::from_bits(value64::ERROR_VALUE));
+        self.builder.ins().return_(&[err_val]);
+
+        self.builder.switch_to_block(ok_block);
+        self.builder.seal_block(ok_block);
+        self.builder.insert_block_after(ok_block, before_block);
+    }
+
     fn const_nil(&mut self) -> Value {
         self.builder
             .ins()
@@ -1322,8 +1376,7 @@ impl<'a> FunctionTranslator<'a> {
 
     fn cmp_bits_imm(&mut self, cond: IntCC, lhs: Value, rhs: u64) -> Value {
         let lhs_bits = self.builder.ins().bitcast(I64, MemFlags::new(), lhs);
-        let rhs_bits = self.builder.ins().iconst(I64, rhs as i64);
-        self.builder.ins().icmp(cond, lhs_bits, rhs_bits)
+        self.builder.ins().icmp_imm(cond, lhs_bits, rhs as i64)
     }
 
     fn bool_to_val64(&mut self, b: Value) -> Value {
@@ -1341,17 +1394,14 @@ impl<'a> FunctionTranslator<'a> {
             .icmp_imm(IntCC::Equal, and, value64::pointer_mask(tag) as i64)
     }
 
-    fn guard_ptr_type(&mut self, val: BValue, tag: PointerTag) {
-        let is_ptr = self.is_ptr_type(val, tag);
-        self.builder.ins().trapz(is_ptr, TrapCode::User(1));
-    }
-
     fn guard_f64(&mut self, val: Value) {
         let val_int = self.builder.ins().bitcast(I64, MemFlags::new(), val);
-        let nanish = self.builder.ins().iconst(I64, value64::NANISH as i64);
-        let and = self.builder.ins().band(val_int, nanish);
-        let is_f64 = self.builder.ins().icmp(IntCC::NotEqual, and, nanish);
-        self.builder.ins().trapz(is_f64, TrapCode::User(2));
+        let nanish = value64::NANISH as i64;
+        let and = self.builder.ins().band_imm(val_int, nanish);
+        let is_f64 = self.builder.ins().icmp_imm(IntCC::NotEqual, and, nanish);
+        self.assert(is_f64, |s| {
+            s.print_string_constant("Expected an f64".to_string());
+        });
     }
 
     fn string_literal_borrow(&mut self, string: String) -> BValue {
@@ -1361,6 +1411,12 @@ impl<'a> FunctionTranslator<'a> {
             .or_insert_with_key(|key| Value64::from_string(Rc::new(key.clone())));
         let string_val = self.builder.ins().f64const(string_val64.bits_f64());
         string_val
+    }
+
+    fn print_string_constant(&mut self, string: String) {
+        let string_val64 = self.string_literal_borrow(string);
+        self.clone_val64(string_val64);
+        self.call_native(&self.natives.print, &[string_val64]);
     }
 }
 
