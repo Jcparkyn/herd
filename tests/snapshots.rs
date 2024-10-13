@@ -105,7 +105,7 @@ fn equals() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"[false, true, false, true, false, true]");
-    // assert_rcs_dropped();
+    assert_rcs_dropped();
 }
 
 #[test]

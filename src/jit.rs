@@ -318,6 +318,7 @@ impl JIT {
 
         builder.seal_all_blocks();
 
+        let return_block = builder.create_block();
         // Now translate the statements of the function body.
         let mut trans = FunctionTranslator {
             builder,
@@ -325,12 +326,17 @@ impl JIT {
             module: &mut self.module,
             natives: &self.natives,
             string_constants: &mut self.string_constants,
+            return_block,
         };
         let return_value = trans.translate_expr(body);
 
-        // Emit the return instruction.
-        trans.builder.ins().return_(&[return_value]);
+        // Jump to the return block.
+        trans
+            .builder
+            .ins()
+            .jump(trans.return_block, &[return_value]);
 
+        trans.translate_return_block();
         // Tell the builder we're done with this function.
         trans.builder.finalize();
         Ok(())
@@ -533,6 +539,7 @@ struct FunctionTranslator<'a> {
     module: &'a mut JITModule,
     natives: &'a NativeMethods,
     string_constants: &'a mut HashMap<String, Value64>,
+    return_block: Block,
 }
 
 impl<'a> FunctionTranslator<'a> {
@@ -614,6 +621,21 @@ impl<'a> FunctionTranslator<'a> {
             Expr::Lambda(l) => self.translate_lambda_definition(l),
             Expr::Match(m) => self.translate_match_expr(m),
         }
+    }
+
+    fn translate_return_block(&mut self) {
+        self.builder.switch_to_block(self.return_block);
+        self.builder.seal_block(self.return_block);
+        self.builder.append_block_param(self.return_block, VAL64);
+
+        let variables = self.variables.values().cloned().collect::<Vec<_>>();
+        for var in variables {
+            let val = self.builder.use_var(var);
+            self.drop_val64(val);
+        }
+
+        let return_value = self.builder.block_params(self.return_block)[0];
+        self.builder.ins().return_(&[return_value]);
     }
 
     fn translate_call(&mut self, callee: &SpannedExpr, args: &Vec<SpannedExpr>) -> Value {
@@ -1144,7 +1166,10 @@ impl<'a> FunctionTranslator<'a> {
             Opcode::Eq => {
                 let lhs_val = self.translate_expr(lhs);
                 let rhs_val = self.translate_expr(rhs);
-                self.call_native(&self.natives.val_eq, &[lhs_val, rhs_val])[0]
+                let result = self.call_native(&self.natives.val_eq, &[lhs_val, rhs_val])[0];
+                self.drop_val64(lhs_val);
+                self.drop_val64(rhs_val);
+                result
             }
             Opcode::Neq => self.translate_cmp(FloatCC::NotEqual, lhs, rhs),
             Opcode::Lt => self.translate_cmp(FloatCC::LessThan, lhs, rhs),
@@ -1196,18 +1221,24 @@ impl<'a> FunctionTranslator<'a> {
             variable_builder.variables
         };
 
+        let return_block = builder.create_block();
         let mut trans = FunctionTranslator {
             builder,
             variables,
             module: &mut self.module,
             natives: &self.natives,
             string_constants: &mut self.string_constants,
+            return_block,
         };
         trans.translate_function_params(&*lambda.params, entry_block);
         let return_value = trans.translate_expr(&lambda.body);
 
-        trans.builder.ins().return_(&[return_value]);
+        trans
+            .builder
+            .ins()
+            .jump(trans.return_block, &[return_value]);
 
+        trans.translate_return_block();
         trans.builder.finalize();
 
         // Using a name here (instead of declare_anonymouser_function) for profiling info on Linux.
