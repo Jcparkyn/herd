@@ -2,11 +2,11 @@ use std::{
     cmp::Ordering,
     collections::HashMap,
     fmt::{Debug, Display},
-    rc::Rc,
+    rc::{Rc, Weak},
 };
 
 #[cfg(debug_assertions)]
-use std::{cell::RefCell, rc::Weak};
+use std::cell::RefCell;
 
 use crate::{
     ast::{MatchPattern, SpannedExpr},
@@ -457,7 +457,6 @@ impl<T: Boxable> RcTrackList<T> {
     }
 }
 
-#[cfg(debug_assertions)]
 pub struct RcTracker {
     pub lists: RcTrackList<ListInstance>,
     pub strings: RcTrackList<String>,
