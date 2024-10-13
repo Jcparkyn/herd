@@ -77,24 +77,42 @@ pub const FALSE_VALUE: u64 = 0x7FFE000000000002;
 pub const NIL_VALUE: u64 = 0x7FFE000000000000;
 pub const ERROR_VALUE: u64 = 0x7FFE000000000004;
 
-pub trait Boxable {
+pub trait Boxable: Sized {
     const TAG: PointerTag;
+
+    fn tracking_info(tracker: &mut RcTracker) -> &mut RcTrackList<Self>;
 }
 
 impl Boxable for String {
     const TAG: PointerTag = PointerTag::String;
+
+    fn tracking_info(tracker: &mut RcTracker) -> &mut RcTrackList<Self> {
+        &mut tracker.strings
+    }
 }
 
 impl Boxable for ListInstance {
     const TAG: PointerTag = PointerTag::List;
+
+    fn tracking_info(tracker: &mut RcTracker) -> &mut RcTrackList<Self> {
+        &mut tracker.lists
+    }
 }
 
 impl Boxable for DictInstance {
     const TAG: PointerTag = PointerTag::Dict;
+
+    fn tracking_info(tracker: &mut RcTracker) -> &mut RcTrackList<Self> {
+        &mut tracker.dicts
+    }
 }
 
 impl Boxable for LambdaFunction {
     const TAG: PointerTag = PointerTag::Lambda;
+
+    fn tracking_info(tracker: &mut RcTracker) -> &mut RcTrackList<Self> {
+        &mut tracker.lambdas
+    }
 }
 
 #[repr(transparent)]
@@ -427,15 +445,45 @@ impl std::hash::Hash for Value64 {
     }
 }
 
+pub struct RcTrackList<T: Boxable>(pub Vec<Weak<T>>);
+
+impl<T: Boxable> RcTrackList<T> {
+    pub fn new() -> Self {
+        RcTrackList(Vec::new())
+    }
+
+    pub fn push(&mut self, value: Weak<T>) {
+        self.0.push(value);
+    }
+}
+
 #[cfg(debug_assertions)]
 pub struct RcTracker {
-    pub lists: Vec<Weak<ListInstance>>,
+    pub lists: RcTrackList<ListInstance>,
+    pub strings: RcTrackList<String>,
+    pub dicts: RcTrackList<DictInstance>,
+    pub lambdas: RcTrackList<LambdaFunction>,
+}
+
+impl RcTracker {
+    pub fn new() -> Self {
+        RcTracker {
+            lists: RcTrackList::new(),
+            strings: RcTrackList::new(),
+            dicts: RcTrackList::new(),
+            lambdas: RcTrackList::new(),
+        }
+    }
+
+    pub fn track<T: Boxable>(&mut self, rc: &Rc<T>) {
+        T::tracking_info(self).push(Rc::downgrade(rc));
+    }
 }
 
 #[cfg(debug_assertions)]
 thread_local! {
     pub static RC_TRACKER: RefCell<RcTracker> = RefCell::new(
-        RcTracker { lists: Vec::new() }
+        RcTracker::new()
     );
 }
 

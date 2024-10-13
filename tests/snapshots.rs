@@ -1,3 +1,6 @@
+use std::fmt::Display;
+use std::rc::Weak;
+
 use bovine::analysis::Analyzer;
 use bovine::jit;
 use bovine::lang::ProgramParser;
@@ -6,22 +9,35 @@ use bovine::value64::{Value64, RC_TRACKER};
 fn reset_tracker() {
     RC_TRACKER.with(|tracker| {
         let mut tracker = tracker.borrow_mut();
-        tracker.lists.clear();
+        tracker.lists.0.clear();
     });
 }
 
 fn assert_rcs_dropped() {
+    fn assert_rc_dropped<T: Display>(rc: &Weak<T>) {
+        assert_eq!(
+            0,
+            rc.strong_count(),
+            "This Rc still has {} references: {}",
+            rc.strong_count(),
+            rc.upgrade().unwrap()
+        );
+    }
     RC_TRACKER.with(|tracker| {
         let tracker = tracker.borrow_mut();
-        for l in tracker.lists.iter() {
-            assert_eq!(
-                0,
-                l.strong_count(),
-                "This Rc still has {} references: {}",
-                l.strong_count(),
-                l.upgrade().unwrap()
-            );
+        for l in tracker.lists.0.iter() {
+            assert_rc_dropped(&l);
         }
+        for d in tracker.dicts.0.iter() {
+            assert_rc_dropped(&d);
+        }
+        for s in tracker.strings.0.iter() {
+            assert_rc_dropped(&s);
+        }
+        // TODO
+        // for l in tracker.lambdas.0.iter() {
+        //     assert_rc_dropped(&l);
+        // }
     });
 }
 

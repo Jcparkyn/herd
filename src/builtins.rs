@@ -3,7 +3,7 @@ use std::{collections::HashMap, mem::ManuallyDrop, ops::Deref, ptr::null, rc::Rc
 use crate::{
     ast,
     pos::{Span, Spanned},
-    value64::{DictInstance, LambdaFunction, ListInstance, Value64},
+    value64::{Boxable, DictInstance, LambdaFunction, ListInstance, Value64},
 };
 
 #[cfg(debug_assertions)]
@@ -28,38 +28,36 @@ impl Deref for Value64Ref {
     }
 }
 
-fn rc_new_list(val: ListInstance) -> Rc<ListInstance> {
+fn rc_new<T: Boxable>(val: T) -> Rc<T> {
     let rc = Rc::new(val);
     #[cfg(debug_assertions)]
     RC_TRACKER.with(|tracker| {
-        let mut tracker = tracker.borrow_mut();
-        tracker.lists.push(Rc::downgrade(&rc));
+        tracker.borrow_mut().track(&rc);
     });
     rc
 }
 
-fn rc_mutate_list<T: FnOnce(&mut ListInstance)>(list: &mut Rc<ListInstance>, action: T) {
+fn rc_mutate<T: Boxable + Clone, F: FnOnce(&mut T)>(rc: &mut Rc<T>, action: F) {
     #[cfg(debug_assertions)]
-    let will_clone = Rc::strong_count(list) > 1;
-    let mut_val = Rc::make_mut(list);
+    let will_clone = Rc::strong_count(rc) > 1;
+    let mut_val = Rc::make_mut(rc);
     action(mut_val);
     #[cfg(debug_assertions)]
     if will_clone {
         RC_TRACKER.with(|tracker| {
-            let mut tracker = tracker.borrow_mut();
-            tracker.lists.push(Rc::downgrade(&list));
+            tracker.borrow_mut().track(rc);
         });
     }
 }
 
 pub extern "C" fn list_new(len: u64, items: *const Value64) -> Value64 {
     let items_slice = unsafe { std::slice::from_raw_parts(items, len as usize) };
-    Value64::from_list(rc_new_list(ListInstance::new(items_slice.to_vec())))
+    Value64::from_list(rc_new(ListInstance::new(items_slice.to_vec())))
 }
 
 pub extern "C" fn public_list_push(list: Value64, val: Value64) -> Value64 {
     let mut list = list.try_into_list().unwrap();
-    rc_mutate_list(&mut list, |l| l.values.push(val));
+    rc_mutate(&mut list, |l| l.values.push(val));
     Value64::from_list(list)
 }
 
@@ -78,15 +76,16 @@ pub extern "C" fn list_borrow_u64(list: Value64Ref, index: u64) -> Value64Ref {
 }
 
 pub extern "C" fn dict_new(capacity: u64) -> Value64 {
-    Value64::from_dict(Rc::new(DictInstance {
+    Value64::from_dict(rc_new(DictInstance {
         values: HashMap::with_capacity(capacity as usize),
     }))
 }
 
 pub extern "C" fn dict_insert(dict: Value64, key: Value64, val: Value64) -> Value64 {
     let mut dict = dict.try_into_dict().unwrap();
-    let mut_dict = Rc::make_mut(&mut dict);
-    mut_dict.values.insert(key, val);
+    rc_mutate(&mut dict, |d| {
+        d.values.insert(key, val);
+    });
     Value64::from_dict(dict)
 }
 
@@ -97,7 +96,7 @@ pub extern "C" fn public_range(start: Value64, stop: Value64) -> Value64 {
     for i in start_int..stop_int {
         values.push(Value64::from_f64(i as f64));
     }
-    return Value64::from_list(rc_new_list(ListInstance::new(values)));
+    return Value64::from_list(rc_new(ListInstance::new(values)));
 }
 
 pub extern "C" fn public_len(list: Value64) -> Value64 {
@@ -125,13 +124,15 @@ pub extern "C" fn val_get_index(val: Value64Ref, index: Value64Ref) -> Value64 {
 pub extern "C" fn val_set_index(val: Value64, index: Value64, new_val: Value64) -> Value64 {
     if val.is_list() {
         let mut list = val.try_into_list().unwrap();
-        let mut_list = Rc::make_mut(&mut list);
-        mut_list.values[index.as_f64().unwrap() as usize] = new_val;
+        rc_mutate(&mut list, |l| {
+            l.values[index.as_f64().unwrap() as usize] = new_val;
+        });
         Value64::from_list(list)
     } else if val.is_dict() {
         let mut dict = val.try_into_dict().unwrap();
-        let mut_dict = Rc::make_mut(&mut dict);
-        mut_dict.values.insert(index, new_val);
+        rc_mutate(&mut dict, |d| {
+            d.values.insert(index, new_val);
+        });
         Value64::from_dict(dict)
     } else {
         panic!("Expected list or dict, was {}", val)
@@ -190,7 +191,7 @@ pub extern "C" fn construct_lambda(
         recursive: false, // TODO
         func_ptr: Some(func_ptr),
     };
-    Value64::from_lambda(Rc::new(lambda))
+    Value64::from_lambda(rc_new(lambda))
 }
 
 pub extern "C" fn public_val_shift_left(val: Value64, by: Value64) -> Value64 {
