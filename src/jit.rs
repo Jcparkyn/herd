@@ -732,7 +732,7 @@ impl<'a> FunctionTranslator<'a> {
             _ => {
                 // FIXME: using trapz because trap makes it impossible to return Value
                 let message = self
-                    .string_literal_borrow(format!("ERROR: Method not implemented ({})", callee));
+                    .string_literal_borrow(format!("ERROR: Method not implemented ({})\n", callee));
                 self.clone_val64(message);
                 self.call_native(&self.natives.print, &[message]);
                 let zero = self.builder.ins().iconst(types::I8, 0);
