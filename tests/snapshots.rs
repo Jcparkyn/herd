@@ -344,6 +344,7 @@ fn array_assign() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"[[1, 2], [4, 2]]");
+    // assert_rcs_dropped();
 }
 
 #[test]
@@ -356,6 +357,7 @@ fn dict_assign() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"[[x: 1, y: 2], [x: 4, y: 2]]");
+    // assert_rcs_dropped();
 }
 
 #[test]
@@ -369,6 +371,7 @@ fn nested_assign() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"[[[x: 1, y: 2], 3], [[x: 4, y: 2], 5]]");
+    // assert_rcs_dropped();
 }
 
 #[test]
@@ -432,7 +435,7 @@ fn func_with_pattern_matching() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"11");
-    // assert_rcs_dropped();
+    assert_rcs_dropped();
 }
 
 #[test]
@@ -454,7 +457,7 @@ fn pattern_assignment_simple() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"[2, 1]");
-    // assert_rcs_dropped();
+    assert_rcs_dropped();
 }
 
 #[test]
@@ -466,7 +469,7 @@ fn pattern_assignment_set() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"[2, 1]");
-    // assert_rcs_dropped();
+    assert_rcs_dropped();
 }
 
 #[test]
@@ -477,7 +480,7 @@ fn pattern_assignment_nested() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"[1, 2, 3]");
-    // assert_rcs_dropped();
+    assert_rcs_dropped();
 }
 
 #[test]
@@ -496,7 +499,7 @@ fn match_expression() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"[5, 0]");
-    // assert_rcs_dropped();
+    assert_rcs_dropped();
 }
 
 #[test]
@@ -525,7 +528,7 @@ fn match_constant() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"['nil', 'empty', 'foo', 'bar', 'singleton', 'zero', 'one', 4]");
-    // assert_rcs_dropped();
+    assert_rcs_dropped();
 }
 
 #[test]

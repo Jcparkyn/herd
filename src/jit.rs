@@ -800,7 +800,7 @@ impl<'a> FunctionTranslator<'a> {
             }
             Statement::Return(e) => {
                 let return_value = self.translate_expr(e);
-                self.builder.ins().return_(&[return_value]);
+                self.builder.ins().jump(self.return_block, &[return_value]);
 
                 // Create a new block for after the return instruction, so that other instructions
                 // can still be added after it. Normally, Cranelift rejects instructions after
