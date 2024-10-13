@@ -1404,8 +1404,29 @@ impl<'a> FunctionTranslator<'a> {
     }
 
     fn clone_val64(&mut self, val: BValue) -> OValue {
-        // TODO: short-circuit value types
         self.call_native(&self.natives.clone, &[val])[0]
+    }
+
+    /// Same as [Self::clone_val64] but only does a method call if the value is a reference type.
+    /// This slows things down when used everywhere, should only be used in places where reference types are unlikely.
+    fn clone_val64_sometimes(&mut self, val: BValue) -> OValue {
+        let is_ptr = self.is_ptr_val(val);
+        let clone_block = self.builder.create_block();
+        // Short-circuit if it's not a reference type
+        let after_block = self.builder.create_block();
+
+        self.builder
+            .ins()
+            .brif(is_ptr, clone_block, &[], after_block, &[]);
+        self.builder.switch_to_block(clone_block);
+        self.builder.seal_block(clone_block);
+        self.call_native(&self.natives.clone, &[val]);
+        self.builder.ins().jump(after_block, &[]);
+
+        self.builder.switch_to_block(after_block);
+        self.builder.seal_block(after_block);
+        // TODO should we use phi values to pass the actual return value?
+        val
     }
 
     fn drop_val64(&mut self, val: OValue) {
