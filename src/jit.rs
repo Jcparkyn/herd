@@ -824,7 +824,7 @@ impl<'a> FunctionTranslator<'a> {
         self.translate_match_pattern(&pattern.value, rhs_value);
     }
 
-    fn translate_match_pattern(&mut self, pattern: &MatchPattern, value: BValue) {
+    fn translate_match_pattern(&mut self, pattern: &MatchPattern, value: OValue) {
         match pattern {
             MatchPattern::Discard => {}
             MatchPattern::Declaration(var_ref, _) => {
@@ -834,23 +834,26 @@ impl<'a> FunctionTranslator<'a> {
                     .expect("variable not defined");
                 let old_value = self.builder.use_var(variable);
                 self.drop_val64(old_value);
-                let value = self.clone_val64(value);
                 self.builder.def_var(variable, value);
             }
             MatchPattern::Assignment(target) => {
-                let value = self.clone_val64(value);
                 self.translate_assignment(target, value);
             }
             MatchPattern::Constant(c) => {
                 let matches = self.translate_matches_constant(c, value);
+                self.drop_val64(value);
                 self.assert(matches, |s| {
-                    s.print_string_constant("ERROR: pattern match failed on constant".to_string());
+                    s.print_string_constant(
+                        "ERROR: pattern match failed on constant\n".to_string(),
+                    );
                 });
             }
             MatchPattern::SimpleList(parts) => {
                 let is_list = self.is_ptr_type(value, PointerTag::List);
                 self.assert(is_list, |s| {
-                    s.print_string_constant("ERROR: pattern match failed on non-list".to_string());
+                    s.print_string_constant(
+                        "ERROR: pattern match failed on non-list\n".to_string(),
+                    );
                 });
                 let value_len = self.call_native(&self.natives.list_len_u64, &[value])[0];
                 let len_eq =
@@ -859,15 +862,15 @@ impl<'a> FunctionTranslator<'a> {
                         .icmp_imm(IntCC::Equal, value_len, parts.len() as i64);
                 self.assert(len_eq, |s| {
                     s.print_string_constant(
-                        "ERROR: pattern match failed on list of wrong length".to_string(),
+                        "ERROR: pattern match failed on list of wrong length\n".to_string(),
                     );
                 });
                 for (i, part) in parts.iter().enumerate() {
                     let ival = self.builder.ins().iconst(I64, i as i64);
-                    let element =
-                        self.call_native(&self.natives.list_borrow_u64, &[value, ival])[0];
+                    let element = self.call_native(&self.natives.list_get_u64, &[value, ival])[0];
                     self.translate_match_pattern(part, element);
                 }
+                self.drop_val64(value);
             }
             MatchPattern::SpreadList(_) => {
                 todo!("Pattern matching with ... isn't supported here yet")
@@ -1090,7 +1093,6 @@ impl<'a> FunctionTranslator<'a> {
         let current_index = self.builder.block_params(header_block)[0];
         let current_item =
             self.call_native(&self.natives.list_get_u64, &[iter_value, current_index])[0];
-        self.clone_val64(current_item);
         self.translate_match_pattern(&var.value, current_item);
         self.translate_expr(body);
         let next_index = self.builder.ins().iadd_imm(current_index, 1);
@@ -1319,7 +1321,7 @@ impl<'a> FunctionTranslator<'a> {
             let matches = self.translate_matches_pattern(&pattern.value, subject);
             if is_last_branch {
                 self.assert(matches, |s| {
-                    s.print_string_constant("ERROR: No branches matched".to_string());
+                    s.print_string_constant("ERROR: No branches matched\n".to_string());
                 });
                 self.builder.ins().jump(branch_body_blocks[i], &[]);
             } else {
@@ -1450,7 +1452,7 @@ impl<'a> FunctionTranslator<'a> {
         let and = self.builder.ins().band_imm(val_int, nanish);
         let is_f64 = self.builder.ins().icmp_imm(IntCC::NotEqual, and, nanish);
         self.assert(is_f64, |s| {
-            s.print_string_constant("Expected an f64".to_string());
+            s.print_string_constant("Expected an f64\n".to_string());
         });
     }
 

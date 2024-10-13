@@ -528,6 +528,29 @@ fn match_constant() {
     // assert_rcs_dropped();
 }
 
+#[test]
+fn binary_trees() {
+    let program = r#"
+        makeTree = \d\ if d > 0 then (
+            [makeTree (d - 1), makeTree (d - 1)]
+        ) else (
+            [(), ()]
+        );
+        checkTree = \node\ switch node {
+            [(), ()] => 1,
+            [l, r] => 1 + (checkTree l) + (checkTree r),
+        };
+        return [
+            checkTree (makeTree 0),
+            checkTree (makeTree 1),
+            checkTree (makeTree 2),
+        ];
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"[1, 3, 7]");
+    assert_rcs_dropped();
+}
+
 fn eval_snapshot(program: &str) -> Value64 {
     let parser = ProgramParser::new();
     let prelude_ast = parser.parse(include_str!("../src/prelude.bovine")).unwrap();
