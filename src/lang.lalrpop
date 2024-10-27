@@ -209,6 +209,11 @@ ImplicitLambdaExpr: Expr =
 DictEntry: (ast::SpannedExpr, ast::SpannedExpr) = {
     <key:SpIdentifier> ":" <val:SpExpr> => (key, val),
     "[" <key:SpExpr> "]" ":" <val:SpExpr> => (key, val),
+    <keyval:Sp<Identifier>> => {
+        let key = keyval.clone().map(Expr::from_string);
+        let val = keyval.map(VarRef::new).map(Expr::Variable);
+        (key, val)
+    },
 }
 
 DictLiteral: Expr = {

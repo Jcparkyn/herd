@@ -334,6 +334,18 @@ fn dict_literal() {
 }
 
 #[test]
+fn dict_literal_shorthand() {
+    let program = r#"
+        a = 'A';
+        dict = {a, b: 'B'};
+        return dict;
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"[a: 'A', b: 'B']");
+    assert_rcs_dropped();
+}
+
+#[test]
 fn array_assign() {
     let program = r#"
         a = ['1', '2'];
