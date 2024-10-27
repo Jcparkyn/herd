@@ -1340,7 +1340,7 @@ impl<'a> FunctionTranslator<'a> {
         self.builder.inst_results(call)
     }
 
-    /// Returns a sentinal value if the assertion is zero.
+    /// Returns a sentinel value if the assertion is zero.
     /// `on_fail` is used for printing an error message.
     /// This is a temporary solution, and should ideally store the error information somewhere instead of printing.
     fn assert(&mut self, assertion: Value, on_fail: impl FnOnce(&mut Self)) {
