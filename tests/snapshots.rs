@@ -343,7 +343,7 @@ fn array_assign() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"[[1, 2], [4, 2]]");
-    // assert_rcs_dropped();
+    assert_rcs_dropped();
 }
 
 #[test]
@@ -356,7 +356,7 @@ fn dict_assign() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"[[x: 1, y: 2], [x: 4, y: 2]]");
-    // assert_rcs_dropped();
+    assert_rcs_dropped();
 }
 
 #[test]
@@ -370,7 +370,7 @@ fn nested_assign() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"[[[x: 1, y: 2], 3], [[x: 4, y: 2], 5]]");
-    // assert_rcs_dropped();
+    assert_rcs_dropped();
 }
 
 #[test]
