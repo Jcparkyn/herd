@@ -486,11 +486,11 @@ fn pattern_assignment_nested() {
 fn match_expression() {
     let program = r#"
         a = [2, 3];
-        b = switch a {
+        b = switch a on {
             [] => 0,
             [x, y] => x + y,
         };
-        c = switch [] {
+        c = switch [] on {
             [] => 0,
             [x, y] => x + y,
         };
@@ -504,7 +504,7 @@ fn match_expression() {
 #[test]
 fn match_constant() {
     let program = r#"
-        f = \x\ switch x {
+        f = \x\ switch x on {
             () => 'nil',
             [] => 'empty',
             'foo' => 'foo',
@@ -538,7 +538,7 @@ fn binary_trees() {
         ) else (
             [(), ()]
         );
-        checkTree = \node\ switch node {
+        checkTree = \node\ switch node on {
             [(), ()] => 1,
             [l, r] => 1 + (checkTree l) + (checkTree r),
         };

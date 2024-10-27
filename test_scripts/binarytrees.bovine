@@ -6,7 +6,7 @@ makeTree = \d\ if d > 0 then (
   [(), ()]
 );
 
-checkTree = \node\ switch node {
+checkTree = \node\ switch node on {
   [(), ()] => 1,
   [l, r] => 1 + (checkTree l) + (checkTree r),
 };

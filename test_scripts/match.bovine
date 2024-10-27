@@ -1,12 +1,12 @@
 
 arr = [6, 7];
-foo = switch arr {
+foo = switch arr on {
   [a, b] => [a + b],
   _ => 0,
 };
 println foo;
 
-invert = \node\ switch node {
+invert = \node\ switch node on {
   [l, r] => [invert r, invert l],
   x => x,
 };
