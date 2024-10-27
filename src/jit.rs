@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use codegen::ir::{self};
 use core::panic;
 use cranelift::prelude::*;
@@ -49,6 +47,7 @@ pub struct JIT {
     ctx: codegen::Context,
 
     /// The data description, which is to data objects what `ctx` is to functions.
+    #[allow(dead_code)]
     data_description: DataDescription,
 
     /// The module, with the jit backend, which manages the JIT'd
@@ -70,6 +69,7 @@ type BValue = Value;
 #[derive(Debug, Clone)]
 struct NativeMethod {
     func: FuncId,
+    #[allow(dead_code)]
     sig: Signature,
 }
 
@@ -645,35 +645,6 @@ impl<'a> FunctionTranslator<'a> {
 
         let return_value = self.builder.block_params(self.return_block)[0];
         self.builder.ins().return_(&[return_value]);
-    }
-
-    fn translate_call(&mut self, callee: &SpannedExpr, args: &Vec<SpannedExpr>) -> Value {
-        let mut sig = self.module.make_signature();
-
-        for _arg in args {
-            sig.params.push(AbiParam::new(VAL64));
-        }
-
-        sig.returns.push(AbiParam::new(VAL64));
-
-        let name = match &callee.value {
-            Expr::Variable(var) => var.name.clone(),
-            _ => todo!("Only calls directly to functions are supported"),
-        };
-
-        let callee = self
-            .module
-            .declare_function(&name, Linkage::Import, &sig)
-            .expect("problem declaring function");
-        let local_callee = self.module.declare_func_in_func(callee, self.builder.func);
-
-        let mut arg_values = Vec::new();
-        for arg in args {
-            let value = self.translate_expr(arg);
-            arg_values.push(self.clone_val64(value))
-        }
-        let call = self.builder.ins().call(local_callee, &arg_values);
-        self.builder.inst_results(call)[0]
     }
 
     fn translate_indirect_call(&mut self, callee: &SpannedExpr, args: &Vec<SpannedExpr>) -> Value {
@@ -1415,6 +1386,7 @@ impl<'a> FunctionTranslator<'a> {
 
     /// Same as [Self::clone_val64] but only does a method call if the value is a reference type.
     /// This slows things down when used everywhere, should only be used in places where reference types are unlikely.
+    #[allow(dead_code)]
     fn clone_val64_sometimes(&mut self, val: BValue) -> OValue {
         let is_ptr = self.is_ptr_val(val);
         let clone_block = self.builder.create_block();
@@ -1518,21 +1490,5 @@ impl<'a> FunctionTranslator<'a> {
         let string_val64 = self.string_literal_borrow(string);
         self.clone_val64(string_val64);
         self.call_native(&self.natives.print, &[string_val64]);
-    }
-}
-
-fn get_native_method_for_builtin(
-    methods: &NativeMethods,
-    func: BuiltInFunction,
-) -> Option<&NativeMethod> {
-    match func {
-        BuiltInFunction::Range => Some(&methods.range),
-        BuiltInFunction::Print => Some(&methods.print),
-        BuiltInFunction::Len => Some(&methods.len),
-        BuiltInFunction::ShiftLeft => Some(&methods.val_shift_left),
-        BuiltInFunction::XOR => Some(&methods.val_xor),
-        BuiltInFunction::Not => Some(&methods.val_not),
-        BuiltInFunction::Push => Some(&methods.list_push),
-        _ => None,
     }
 }
