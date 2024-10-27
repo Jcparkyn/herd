@@ -1,5 +1,5 @@
 (
-  x = [:];
+  x = {};
   var y = x;
   set y.a = 'a';
   println x;
@@ -7,10 +7,10 @@
 );
 
 (
-  order1 = [
-    status: [ dispatched: false ],
+  order1 = {
+    status: { dispatched: false },
     name: 'ignored',
-  ];
+  };
   var order2 = order1;
   set order2.status.dispatched = true;
 

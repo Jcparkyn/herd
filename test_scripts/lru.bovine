@@ -1,19 +1,19 @@
 
-tmpLRU = [
+tmpLRU = {
   size: 20,
   oldest: 'a',
   newest: 'c',
-  items: [
+  items: {
     a: [69, (), 'b'],
     b: [7, 'a', 'c'],
     c: [420, 'b', ()],
-  ],
-];
+  },
+};
 
-newLRU = \size\ [
+newLRU = \size\ {
   size: size,
   items: [:],
-];
+};
 
 removeOldest = \var lru\ (
   if len lru.items == 0 then (

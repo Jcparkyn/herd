@@ -212,8 +212,7 @@ DictEntry: (ast::SpannedExpr, ast::SpannedExpr) = {
 }
 
 DictLiteral: Expr = {
-    "[" <entries:CommaNonEmpty<DictEntry>> "]" => Expr::Dict(entries),
-    "[:]" => Expr::Dict(vec![]),
+    "{" <entries:Comma<DictEntry>> "}" => Expr::Dict(entries),
 }
 
 ListLiteral: Expr = {

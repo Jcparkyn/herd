@@ -325,7 +325,7 @@ fn string_interning() {
 #[test]
 fn dict_literal() {
     let program = r#"
-        dict = [a: 'A', b: 'B'];
+        dict = {a: 'A', b: 'B'};
         return [dict, dict.a, dict.b];
     "#;
     let result = eval_snapshot_str(program);
@@ -349,7 +349,7 @@ fn array_assign() {
 #[test]
 fn dict_assign() {
     let program = r#"
-        a = [x: 1, y: 2];
+        a = {x: 1, y: 2};
         var b = a;
         set b.x = 4;
         return [a, b];
@@ -362,7 +362,7 @@ fn dict_assign() {
 #[test]
 fn nested_assign() {
     let program = r#"
-        a = [[x: 1, y: 2], 3];
+        a = [{x: 1, y: 2}, 3];
         var b = a;
         set b.[0].x = 4;
         set b.[1] = 5;
