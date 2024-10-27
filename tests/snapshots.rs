@@ -553,6 +553,28 @@ fn binary_trees() {
     assert_rcs_dropped();
 }
 
+#[test]
+fn mutual_recursion() {
+    let program = r#"
+        isEven_ = \isOdd n\ if n == 0 then true else (isOdd (n - 1));
+        isOdd = \n\ if n == 0 then false else (isEven_ isOdd (n - 1));
+        isEven = \n\ isEven_ isOdd n;
+        return [
+            isEven 0,
+            isEven 1,
+            isEven 5,
+            isEven 6,
+            isOdd 0,
+            isOdd 1,
+            isOdd 5,
+            isOdd 6,
+        ];
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"[true, false, false, true, false, true, true, false]");
+    assert_rcs_dropped();
+}
+
 fn eval_snapshot(program: &str) -> Value64 {
     let parser = ProgramParser::new();
     let prelude_ast = parser.parse(include_str!("../src/prelude.bovine")).unwrap();

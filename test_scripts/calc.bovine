@@ -1,8 +1,0 @@
-println 'Expected: 12';
-println (3 * 4);
-
-println 'Expected: -1';
-println (1 - 1 - 1);
-
-println 'Expected: 14';
-println (8 + 2 * 3);

@@ -1,7 +1,0 @@
-var a = 'global';
-(
-  showA = \\ println a;
-  showA ();
-  set a = 'block';
-  showA ();
-);
