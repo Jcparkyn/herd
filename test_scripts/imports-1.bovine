@@ -1,0 +1,4 @@
+
+mod = import './test_scripts/imports-2.bovine';
+
+println (mod.fn1 7);

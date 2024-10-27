@@ -7,6 +7,7 @@ use std::{
     collections::HashMap,
     mem::{self, size_of},
     ops::Deref,
+    path::PathBuf,
     rc::Rc,
 };
 use strum::Display;
@@ -35,6 +36,8 @@ pub enum JITError {
 
 pub type JITResult<T> = Result<T, JITError>;
 
+pub type VmContext = JIT;
+
 /// The basic JIT class.
 pub struct JIT {
     /// The function builder context, which is reused across multiple
@@ -58,6 +61,10 @@ pub struct JIT {
 
     /// Interned string constants, which are used for string literals.
     string_constants: HashMap<String, Value64>,
+
+    /// Return values from bovine modules (files). Files currently being evaluated
+    /// are stored as `None`.
+    pub modules: HashMap<PathBuf, Option<Value64>>,
 }
 
 /// An owned Value64
@@ -97,6 +104,7 @@ struct NativeMethods {
     list_borrow_u64: NativeMethod,
     val_eq_u8: NativeMethod,
     drop: NativeMethod,
+    import_module: NativeMethod,
 }
 
 fn make_builtin_sig(
@@ -171,6 +179,7 @@ fn get_native_methods<'a, 'b>(module: &'b mut JITModule) -> NativeMethods {
         drop: make_method(module, "NATIVE:drop", &[VAL64], &[]),
         print: make_method(module, "NATIVE:print", &[VAL64], &[]),
         val_not: make_method(module, "NATIVE:val_not", &[VAL64], &[VAL64]),
+        import_module: make_method(module, "NATIVE:import_module", &[PTR, VAL64], &[VAL64]),
     };
     native_methods
 }
@@ -211,6 +220,7 @@ impl JIT {
             "NATIVE:construct_lambda",
             builtins::construct_lambda as *const u8,
         );
+        builder.symbol("NATIVE:import_module", builtins::import_module as *const u8);
         builder.symbol(
             "NATIVE:val_shift_left",
             builtins::public_val_shift_left as *const u8,
@@ -234,6 +244,7 @@ impl JIT {
             module,
             natives,
             string_constants: HashMap::new(),
+            modules: HashMap::new(),
         }
     }
 
@@ -263,11 +274,14 @@ impl JIT {
         // Then, translate the AST nodes into Cranelift IR.
         self.translate_main_func(body)?;
 
+        // TODO: Use file path
+        let func_name = format!("MAIN:{}", self.modules.len());
+
         // Next, declare the function to jit. Functions must be declared
         // before they can be called, or defined.
         let id = self
             .module
-            .declare_function("MAIN", Linkage::Export, &self.ctx.func.signature)
+            .declare_function(&func_name, Linkage::Export, &self.ctx.func.signature)
             .map_err(JITError::Module)?;
 
         // Define the function to jit. This finishes compilation, although
@@ -463,6 +477,7 @@ impl<'a, 'b> VariableBuilder<'a, 'b> {
                 // The lambda body is analyzed in a separate scope later on.
             }
             Expr::Match(m) => self.declare_variables_in_match(m),
+            Expr::Import { .. } => {}
         }
     }
 
@@ -636,6 +651,7 @@ impl<'a> FunctionTranslator<'a> {
             }
             Expr::Lambda(l) => self.translate_lambda_definition(l),
             Expr::Match(m) => self.translate_match_expr(m),
+            Expr::Import { path } => self.translate_import(path),
         }
     }
 
@@ -674,8 +690,7 @@ impl<'a> FunctionTranslator<'a> {
         let sig_ref = self.builder.import_signature(sig);
 
         let mut arg_values = Vec::new();
-        let vm_ptr = self.builder.block_params(self.entry_block)[0];
-        arg_values.push(vm_ptr);
+        arg_values.push(self.get_vm_ptr());
         arg_values.push(closure_ptr);
         for arg in args {
             arg_values.push(self.translate_expr(arg))
@@ -699,6 +714,10 @@ impl<'a> FunctionTranslator<'a> {
         });
 
         return call_result;
+    }
+
+    fn get_vm_ptr(&mut self) -> Value {
+        self.builder.block_params(self.entry_block)[0]
     }
 
     fn build_function_signature(sig: &mut Signature, param_count: usize) {
@@ -1505,5 +1524,12 @@ impl<'a> FunctionTranslator<'a> {
         let string_val64 = self.string_literal_borrow(string);
         self.clone_val64(string_val64);
         self.call_native(&self.natives.print, &[string_val64]);
+    }
+
+    fn translate_import(&mut self, path: &str) -> Value {
+        let vm_ptr = self.get_vm_ptr();
+        let path_val = self.string_literal_borrow(path.to_string());
+        let path_val = self.clone_val64(path_val);
+        self.call_native(&self.natives.import_module, &[vm_ptr, path_val])[0]
     }
 }

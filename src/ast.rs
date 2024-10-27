@@ -241,6 +241,9 @@ pub enum Expr {
         condition: Box<SpannedExpr>,
         body: Box<SpannedExpr>,
     },
+    Import {
+        path: String,
+    },
 }
 
 impl Expr {
@@ -314,6 +317,7 @@ impl Debug for Expr {
             Expr::While { condition, body } => {
                 f.debug_tuple("While").field(condition).field(body).finish()
             }
+            Expr::Import { path } => f.debug_tuple("Import").field(path).finish(),
         }
     }
 }

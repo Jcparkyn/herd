@@ -265,6 +265,7 @@ impl VariableAnalyzer {
                 self.analyze_expr(condition);
                 self.analyze_expr(body)
             }
+            Expr::Import { .. } => {}
         }
     }
 
@@ -480,5 +481,6 @@ fn analyze_expr_liveness(expr: &mut Expr, deps: &mut HashSet<String>) {
                 deps.insert(dep);
             }
         }
+        Expr::Import { .. } => {}
     }
 }

@@ -450,6 +450,7 @@ impl Interpreter {
                 }
                 return Ok(NIL);
             }
+            Expr::Import { .. } => todo!("Imports not supported in tree walking mode"),
         }
     }
 
