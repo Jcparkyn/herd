@@ -99,7 +99,11 @@ struct NativeMethods {
     drop: NativeMethod,
 }
 
-fn make_sig(module: &mut JITModule, params: &[ir::Type], returns: &[ir::Type]) -> ir::Signature {
+fn make_builtin_sig(
+    module: &mut JITModule,
+    params: &[ir::Type],
+    returns: &[ir::Type],
+) -> ir::Signature {
     let mut sig = module.make_signature();
     for param in params {
         sig.params.push(AbiParam::new(*param));
@@ -117,7 +121,7 @@ fn get_native_methods<'a, 'b>(module: &'b mut JITModule) -> NativeMethods {
         params: &[ir::Type],
         returns: &[ir::Type],
     ) -> NativeMethod {
-        let sig = make_sig(module, params, returns);
+        let sig = make_builtin_sig(module, params, returns);
         let func = module
             .declare_function(name, Linkage::Import, &sig)
             .expect("problem declaring function");
@@ -250,9 +254,9 @@ impl JIT {
         // Cast the raw pointer to a typed function pointer. This is unsafe, because
         // this is the critical point where you have to trust that the generated code
         // is safe to be called.
-        let code_fn = mem::transmute::<_, extern "C" fn(Value64) -> Value64>(func_ptr);
+        let code_fn = mem::transmute::<_, extern "C" fn(&mut JIT, Value64) -> Value64>(func_ptr);
         // And now we can call it!
-        code_fn(input)
+        code_fn(self, input)
     }
 
     fn compile_main_func(&mut self, body: &SpannedExpr) -> JITResult<FuncId> {
@@ -297,6 +301,7 @@ impl JIT {
 
     fn translate_main_func(&mut self, body: &SpannedExpr) -> JITResult<()> {
         self.ctx.func.collect_debug_info();
+        self.ctx.func.signature.params.push(AbiParam::new(PTR)); // VmContext ptr
         self.ctx.func.signature.params.push(AbiParam::new(VAL64)); // program args
         self.ctx.func.signature.returns.push(AbiParam::new(VAL64));
 
@@ -309,7 +314,7 @@ impl JIT {
 
         // Walk the AST and declare all implicitly-declared variables.
         let variables = {
-            let args_val = builder.block_params(entry_block)[0];
+            let args_val = builder.block_params(entry_block)[1];
             let mut variable_builder = VariableBuilder::new(&mut builder);
             variable_builder.create_variable("args", args_val);
             variable_builder.declare_variables_in_expr(body);
@@ -327,6 +332,7 @@ impl JIT {
             natives: &self.natives,
             string_constants: &mut self.string_constants,
             return_block,
+            entry_block,
         };
         let return_value = trans.translate_expr(body);
 
@@ -359,7 +365,7 @@ impl<'a, 'b> VariableBuilder<'a, 'b> {
     }
 
     fn declare_variables_in_func(&mut self, func: &FuncExpr, entry_block: Block) {
-        let closure_ptr = self.builder.block_params(entry_block)[0];
+        let closure_ptr = self.builder.block_params(entry_block)[1];
         for (i, var) in func.potential_captures.iter().enumerate() {
             let val = self.builder.ins().load(
                 VAL64,
@@ -539,6 +545,7 @@ struct FunctionTranslator<'a> {
     module: &'a mut JITModule,
     natives: &'a NativeMethods,
     string_constants: &'a mut HashMap<String, Value64>,
+    entry_block: Block,
     return_block: Block,
 }
 
@@ -550,7 +557,7 @@ impl<'a> FunctionTranslator<'a> {
             self.clone_val64(val);
         }
         for (i, pattern) in lambda.params.iter().enumerate() {
-            let value = self.builder.block_params(entry_block)[i + 1];
+            let value = self.builder.block_params(entry_block)[i + 2];
             self.translate_match_pattern(&pattern.value, value);
         }
     }
@@ -663,15 +670,12 @@ impl<'a> FunctionTranslator<'a> {
         });
 
         let mut sig = self.module.make_signature();
-        sig.params.push(AbiParam::new(I64)); // closure pointer
-        for _arg in args {
-            sig.params.push(AbiParam::new(VAL64));
-        }
-        sig.params.push(AbiParam::new(VAL64));
-        sig.returns.push(AbiParam::new(VAL64));
+        Self::build_function_signature(&mut sig, args.len());
         let sig_ref = self.builder.import_signature(sig);
 
         let mut arg_values = Vec::new();
+        let vm_ptr = self.builder.block_params(self.entry_block)[0];
+        arg_values.push(vm_ptr);
         arg_values.push(closure_ptr);
         for arg in args {
             arg_values.push(self.translate_expr(arg))
@@ -695,6 +699,22 @@ impl<'a> FunctionTranslator<'a> {
         });
 
         return call_result;
+    }
+
+    fn build_function_signature(sig: &mut Signature, param_count: usize) {
+        // VM context
+        sig.params
+            .push(AbiParam::special(PTR, ir::ArgumentPurpose::VMContext));
+        // Closure pointer
+        sig.params.push(AbiParam::new(I64));
+        // User params
+        for _ in 0..param_count {
+            sig.params.push(AbiParam::new(VAL64));
+        }
+        // Self for recursion
+        sig.params.push(AbiParam::new(VAL64));
+        // Return value or error
+        sig.returns.push(AbiParam::new(VAL64));
     }
 
     fn get_lambda_details(
@@ -1181,12 +1201,8 @@ impl<'a> FunctionTranslator<'a> {
     fn translate_lambda_definition(&mut self, lambda: &LambdaExpr) -> Value {
         let mut ctx = self.module.make_context();
         ctx.func.collect_debug_info();
-        ctx.func.signature.params.push(AbiParam::new(PTR)); // closure
-        for _ in 0..lambda.params.len() {
-            ctx.func.signature.params.push(AbiParam::new(VAL64));
-        }
-        ctx.func.signature.params.push(AbiParam::new(VAL64)); // self for recursion
-        ctx.func.signature.returns.push(AbiParam::new(VAL64)); // return value
+
+        Self::build_function_signature(&mut ctx.func.signature, lambda.params.len());
 
         let mut builder_context = FunctionBuilderContext::new();
         let mut builder = FunctionBuilder::new(&mut ctx.func, &mut builder_context);
@@ -1210,11 +1226,10 @@ impl<'a> FunctionTranslator<'a> {
             natives: &self.natives,
             string_constants: &mut self.string_constants,
             return_block,
+            entry_block,
         };
         trans.translate_function_entry(lambda, entry_block);
-        for var in lambda.potential_captures.iter() {
-            trans.variables.get(&var.name).unwrap();
-        }
+
         let return_value = trans.translate_expr(&lambda.body);
 
         trans
