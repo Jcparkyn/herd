@@ -146,26 +146,26 @@ fn cmp_gt() {
 #[test]
 fn blocks() {
     let program = r#"
-        x = (a = 1; a);
-        y = (a = 2; a + x);
-        var z = 1;
+        x = (a = 'A'; a);
+        y = (a = 'B'; [a, x]);
+        var z = 'Z';
         (
-            set z = z + 1;
+            set z = [z, 'Y'];
         );
         return [x, y, z];
     "#;
     let result = eval_snapshot_str(program);
-    insta::assert_snapshot!(result, @"[1, 3, 2]");
+    insta::assert_snapshot!(result, @"['A', ['B', 'A'], ['Z', 'Y']]");
     assert_rcs_dropped();
 }
 
 #[test]
 fn index_list() {
     let program = r#"
-        return [1, 2, 3].[1];
+        return ['a', 'b', 'c'].[1];
     "#;
     let result = eval_snapshot_str(program);
-    insta::assert_snapshot!(result, @"2");
+    insta::assert_snapshot!(result, @"'b'");
     assert_rcs_dropped();
 }
 
@@ -217,14 +217,14 @@ fn logic_or() {
 #[test]
 fn for_in_loop() {
     let program = r#"
-        var sum = 0;
-        for x in [1, 2, 3] do (
-            set sum = sum + x;
+        var result = [];
+        for x in ['a', 'b', 'c'] do (
+            set result |= push x;
         )
-        return sum;
+        return result;
     "#;
     let result = eval_snapshot_str(program);
-    insta::assert_snapshot!(result, @"6");
+    insta::assert_snapshot!(result, @"['a', 'b', 'c']");
     assert_rcs_dropped();
 }
 
@@ -290,11 +290,11 @@ fn builtin_not() {
 #[test]
 fn early_return_if() {
     let program = r#"
-        f = \a\ [if a then 1 else (return 0;)];
+        f = \a\ [if a then 'A' else (return 'B';)];
         return [f true, f false];
     "#;
     let result = eval_snapshot_str(program);
-    insta::assert_snapshot!(result, @"[[1], 0]");
+    insta::assert_snapshot!(result, @"[['A'], 'B']");
     assert_rcs_dropped();
 }
 
@@ -325,24 +325,24 @@ fn string_interning() {
 #[test]
 fn dict_literal() {
     let program = r#"
-        dict = [a: 1, b: 2];
+        dict = [a: 'A', b: 'B'];
         return [dict, dict.a, dict.b];
     "#;
     let result = eval_snapshot_str(program);
-    insta::assert_snapshot!(result, @"[[a: 1, b: 2], 1, 2]");
+    insta::assert_snapshot!(result, @"[[a: 'A', b: 'B'], 'A', 'B']");
     assert_rcs_dropped();
 }
 
 #[test]
 fn array_assign() {
     let program = r#"
-        a = [1, 2];
+        a = ['1', '2'];
         var b = a;
-        set b.[0] = 4;
+        set b.[0] = '4';
         return [a, b];
     "#;
     let result = eval_snapshot_str(program);
-    insta::assert_snapshot!(result, @"[[1, 2], [4, 2]]");
+    insta::assert_snapshot!(result, @"[['1', '2'], ['4', '2']]");
     assert_rcs_dropped();
 }
 
