@@ -1,4 +1,5 @@
 use std::fmt::Display;
+use std::path::PathBuf;
 use std::rc::Weak;
 
 use bovine::analysis::Analyzer;
@@ -596,7 +597,10 @@ fn eval_snapshot(program: &str) -> Value64 {
     analyzer.analyze_statements(&mut program_ast).unwrap();
 
     let mut jit = jit::JIT::new();
-    let main_func = jit.compile_program_as_function(&program_ast).unwrap();
+    let src_path = PathBuf::new();
+    let main_func = jit
+        .compile_program_as_function(&program_ast, &src_path)
+        .unwrap();
     reset_tracker();
     let result = unsafe { jit.run_func(main_func, Value64::NIL) };
 

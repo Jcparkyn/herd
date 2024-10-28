@@ -7,7 +7,7 @@ use std::{
     collections::HashMap,
     mem::{self, size_of},
     ops::Deref,
-    path::PathBuf,
+    path::{Path, PathBuf},
     rc::Rc,
 };
 use strum::Display;
@@ -251,12 +251,13 @@ impl JIT {
     pub fn compile_program_as_function(
         &mut self,
         program: &[SpannedStatement],
+        src_path: &Path,
     ) -> JITResult<FuncId> {
         let body = Spanned::with_zero_span(Expr::Block(ast::Block {
             statements: program.to_vec(),
             expression: None,
         }));
-        let func_id = self.compile_main_func(&body)?;
+        let func_id = self.compile_main_func(&body, src_path)?;
         Ok(func_id)
     }
 
@@ -270,12 +271,12 @@ impl JIT {
         code_fn(self, input)
     }
 
-    fn compile_main_func(&mut self, body: &SpannedExpr) -> JITResult<FuncId> {
+    fn compile_main_func(&mut self, body: &SpannedExpr, src_path: &Path) -> JITResult<FuncId> {
         // Then, translate the AST nodes into Cranelift IR.
-        self.translate_main_func(body)?;
+        self.translate_main_func(body, src_path)?;
 
         // TODO: Use file path
-        let func_name = format!("MAIN:{}", self.modules.len());
+        let func_name = format!("MAIN:{}", src_path.to_str().unwrap());
 
         // Next, declare the function to jit. Functions must be declared
         // before they can be called, or defined.
@@ -313,7 +314,7 @@ impl JIT {
         }
     }
 
-    fn translate_main_func(&mut self, body: &SpannedExpr) -> JITResult<()> {
+    fn translate_main_func(&mut self, body: &SpannedExpr, src_path: &Path) -> JITResult<()> {
         self.ctx.func.collect_debug_info();
         self.ctx.func.signature.params.push(AbiParam::new(PTR)); // VmContext ptr
         self.ctx.func.signature.params.push(AbiParam::new(VAL64)); // program args
@@ -340,6 +341,7 @@ impl JIT {
         let return_block = builder.create_block();
         // Now translate the statements of the function body.
         let mut trans = FunctionTranslator {
+            src_path,
             builder,
             variables,
             module: &mut self.module,
@@ -555,6 +557,7 @@ impl<'a, 'b> VariableBuilder<'a, 'b> {
 }
 
 struct FunctionTranslator<'a> {
+    src_path: &'a Path,
     builder: FunctionBuilder<'a>,
     variables: HashMap<String, Variable>,
     module: &'a mut JITModule,
@@ -1239,6 +1242,7 @@ impl<'a> FunctionTranslator<'a> {
 
         let return_block = builder.create_block();
         let mut trans = FunctionTranslator {
+            src_path: &self.src_path,
             builder,
             variables,
             module: &mut self.module,
@@ -1259,10 +1263,11 @@ impl<'a> FunctionTranslator<'a> {
         trans.translate_return_block();
         trans.builder.finalize();
 
-        // Using a name here (instead of declare_anonymouser_function) for profiling info on Linux.
+        // Using a name here (instead of declare_anonymous_function) for profiling info on Linux.
         let func_name = format!(
-            "USER:{}:{}",
+            "USER:{}:{}:{}",
             lambda.name.as_deref().unwrap_or("lambda"),
+            self.src_path.to_str().unwrap(),
             lambda.body.span.start,
         );
         let func_id = self

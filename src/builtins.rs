@@ -209,7 +209,6 @@ pub extern "C" fn construct_lambda(
 pub extern "C" fn import_module(vm: &mut VmContext, name: Value64) -> Value64 {
     let name = name.try_into_string().unwrap();
     let path = PathBuf::from(name.as_str());
-    println!("Path: {:?}", path);
     let path = path.canonicalize().unwrap();
     if let Some(maybe_module) = vm.modules.get(&path) {
         if let Some(module_result) = maybe_module {
@@ -222,13 +221,13 @@ pub extern "C" fn import_module(vm: &mut VmContext, name: Value64) -> Value64 {
     // Compile the module
     let program = std::fs::read_to_string(path.clone()).unwrap();
     let parser = ProgramParser::new();
-    // let prelude_ast = parser.parse(include_str!("../src/prelude.bovine")).unwrap();
+    let prelude_ast = parser.parse(include_str!("../src/prelude.bovine")).unwrap();
     let mut program_ast = parser.parse(&program).unwrap();
-    // program_ast.splice(0..0, prelude_ast);
+    program_ast.splice(0..0, prelude_ast);
     let mut analyzer = Analyzer::new();
     analyzer.analyze_statements(&mut program_ast).unwrap();
 
-    let main_func = vm.compile_program_as_function(&program_ast).unwrap();
+    let main_func = vm.compile_program_as_function(&program_ast, &path).unwrap();
 
     let result = unsafe { vm.run_func(main_func, Value64::NIL) };
     vm.modules.insert(path, Some(result.clone()));

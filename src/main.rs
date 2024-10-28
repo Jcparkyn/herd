@@ -1,4 +1,5 @@
 use std::fmt::Debug;
+use std::path::{Path, PathBuf};
 
 use bovine::analysis::{AnalysisError, Analyzer};
 use bovine::interpreter::{Interpreter, InterpreterError};
@@ -38,14 +39,15 @@ struct Args {
 fn main() {
     let args = Args::parse();
 
-    if let Some(ref path) = args.file {
-        run_file(path, &args);
+    if let Some(ref path_str) = args.file {
+        let path = PathBuf::from(path_str);
+        run_file(&path, &args);
     } else {
         run_repl(args);
     }
 }
 
-fn run_file(path: &str, args: &Args) {
+fn run_file(path: &Path, args: &Args) {
     let program_str = match std::fs::read_to_string(path) {
         Ok(program) => program,
         Err(err) => {
@@ -78,7 +80,9 @@ fn run_file(path: &str, args: &Args) {
     }
     if args.jit {
         let mut jit = jit::JIT::new();
-        let main_func = match jit.compile_program_as_function(&program) {
+        // Make it impossible to import from the root script, to prevent cycles
+        jit.modules.insert(path.canonicalize().unwrap(), None);
+        let main_func = match jit.compile_program_as_function(&program, path) {
             Ok(id) => id,
             Err(err) => {
                 println!("Error while compiling function: {:?}", err);
