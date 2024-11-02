@@ -209,7 +209,7 @@ pub extern "C" fn construct_lambda(
 pub extern "C" fn import_module(vm: &mut VmContext, name: Value64) -> Value64 {
     let name = name.try_into_string().unwrap();
     let path = PathBuf::from(name.as_str());
-    let path = path.canonicalize().unwrap();
+
     if let Some(maybe_module) = vm.modules.get(&path) {
         if let Some(module_result) = maybe_module {
             return module_result.clone();
@@ -219,7 +219,7 @@ pub extern "C" fn import_module(vm: &mut VmContext, name: Value64) -> Value64 {
     }
     vm.modules.insert(path.clone(), None);
     // Compile the module
-    let program = std::fs::read_to_string(path.clone()).unwrap();
+    let program = vm.module_loader.load(&path).unwrap();
     let parser = ProgramParser::new();
     let prelude_ast = parser.parse(include_str!("../src/prelude.bovine")).unwrap();
     let mut program_ast = parser.parse(&program).unwrap();

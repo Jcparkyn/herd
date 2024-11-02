@@ -1,9 +1,10 @@
+use std::collections::HashMap;
 use std::fmt::Display;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::rc::Weak;
 
 use bovine::analysis::Analyzer;
-use bovine::jit;
+use bovine::jit::{self, ModuleLoader};
 use bovine::lang::ProgramParser;
 use bovine::value64::{Value64, RC_TRACKER};
 
@@ -314,7 +315,7 @@ fn string_interning() {
     let program = r#"
         return ['hello', 'hello'];
     "#;
-    let result = eval_snapshot(program);
+    let result = eval_snapshot(program, HashMap::new());
     insta::assert_snapshot!(result.to_string(), @r#"['hello', 'hello']"#);
     let list = result.try_into_list().unwrap();
     // This is a dirty way to check that the pointers are equal.
@@ -588,7 +589,25 @@ fn mutual_recursion() {
     assert_rcs_dropped();
 }
 
-fn eval_snapshot(program: &str) -> Value64 {
+#[test]
+fn simple_imports() {
+    let main_program = r#"
+        foo = import 'foo.bovine';
+        return foo.fn1 41;
+    "#;
+
+    let foo_program = r#"
+        fn1 = \a\ a + 1;
+        return { fn1 };
+    "#;
+
+    let modules = HashMap::from([(PathBuf::from("foo.bovine"), foo_program.to_string())]);
+    let result = eval_snapshot_str_modules(main_program, modules);
+    insta::assert_snapshot!(result, @"42");
+    assert_rcs_dropped();
+}
+
+fn eval_snapshot(program: &str, modules: HashMap<PathBuf, String>) -> Value64 {
     let parser = ProgramParser::new();
     let prelude_ast = parser.parse(include_str!("../src/prelude.bovine")).unwrap();
     let mut program_ast = parser.parse(program).unwrap();
@@ -596,7 +615,8 @@ fn eval_snapshot(program: &str) -> Value64 {
     let mut analyzer = Analyzer::new();
     analyzer.analyze_statements(&mut program_ast).unwrap();
 
-    let mut jit = jit::JIT::new();
+    let module_loader = TestModuleLoader { modules };
+    let mut jit = jit::JIT::new(Box::new(module_loader));
     let src_path = PathBuf::new();
     let main_func = jit
         .compile_program_as_function(&program_ast, &src_path)
@@ -608,5 +628,26 @@ fn eval_snapshot(program: &str) -> Value64 {
 }
 
 fn eval_snapshot_str(program: &str) -> String {
-    eval_snapshot(program).to_string()
+    eval_snapshot(program, HashMap::new()).to_string()
+}
+
+fn eval_snapshot_str_modules(program: &str, modules: HashMap<PathBuf, String>) -> String {
+    eval_snapshot(program, modules).to_string()
+}
+
+struct TestModuleLoader {
+    modules: HashMap<PathBuf, String>,
+}
+
+impl ModuleLoader for TestModuleLoader {
+    fn load(&self, path: &Path) -> std::io::Result<String> {
+        let path = path.to_path_buf();
+        match self.modules.get(&path) {
+            Some(source) => Ok(source.clone()),
+            None => Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("Module not found: {}", path.display()),
+            )),
+        }
+    }
 }

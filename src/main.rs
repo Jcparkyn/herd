@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use bovine::analysis::{AnalysisError, Analyzer};
 use bovine::interpreter::{Interpreter, InterpreterError};
-use bovine::jit;
+use bovine::jit::{self, DefaultModuleLoader};
 use bovine::lang;
 use bovine::lang::ProgramParser;
 use bovine::lines::{Lines, Location};
@@ -79,7 +79,10 @@ fn run_file(path: &Path, args: &Args) {
         }
     }
     if args.jit {
-        let mut jit = jit::JIT::new();
+        let module_loader = DefaultModuleLoader {
+            base_path: path.parent().unwrap().to_path_buf(),
+        };
+        let mut jit = jit::JIT::new(Box::new(module_loader));
         // Make it impossible to import from the root script, to prevent cycles
         jit.modules.insert(path.canonicalize().unwrap(), None);
         let main_func = match jit.compile_program_as_function(&program, path) {

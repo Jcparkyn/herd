@@ -38,6 +38,21 @@ pub type JITResult<T> = Result<T, JITError>;
 
 pub type VmContext = JIT;
 
+pub trait ModuleLoader {
+    fn load(&self, path: &Path) -> std::io::Result<String>;
+}
+
+pub struct DefaultModuleLoader {
+    pub base_path: PathBuf,
+}
+
+impl ModuleLoader for DefaultModuleLoader {
+    fn load(&self, path: &Path) -> std::io::Result<String> {
+        let path = self.base_path.join(path);
+        std::fs::read_to_string(path)
+    }
+}
+
 /// The basic JIT class.
 pub struct JIT {
     /// The function builder context, which is reused across multiple
@@ -65,6 +80,8 @@ pub struct JIT {
     /// Return values from bovine modules (files). Files currently being evaluated
     /// are stored as `None`.
     pub modules: HashMap<PathBuf, Option<Value64>>,
+
+    pub module_loader: Box<dyn ModuleLoader>,
 }
 
 /// An owned Value64
@@ -185,7 +202,7 @@ fn get_native_methods<'a, 'b>(module: &'b mut JITModule) -> NativeMethods {
 }
 
 impl JIT {
-    pub fn new() -> Self {
+    pub fn new(module_loader: Box<dyn ModuleLoader>) -> Self {
         let mut flag_builder = settings::builder();
         flag_builder.set("use_colocated_libcalls", "false").unwrap();
         flag_builder.set("is_pic", "false").unwrap();
@@ -245,6 +262,7 @@ impl JIT {
             natives,
             string_constants: HashMap::new(),
             modules: HashMap::new(),
+            module_loader,
         }
     }
 
