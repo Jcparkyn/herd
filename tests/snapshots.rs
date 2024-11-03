@@ -668,6 +668,30 @@ fn stdlib_imports() {
     assert_rcs_dropped();
 }
 
+#[test]
+fn stdlib_map() {
+    let main_program = r#"
+        list = import '@list';
+        return [1, 2] | list.map \(_ + 1);
+    "#;
+
+    let result = eval_snapshot_str(main_program);
+    insta::assert_snapshot!(result, @"[2, 3]");
+    assert_rcs_dropped();
+}
+
+#[test]
+fn stdlib_filter() {
+    let main_program = r#"
+        list = import '@list';
+        return [1, 2, 3] | list.filter \(_ != 2);
+    "#;
+
+    let result = eval_snapshot_str(main_program);
+    insta::assert_snapshot!(result, @"[1, 3]");
+    assert_rcs_dropped();
+}
+
 fn eval_snapshot(program: &str, modules: HashMap<String, String>) -> Value64 {
     let parser = ProgramParser::new();
     let prelude_ast = parser.parse(include_str!("../src/prelude.bovine")).unwrap();

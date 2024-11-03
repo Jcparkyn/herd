@@ -1,4 +1,6 @@
 
+!{ range } = import '@basics';
+
 push = \arr element\ NATIVE:push arr element;
 
 pop = \arr\ NATIVE:pop arr;
@@ -7,9 +9,23 @@ len = \val\ NATIVE:len val;
 
 sort = \arr\ NATIVE:sort arr;
 
-map = \val f\ NATIVE:map val f;
+map = \var arr f\ (
+  l = len arr;
+  for i in range 0 l do (
+    set arr.[i] = f arr.[i];
+  )
+  arr
+);
 
-filter = \val predicate\ NATIVE:filter val predicate;
+filter = \arr f\ (
+  var result = [];
+  for item in arr do (
+    if f item then (
+      set result |= push item;
+    )
+  )
+  result
+);
 
 return {
   push,

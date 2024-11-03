@@ -1,6 +1,9 @@
 
 floor = \val\ NATIVE:floor val;
 
+ceiling = \val\ -(NATIVE:floor -val);
+
 return {
   floor,
+  ceiling,
 }
