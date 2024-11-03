@@ -42,16 +42,12 @@ fn rc_new<T: Boxable>(val: T) -> Rc<T> {
 }
 
 fn rc_mutate<T: Boxable + Clone, F: FnOnce(&mut T)>(rc: &mut Rc<T>, action: F) {
-    #[cfg(debug_assertions)]
-    let will_clone = Rc::strong_count(rc) > 1;
     let mut_val = Rc::make_mut(rc);
     action(mut_val);
     #[cfg(debug_assertions)]
-    if will_clone {
-        RC_TRACKER.with(|tracker| {
-            tracker.borrow_mut().track(rc);
-        });
-    }
+    RC_TRACKER.with(|tracker| {
+        tracker.borrow_mut().track(rc);
+    });
 }
 
 pub extern "C" fn list_new(len: u64, items: *const Value64) -> Value64 {

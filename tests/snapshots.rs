@@ -527,6 +527,44 @@ fn match_expression() {
 }
 
 #[test]
+fn match_empty_dict() {
+    let program = r#"
+        x = {};
+        return switch x on {
+            {} => 'empty_dict', 
+        };
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"'empty_dict'");
+    assert_rcs_dropped();
+}
+
+#[test]
+fn match_dict() {
+    let program = r#"
+        f = \x\ switch x on {
+            () => 'nil',
+            [] => 'empty_list',
+            {a, b: 0} => ['dict0', a],
+            {a, b: 1} => ['dict1', a],
+            {a, b: [2, c]} => ['dict2', a, c],
+            {} => 'any_dict',
+        };
+        return [
+            f (),
+            f [],
+            f {a: 'A', b: 0},
+            f {a: 'A', b: 1},
+            f {a: 'A', b: [2, 3]},
+            f {},
+        ];
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"['nil', 'empty_list', ['dict0', 'A'], ['dict1', 'A'], ['dict2', 'A', 3], 'any_dict']");
+    assert_rcs_dropped();
+}
+
+#[test]
 fn match_constant() {
     let program = r#"
         f = \x\ switch x on {

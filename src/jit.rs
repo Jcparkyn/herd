@@ -865,7 +865,9 @@ impl<'a> FunctionTranslator<'a> {
 
     fn translate_match_pattern(&mut self, pattern: &MatchPattern, value: OValue) {
         match pattern {
-            MatchPattern::Discard => {}
+            MatchPattern::Discard => {
+                self.drop_val64(value);
+            }
             MatchPattern::Declaration(var_ref, _) => {
                 let variable = *self
                     .variables
@@ -920,8 +922,8 @@ impl<'a> FunctionTranslator<'a> {
                     let element =
                         self.call_native(&self.natives.val_get_index, &[value, keyval])[0];
                     self.translate_match_pattern(pattern, element);
-                    self.drop_val64(element);
                 }
+                self.drop_val64(value);
             }
         }
     }
