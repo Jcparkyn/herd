@@ -817,6 +817,7 @@ impl Interpreter {
             MatchPattern::Constant(c) => Err(InterpreterError::PatternMatchFailed {
                 message: format!("Can't use a constant ({c}) as a spread parameter (..)"),
             }),
+            MatchPattern::Dict(_dict_pattern) => todo!(),
         }
     }
 
@@ -880,6 +881,7 @@ impl Interpreter {
                     })
                 }
             }
+            MatchPattern::Dict(_dict_pattern) => todo!(),
         }
     }
 
@@ -900,6 +902,7 @@ impl Interpreter {
                 MatchPattern::SimpleList(parts) => matches_slice(parts, values),
                 MatchPattern::SpreadList(pattern) => matches_spread_list(pattern, values),
                 MatchPattern::Constant(_) => false,
+                MatchPattern::Dict(_dict_pattern) => todo!(),
             }
         }
 
@@ -927,6 +930,7 @@ impl Interpreter {
                 _ => false,
             },
             MatchPattern::Constant(c) => Self::matches_constant(c, value),
+            MatchPattern::Dict(_dict_pattern) => todo!(),
         }
     }
 

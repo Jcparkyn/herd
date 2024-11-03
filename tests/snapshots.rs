@@ -497,6 +497,17 @@ fn pattern_assignment_nested() {
 }
 
 #[test]
+fn pattern_assignment_dict() {
+    let program = r#"
+        !{a, b: [b0, b1]} = {a: 1, b: [2, 3], c: 4};
+        return [a, b0, b1];
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"[1, 2, 3]");
+    assert_rcs_dropped();
+}
+
+#[test]
 fn match_expression() {
     let program = r#"
         a = [2, 3];

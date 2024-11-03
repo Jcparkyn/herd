@@ -549,6 +549,11 @@ impl<'a, 'b> VariableBuilder<'a, 'b> {
                     self.declare_variables_in_pattern(part);
                 }
             }
+            MatchPattern::Dict(dict) => {
+                for (_key, pattern) in &dict.entries {
+                    self.declare_variables_in_pattern(pattern);
+                }
+            }
         }
     }
 
@@ -909,6 +914,15 @@ impl<'a> FunctionTranslator<'a> {
             MatchPattern::SpreadList(_) => {
                 todo!("Pattern matching with ... isn't supported here yet")
             }
+            MatchPattern::Dict(dict) => {
+                for (key, pattern) in &dict.entries {
+                    let keyval = self.string_literal_borrow(key.clone());
+                    let element =
+                        self.call_native(&self.natives.val_get_index, &[value, keyval])[0];
+                    self.translate_match_pattern(pattern, element);
+                    self.drop_val64(element);
+                }
+            }
         }
     }
 
@@ -963,7 +977,41 @@ impl<'a> FunctionTranslator<'a> {
                 let phi = self.builder.block_params(merge_block)[0];
                 phi
             }
-            _ => todo!("Pattern matching isn't supported here yet"),
+            MatchPattern::SpreadList(_) => {
+                todo!("Pattern matching with ... isn't supported here yet")
+            }
+            MatchPattern::Dict(dict_pattern) => {
+                let block0 = self.builder.create_block();
+                // let block1 = self.builder.create_block();
+                let merge_block = self.builder.create_block();
+                self.builder.append_block_param(merge_block, types::I8);
+
+                // Return false if not a dict
+                let is_dict = self.is_ptr_type(value, PointerTag::Dict);
+                self.builder
+                    .ins()
+                    .brif(is_dict, block0, &[], merge_block, &[false_val]);
+                self.builder.switch_to_block(block0);
+                self.builder.seal_block(block0);
+
+                let mut matches_all = self.builder.ins().iconst(types::I8, 1);
+                for (key, pattern) in &dict_pattern.entries {
+                    let keyval = self.string_literal_borrow(key.clone());
+                    // TODO: check if contains
+                    let element =
+                        self.call_native(&self.natives.val_get_index, &[value, keyval])[0];
+                    let matches = self.translate_matches_pattern(pattern, element);
+                    self.drop_val64(element);
+                    // TODO short-circuit
+                    matches_all = self.builder.ins().band(matches_all, matches);
+                }
+                self.builder.ins().jump(merge_block, &[matches_all]);
+
+                self.builder.switch_to_block(merge_block);
+                self.builder.seal_block(merge_block);
+                let phi = self.builder.block_params(merge_block)[0];
+                phi
+            }
         }
     }
 

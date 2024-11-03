@@ -131,6 +131,7 @@ MatchPattern: MatchPattern = {
     },
     "set" <target:AssignmentTarget> => MatchPattern::Assignment(target),
     "[" <parts:Comma<MatchListPart>> "]" =>? Ok(process_list_match(parts)?),
+    "{" <entries:Comma<MatchDictPart>> "}" => MatchPattern::Dict(ast::DictPattern { entries }),
     NumLiteral => MatchPattern::Constant(ast::MatchConstant::Number(<>)),
     BoolLiteral => MatchPattern::Constant(ast::MatchConstant::Bool(<>)),
     StringLiteral => MatchPattern::Constant(ast::MatchConstant::String(<>)),
@@ -146,6 +147,15 @@ DeclarationType: ast::DeclarationType = {
 MatchListPart: (MatchPattern, bool) = {
     <spread:".."?> <pattern:MatchPattern> => (pattern, spread != None),
     ".." => (MatchPattern::Discard, true),
+}
+
+MatchDictPart: (String, MatchPattern) = {
+    <key:Identifier> ":" <pattern:MatchPattern> => (key, pattern),
+    <decl_type:DeclarationType> <var:Identifier> => {
+        let key = var.clone();
+        let val = MatchPattern::Declaration(VarRef::new(var), decl_type);
+        (key, val)
+    },
 }
 
 IfExpr: Expr =

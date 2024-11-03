@@ -96,6 +96,11 @@ impl SpreadListPattern {
     }
 }
 
+#[derive(PartialEq, Debug, Clone)]
+pub struct DictPattern {
+    pub entries: Vec<(String, MatchPattern)>,
+}
+
 #[derive(PartialEq, Debug, Clone, Copy)]
 pub enum DeclarationType {
     Const,
@@ -106,6 +111,7 @@ pub enum DeclarationType {
 pub enum MatchPattern {
     SimpleList(Vec<MatchPattern>),
     SpreadList(SpreadListPattern),
+    Dict(DictPattern),
     Declaration(VarRef, DeclarationType),
     Assignment(AssignmentTarget),
     Discard,

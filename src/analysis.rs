@@ -158,6 +158,11 @@ impl VariableAnalyzer {
             }
             MatchPattern::Discard => {}
             MatchPattern::Constant(_) => {}
+            MatchPattern::Dict(dict) => {
+                for (_key, pattern) in dict.entries.iter_mut() {
+                    self.analyze_pattern(pattern, span);
+                }
+            }
         }
     }
 
@@ -344,6 +349,11 @@ fn analyze_pattern_liveness(pattern: &mut MatchPattern, deps: &mut HashSet<Strin
         }
         MatchPattern::Discard => {}
         MatchPattern::Constant(_) => {}
+        MatchPattern::Dict(dict) => {
+            for (_key, pattern) in dict.entries.iter_mut() {
+                analyze_pattern_liveness(pattern, deps);
+            }
+        }
     }
 }
 
