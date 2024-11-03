@@ -83,8 +83,8 @@ fn run_file(path: &Path, args: &Args) {
             base_path: path.parent().unwrap().to_path_buf(),
         };
         let mut jit = jit::JIT::new(Box::new(module_loader));
-        // Make it impossible to import from the root script, to prevent cycles
-        jit.modules.insert(path.canonicalize().unwrap(), None);
+        // TODO: Make it impossible to import from the root script, to prevent cycles
+        // jit.modules.insert(path.canonicalize().unwrap(), None);
         let main_func = match jit.compile_program_as_function(&program, path) {
             Ok(id) => id,
             Err(err) => {

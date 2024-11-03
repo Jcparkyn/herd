@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::fmt::Display;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::rc::Weak;
 
 use bovine::analysis::Analyzer;
@@ -601,13 +601,25 @@ fn simple_imports() {
         return { fn1 };
     "#;
 
-    let modules = HashMap::from([(PathBuf::from("foo.bovine"), foo_program.to_string())]);
+    let modules = HashMap::from([("foo.bovine".to_string(), foo_program.to_string())]);
     let result = eval_snapshot_str_modules(main_program, modules);
     insta::assert_snapshot!(result, @"42");
     assert_rcs_dropped();
 }
 
-fn eval_snapshot(program: &str, modules: HashMap<PathBuf, String>) -> Value64 {
+#[test]
+fn stdlib_imports() {
+    let main_program = r#"
+        list = import '@list';
+        return list.push [1, 2] 3;
+    "#;
+
+    let result = eval_snapshot_str(main_program);
+    insta::assert_snapshot!(result, @"[1, 2, 3]");
+    assert_rcs_dropped();
+}
+
+fn eval_snapshot(program: &str, modules: HashMap<String, String>) -> Value64 {
     let parser = ProgramParser::new();
     let prelude_ast = parser.parse(include_str!("../src/prelude.bovine")).unwrap();
     let mut program_ast = parser.parse(program).unwrap();
@@ -631,22 +643,21 @@ fn eval_snapshot_str(program: &str) -> String {
     eval_snapshot(program, HashMap::new()).to_string()
 }
 
-fn eval_snapshot_str_modules(program: &str, modules: HashMap<PathBuf, String>) -> String {
+fn eval_snapshot_str_modules(program: &str, modules: HashMap<String, String>) -> String {
     eval_snapshot(program, modules).to_string()
 }
 
 struct TestModuleLoader {
-    modules: HashMap<PathBuf, String>,
+    modules: HashMap<String, String>,
 }
 
 impl ModuleLoader for TestModuleLoader {
-    fn load(&self, path: &Path) -> std::io::Result<String> {
-        let path = path.to_path_buf();
-        match self.modules.get(&path) {
+    fn load(&self, path: &str) -> std::io::Result<String> {
+        match self.modules.get(path) {
             Some(source) => Ok(source.clone()),
             None => Err(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
-                format!("Module not found: {}", path.display()),
+                format!("Module not found: {}", path),
             )),
         }
     }

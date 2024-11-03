@@ -1,0 +1,21 @@
+
+push = \arr element\ NATIVE:push arr element;
+
+pop = \arr\ NATIVE:pop arr;
+
+len = \val\ NATIVE:len val;
+
+sort = \arr\ NATIVE:sort arr;
+
+map = \val f\ NATIVE:map val f;
+
+filter = \val predicate\ NATIVE:filter val predicate;
+
+return {
+  push,
+  pop,
+  len,
+  sort,
+  map,
+  filter,
+};

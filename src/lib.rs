@@ -6,6 +6,7 @@ pub mod jit;
 pub mod lines;
 pub mod parse_helpers;
 pub mod pos;
+mod stdlib;
 pub mod value64;
 
 use lalrpop_util::lalrpop_mod;

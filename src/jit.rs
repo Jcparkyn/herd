@@ -39,7 +39,7 @@ pub type JITResult<T> = Result<T, JITError>;
 pub type VmContext = JIT;
 
 pub trait ModuleLoader {
-    fn load(&self, path: &Path) -> std::io::Result<String>;
+    fn load(&self, path: &str) -> std::io::Result<String>;
 }
 
 pub struct DefaultModuleLoader {
@@ -47,7 +47,7 @@ pub struct DefaultModuleLoader {
 }
 
 impl ModuleLoader for DefaultModuleLoader {
-    fn load(&self, path: &Path) -> std::io::Result<String> {
+    fn load(&self, path: &str) -> std::io::Result<String> {
         let path = self.base_path.join(path);
         std::fs::read_to_string(path)
     }
@@ -79,7 +79,7 @@ pub struct JIT {
 
     /// Return values from bovine modules (files). Files currently being evaluated
     /// are stored as `None`.
-    pub modules: HashMap<PathBuf, Option<Value64>>,
+    pub modules: HashMap<String, Option<Value64>>,
 
     pub module_loader: Box<dyn ModuleLoader>,
 }

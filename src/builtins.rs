@@ -6,6 +6,7 @@ use crate::{
     jit::VmContext,
     lang::ProgramParser,
     pos::{Span, Spanned},
+    stdlib::load_stdlib_module,
     value64::{Boxable, DictInstance, LambdaFunction, ListInstance, Value64},
 };
 
@@ -208,29 +209,40 @@ pub extern "C" fn construct_lambda(
 
 pub extern "C" fn import_module(vm: &mut VmContext, name: Value64) -> Value64 {
     let name = name.try_into_string().unwrap();
-    let path = PathBuf::from(name.as_str());
+    let path = name.as_str();
 
-    if let Some(maybe_module) = vm.modules.get(&path) {
+    if let Some(maybe_module) = vm.modules.get(path) {
         if let Some(module_result) = maybe_module {
             return module_result.clone();
         } else {
             panic!("Import cycle detected!");
         }
     }
-    vm.modules.insert(path.clone(), None);
+
+    vm.modules.insert(path.to_string(), None);
+
     // Compile the module
-    let program = vm.module_loader.load(&path).unwrap();
+    let is_stdlib = path.starts_with("@");
+    let program = if is_stdlib {
+        load_stdlib_module(path)
+    } else {
+        &vm.module_loader.load(&path).unwrap()
+    };
     let parser = ProgramParser::new();
-    let prelude_ast = parser.parse(include_str!("../src/prelude.bovine")).unwrap();
     let mut program_ast = parser.parse(&program).unwrap();
-    program_ast.splice(0..0, prelude_ast);
+    if !is_stdlib {
+        let prelude_ast = parser.parse(include_str!("../src/prelude.bovine")).unwrap();
+        program_ast.splice(0..0, prelude_ast);
+    }
     let mut analyzer = Analyzer::new();
     analyzer.analyze_statements(&mut program_ast).unwrap();
 
-    let main_func = vm.compile_program_as_function(&program_ast, &path).unwrap();
+    let main_func = vm
+        .compile_program_as_function(&program_ast, &PathBuf::from(path))
+        .unwrap();
 
     let result = unsafe { vm.run_func(main_func, Value64::NIL) };
-    vm.modules.insert(path, Some(result.clone()));
+    vm.modules.insert(path.to_string(), Some(result.clone()));
     return result;
 }
 
