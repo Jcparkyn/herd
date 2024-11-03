@@ -413,14 +413,18 @@ impl<'a, 'b> VariableBuilder<'a, 'b> {
             self.declare_variables_in_pattern(&pattern.value);
             // Actual match is done in function body, so we can reuse the logic from FunctionTranslator.
         }
+        // Reference to self function for recursion
+        let self_val = self
+            .builder
+            .block_params(entry_block)
+            .last()
+            .copied()
+            .unwrap();
         if let Some(name) = &func.name {
-            let val = self
-                .builder
-                .block_params(entry_block)
-                .last()
-                .copied()
-                .unwrap();
-            self.create_variable(name, val);
+            self.create_variable(name, self_val);
+        } else {
+            // HACK: We rely on variables to do cleanup of this value, so add it here even if unused.
+            self.create_variable("<UNUSED SELF>", self_val);
         }
 
         self.declare_variables_in_expr(&func.body);
@@ -765,7 +769,7 @@ impl<'a> FunctionTranslator<'a> {
     fn get_lambda_details(
         &mut self,
         args: &Vec<Spanned<Expr>>,
-        callee_val: Value,
+        callee_val: BValue,
     ) -> (Value, Value) {
         let closure_ptr_slot = self.builder.create_sized_stack_slot(StackSlotData::new(
             StackSlotKind::ExplicitSlot,
