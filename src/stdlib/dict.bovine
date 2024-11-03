@@ -1,0 +1,6 @@
+
+removeKey = \val key\ NATIVE:removeKey val key;
+
+return {
+  removeKey,
+};

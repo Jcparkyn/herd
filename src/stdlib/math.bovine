@@ -1,0 +1,6 @@
+
+floor = \val\ NATIVE:floor val;
+
+return {
+  floor,
+}

@@ -1,3 +1,5 @@
+!{ floor } = import '@math';
+
 reverse = \var arr\ (
   l = len arr;
   imax = floor (l / 2);

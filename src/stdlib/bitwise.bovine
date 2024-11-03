@@ -1,0 +1,9 @@
+
+shiftLeft = \a by\ NATIVE:shiftLeft a by;
+
+xor = \a b\ NATIVE:xor a b;
+
+return {
+  shiftLeft,
+  xor,
+}

@@ -1,3 +1,7 @@
+!{
+  shiftLeft,
+  xor,
+} = import '@bitwise'
 
 mandelbrot = \size\ (
   var sum = 0;

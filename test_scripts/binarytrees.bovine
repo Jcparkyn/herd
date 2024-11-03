@@ -1,5 +1,7 @@
 // https://github.com/hanabi1224/Programming-Language-Benchmarks/blob/main/bench/algorithm/binarytrees/1.py
 
+!{ shiftLeft } = import '@bitwise';
+
 makeTree = \d\ if d > 0 then (
   [makeTree (d - 1), makeTree (d - 1)]
 ) else (

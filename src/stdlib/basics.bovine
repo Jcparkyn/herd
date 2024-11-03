@@ -1,0 +1,9 @@
+
+not = \val\ NATIVE:not val;
+
+range = \start stop\ NATIVE:range start stop;
+
+return {
+  not,
+  range,
+};

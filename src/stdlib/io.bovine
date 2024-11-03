@@ -1,0 +1,21 @@
+
+print = \val\ NATIVE:print val;
+
+println = \val\ (
+  NATIVE:print val;
+  NATIVE:print '\n';
+);
+
+// This will be replaced by println once variadic functions are implemented.
+printf = \arr\ (
+  for x in arr do (
+    NATIVE:print x;
+  )
+  NATIVE:print '\n';
+);
+
+return {
+  print,
+  println,
+  printf,
+};

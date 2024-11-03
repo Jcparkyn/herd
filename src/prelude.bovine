@@ -1,39 +1,24 @@
 
-print = \val\ NATIVE:print val;
+!{
+  print,
+  println,
+  printf,
+} = import '@io';
 
-println = \val\ (
-  NATIVE:print val;
-  NATIVE:print '\n';
-);
+!{
+  not,
+  range,
+} = import '@basics';
 
-// This will be replaced by println once variadic functions are implemented.
-printf = \arr\ (
-  for x in arr do (
-    NATIVE:print x;
-  )
-  NATIVE:print '\n';
-);
+!{
+  push,
+  pop,
+  len,
+  sort,
+  map,
+  filter,
+} = import '@list';
 
-not = \val\ NATIVE:not val;
-
-shiftLeft = \a by\ NATIVE:shiftLeft a by;
-
-xor = \a b\ NATIVE:xor a b;
-
-floor = \val\ NATIVE:floor val;
-
-range = \start stop\ NATIVE:range start stop;
-
-push = \arr element\ NATIVE:push arr element;
-
-pop = \arr\ NATIVE:pop arr;
-
-len = \val\ NATIVE:len val;
-
-sort = \arr\ NATIVE:sort arr;
-
-map = \val f\ NATIVE:map val f;
-
-filter = \val predicate\ NATIVE:filter val predicate;
-
-removeKey = \val key\ NATIVE:removeKey val key;
+! {
+  removeKey,
+} = import '@dict';
