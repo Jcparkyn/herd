@@ -705,6 +705,22 @@ fn stdlib_reverse() {
 }
 
 #[test]
+fn stdlib_slice() {
+    let main_program = r#"
+        List = import '@list';
+        list = [1, 2, 3];
+        return [
+            List.slice list 1 2,
+            List.slice list -2 8,
+        ];
+    "#;
+
+    let result = eval_snapshot_str(main_program);
+    insta::assert_snapshot!(result, @"[[2], [1, 2, 3]]");
+    assert_rcs_dropped();
+}
+
+#[test]
 fn stdlib_bitwise_xor() {
     let main_program = r#"
         !{xor} = import '@bitwise';

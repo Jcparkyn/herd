@@ -3,7 +3,20 @@ floor = \val\ NATIVE:floor val;
 
 ceiling = \val\ 0 - (NATIVE:floor (0 - val));
 
+max = \a b\ if a >= b then a else b;
+
+min = \a b\ if a <= b then a else b;
+
+clamp = \x min max\ (
+  if x < min then min else (
+    if x > max then max else x
+  )
+);
+
 return {
   floor,
   ceiling,
+  max,
+  min,
+  clamp,
 };

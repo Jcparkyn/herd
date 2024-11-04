@@ -1,6 +1,6 @@
 
-!{ range } = import '@basics';
-!{ floor } = import '@math';
+!{ range, min } = import '@basics';
+!{ floor, clamp } = import '@math';
 
 push = \arr element\ NATIVE:push arr element;
 
@@ -40,6 +40,16 @@ reverse = \var arr\ (
   arr
 );
 
+slice = \arr start end\ (
+  var result = [];
+  actualEnd = end | clamp 0 (len arr);
+  actualStart = start | clamp 0 (len arr);
+  for i in range actualStart actualEnd do (
+    set result |= push arr.[i];
+  )
+  result
+);
+
 return {
   push,
   pop,
@@ -48,4 +58,5 @@ return {
   map,
   filter,
   reverse,
+  slice,
 };
