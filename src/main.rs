@@ -78,38 +78,21 @@ fn run_file(path: &Path, args: &Args) {
             return;
         }
     }
-    if args.jit {
-        let module_loader = DefaultModuleLoader {
-            base_path: path.parent().unwrap().to_path_buf(),
-        };
-        let mut jit = jit::JIT::new(Box::new(module_loader));
-        // TODO: Make it impossible to import from the root script, to prevent cycles
-        // jit.modules.insert(path.canonicalize().unwrap(), None);
-        let main_func = match jit.compile_program_as_function(&program, path) {
-            Ok(id) => id,
-            Err(err) => {
-                println!("Error while compiling function: {:?}", err);
-                return;
-            }
-        };
-        let result = unsafe { jit.run_func(main_func, Value64::NIL) };
-        println!("Result: {}", result);
-    } else {
-        let mut interpreter = Interpreter::new();
-        for statement in program {
-            match interpreter.execute(&statement) {
-                Ok(()) => {}
-                Err(err) => {
-                    let formatter = InterpreterErrorFormatter {
-                        err: &err,
-                        lines: &lines,
-                    };
-                    eprintln!("Error: {}", formatter);
-                    return;
-                }
-            }
+    let module_loader = DefaultModuleLoader {
+        base_path: path.parent().unwrap().to_path_buf(),
+    };
+    let mut jit = jit::JIT::new(Box::new(module_loader));
+    // TODO: Make it impossible to import from the root script, to prevent cycles
+    // jit.modules.insert(path.canonicalize().unwrap(), None);
+    let main_func = match jit.compile_program_as_function(&program, path) {
+        Ok(id) => id,
+        Err(err) => {
+            println!("Error while compiling function: {:?}", err);
+            return;
         }
-    }
+    };
+    let result = unsafe { jit.run_func(main_func, Value64::NIL) };
+    println!("Result: {}", result);
 }
 
 fn run_repl(args: Args) {
