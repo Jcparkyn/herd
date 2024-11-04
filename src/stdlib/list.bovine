@@ -1,5 +1,6 @@
 
 !{ range } = import '@basics';
+!{ floor } = import '@math';
 
 push = \arr element\ NATIVE:push arr element;
 
@@ -27,6 +28,18 @@ filter = \arr f\ (
   result
 );
 
+reverse = \var arr\ (
+  l = len arr;
+  imax = floor (l / 2);
+  for i in range 0 imax do (
+    i2 = l - 1 - i;
+    tmp = arr.[i];
+    set arr.[i] = arr.[i2];
+    set arr.[i2] = tmp;
+  )
+  arr
+);
+
 return {
   push,
   pop,
@@ -34,4 +47,5 @@ return {
   sort,
   map,
   filter,
+  reverse,
 };

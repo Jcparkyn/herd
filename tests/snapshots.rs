@@ -692,6 +692,18 @@ fn stdlib_filter() {
     assert_rcs_dropped();
 }
 
+#[test]
+fn stdlib_reverse() {
+    let main_program = r#"
+        list = import '@list';
+        return [1, 2, 3] | list.reverse;
+    "#;
+
+    let result = eval_snapshot_str(main_program);
+    insta::assert_snapshot!(result, @"[3, 2, 1]");
+    assert_rcs_dropped();
+}
+
 fn eval_snapshot(program: &str, modules: HashMap<String, String>) -> Value64 {
     let parser = ProgramParser::new();
     let prelude_ast = parser.parse(include_str!("../src/prelude.bovine")).unwrap();
