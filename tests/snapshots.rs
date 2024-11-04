@@ -704,6 +704,38 @@ fn stdlib_reverse() {
     assert_rcs_dropped();
 }
 
+#[test]
+fn stdlib_bitwise_xor() {
+    let main_program = r#"
+        !{xor} = import '@bitwise';
+        return [
+            xor 1 2,
+            xor 7 9,
+            xor 0.5 1.5,
+        ];
+    "#;
+
+    let result = eval_snapshot_str(main_program);
+    insta::assert_snapshot!(result, @"[3, 14, 1]");
+    assert_rcs_dropped();
+}
+
+#[test]
+fn stdlib_bitwise_and() {
+    let main_program = r#"
+        !{ bitwiseAnd } = import '@bitwise';
+        return [
+            bitwiseAnd 43 27,
+            bitwiseAnd 0 0,
+            bitwiseAnd 13.5 7.5,
+        ];
+    "#;
+
+    let result = eval_snapshot_str(main_program);
+    insta::assert_snapshot!(result, @"[11, 0, 5]");
+    assert_rcs_dropped();
+}
+
 fn eval_snapshot(program: &str, modules: HashMap<String, String>) -> Value64 {
     let parser = ProgramParser::new();
     let prelude_ast = parser.parse(include_str!("../src/prelude.bovine")).unwrap();

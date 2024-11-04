@@ -23,7 +23,9 @@ pub enum BuiltInFunction {
     #[strum(serialize = "shiftLeft")]
     ShiftLeft,
     #[strum(serialize = "xor")]
-    XOR,
+    BitwiseXOR,
+    #[strum(serialize = "bitwiseAnd")]
+    BitwiseAnd,
     #[strum(serialize = "floor")]
     Floor,
     // lists

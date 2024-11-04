@@ -692,7 +692,7 @@ impl Interpreter {
                 let shift_by_int = expect_i64(&shift_by)?;
                 return Ok(Value::from_f64((val_int << shift_by_int) as f64));
             }
-            BuiltInFunction::XOR => {
+            BuiltInFunction::BitwiseXOR => {
                 let [lhs, rhs] = self.destructure_args(arg_count)?;
                 let lhs_int = expect_i64(&lhs)?;
                 let rhs_int = expect_i64(&rhs)?;
@@ -703,6 +703,7 @@ impl Interpreter {
                 let val_num = expect_f64(&val)?;
                 return Ok(Value::from_f64(val_num.floor()));
             }
+            _ => todo!(),
         }
     }
 

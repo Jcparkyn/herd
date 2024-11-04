@@ -793,7 +793,18 @@ impl<'a> FunctionTranslator<'a> {
             Range => self.call_native_eval(&self.natives.range, args),
             Len => self.call_native_eval(&self.natives.len, args),
             ShiftLeft => self.call_native_eval(&self.natives.val_shift_left, args),
-            XOR => self.call_native_eval(&self.natives.val_xor, args),
+            BitwiseXOR => self.call_native_eval(&self.natives.val_xor, args),
+            BitwiseAnd => {
+                assert!(args.len() == 2);
+                let lhs = self.translate_expr(&args[0]);
+                let rhs = self.translate_expr(&args[1]);
+                self.guard_f64(lhs);
+                self.guard_f64(rhs);
+                let lhs = self.builder.ins().fcvt_to_sint_sat(types::I64, lhs);
+                let rhs = self.builder.ins().fcvt_to_sint_sat(types::I64, rhs);
+                let result = self.builder.ins().band(lhs, rhs);
+                self.builder.ins().fcvt_from_sint(types::F64, result)
+            }
             Not => self.call_native_eval(&self.natives.val_not, args),
             Push => self.call_native_eval(&self.natives.list_push, args),
             Floor => {
