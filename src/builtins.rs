@@ -204,14 +204,25 @@ pub extern "C" fn construct_lambda(
 }
 
 pub extern "C" fn import_module(vm: &mut VmContext, name: Value64) -> Value64 {
-    let name = name.try_into_string().unwrap();
+    let result = import_module_panic(vm, &name);
+    match result {
+        Ok(result) => result,
+        Err(panic) => {
+            println!("Error while importing {}: {:?}", name, panic);
+            Value64::ERROR
+        }
+    }
+}
+
+fn import_module_panic(vm: &mut VmContext, name: &Value64) -> Result<Value64, String> {
+    let name = name.as_string().unwrap();
     let path = name.as_str();
 
     if let Some(maybe_module) = vm.modules.get(path) {
         if let Some(module_result) = maybe_module {
-            return module_result.clone();
+            return Ok(module_result.clone());
         } else {
-            panic!("Import cycle detected!");
+            return Err("Import cycle detected!".to_string());
         }
     }
 
@@ -222,24 +233,26 @@ pub extern "C" fn import_module(vm: &mut VmContext, name: Value64) -> Value64 {
     let program = if is_stdlib {
         load_stdlib_module(path)
     } else {
-        &vm.module_loader.load(&path).unwrap()
+        &vm.module_loader.load(&path).map_err(|e| e.to_string())?
     };
     let parser = ProgramParser::new();
-    let mut program_ast = parser.parse(&program).unwrap();
+    let mut program_ast = parser.parse(&program).map_err(|e| e.to_string())?;
     if !is_stdlib {
         let prelude_ast = parser.parse(include_str!("../src/prelude.bovine")).unwrap();
         program_ast.splice(0..0, prelude_ast);
     }
     let mut analyzer = Analyzer::new();
-    analyzer.analyze_statements(&mut program_ast).unwrap();
+    analyzer
+        .analyze_statements(&mut program_ast)
+        .map_err(|e| format!("{:?}", e))?;
 
     let main_func = vm
         .compile_program_as_function(&program_ast, &PathBuf::from(path))
-        .unwrap();
+        .map_err(|e| e.to_string())?;
 
     let result = unsafe { vm.run_func(main_func, Value64::NIL) };
     vm.modules.insert(path.to_string(), Some(result.clone()));
-    return result;
+    return Ok(result);
 }
 
 pub extern "C" fn public_val_shift_left(val: Value64, by: Value64) -> Value64 {

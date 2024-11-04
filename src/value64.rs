@@ -122,6 +122,7 @@ pub struct Value64 {
 
 impl Value64 {
     pub const NIL: Value64 = Value64::from_bits(NIL_VALUE);
+    pub const ERROR: Value64 = Value64::from_bits(ERROR_VALUE);
 
     const fn from_bits(bits: u64) -> Self {
         Value64 {

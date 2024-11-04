@@ -1607,6 +1607,12 @@ impl<'a> FunctionTranslator<'a> {
         let vm_ptr = self.get_vm_ptr();
         let path_val = self.string_literal_borrow(path.to_string());
         let path_val = self.clone_val64(path_val);
-        self.call_native(&self.natives.import_module, &[vm_ptr, path_val])[0]
+        let result = self.call_native(&self.natives.import_module, &[vm_ptr, path_val])[0];
+        let is_ok = self.cmp_bits_imm(IntCC::NotEqual, result, value64::ERROR_VALUE);
+
+        self.assert(is_ok, |s| {
+            s.print_string_constant(format!("ERROR: Import failed\n"));
+        });
+        result
     }
 }
