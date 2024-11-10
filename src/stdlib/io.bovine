@@ -1,17 +1,17 @@
 
-print = \val\ NATIVE:print val;
+print = \val\ BUILTIN:print val;
 
 println = \val\ (
-  NATIVE:print val;
-  NATIVE:print '\n';
+  BUILTIN:print val;
+  BUILTIN:print '\n';
 );
 
 // This will be replaced by println once variadic functions are implemented.
 printf = \arr\ (
   for x in arr do (
-    NATIVE:print x;
+    BUILTIN:print x;
   )
-  NATIVE:print '\n';
+  BUILTIN:print '\n';
 );
 
 return {

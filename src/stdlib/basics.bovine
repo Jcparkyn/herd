@@ -1,7 +1,7 @@
 
-not = \val\ NATIVE:not val;
+not = \val\ BUILTIN:not val;
 
-range = \start stop\ NATIVE:range start stop;
+range = \start stop\ BUILTIN:range start stop;
 
 return {
   not,

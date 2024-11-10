@@ -1,13 +1,13 @@
 
-shiftLeft = \a by\ NATIVE:shiftLeft a by;
+shiftLeft = \a by\ BUILTIN:shiftLeft a by;
 
-shiftRight = \a by\ NATIVE:shiftLeft a (0 - by);
+shiftRight = \a by\ BUILTIN:shiftLeft a (0 - by);
 
-xor = \a b\ NATIVE:bitwiseXor a b;
+xor = \a b\ BUILTIN:bitwiseXor a b;
 
-bitwiseAnd = \a b\ NATIVE:bitwiseAnd a b;
+bitwiseAnd = \a b\ BUILTIN:bitwiseAnd a b;
 
-bitwiseOr = \a b\ NATIVE:bitwiseOr a b;
+bitwiseOr = \a b\ BUILTIN:bitwiseOr a b;
 
 return {
   shiftLeft,

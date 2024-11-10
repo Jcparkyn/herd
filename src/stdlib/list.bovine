@@ -2,13 +2,13 @@
 !{ range, min } = import '@basics';
 !{ floor, clamp } = import '@math';
 
-push = \arr element\ NATIVE:push arr element;
+push = \arr element\ BUILTIN:push arr element;
 
-pop = \arr\ NATIVE:pop arr;
+pop = \arr\ BUILTIN:pop arr;
 
-len = \val\ NATIVE:len val;
+len = \val\ BUILTIN:len val;
 
-// sort = \arr\ NATIVE:sort arr;
+// sort = \arr\ BUILTIN:sort arr;
 
 map = \var arr f\ (
   l = len arr;
