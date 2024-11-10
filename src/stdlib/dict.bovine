@@ -1,5 +1,5 @@
 
-removeKey = \val key\ val; // NATIVE:removeKey val key;
+removeKey = \val key\ NATIVE:removeKey val key;
 
 return {
   removeKey,

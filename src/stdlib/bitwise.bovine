@@ -7,9 +7,12 @@ xor = \a b\ NATIVE:bitwiseXor a b;
 
 bitwiseAnd = \a b\ NATIVE:bitwiseAnd a b;
 
+bitwiseOr = \a b\ NATIVE:bitwiseOr a b;
+
 return {
   shiftLeft,
   shiftRight,
   xor,
   bitwiseAnd,
+  bitwiseOr,
 };

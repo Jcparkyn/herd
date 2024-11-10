@@ -4,7 +4,7 @@
 
 push = \arr element\ NATIVE:push arr element;
 
-// pop = \arr\ NATIVE:pop arr;
+pop = \arr\ NATIVE:pop arr;
 
 len = \val\ NATIVE:len val;
 
@@ -52,7 +52,7 @@ slice = \arr start end\ (
 
 return {
   push,
-  // pop,
+  pop,
   len,
   // sort,
   map,

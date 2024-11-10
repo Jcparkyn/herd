@@ -153,10 +153,10 @@ pub fn get_builtins() -> HashMap<&'static str, NativeFuncDef> {
     map.insert("shiftLeft", get_def!(2, public_val_shift_left));
     map.insert("range", get_def!(2, public_range));
     map.insert("push", get_def!(2, public_list_push));
-    // map.insert("pop", get_def!(1, public_list_pop));
+    map.insert("pop", get_def!(1, public_list_pop));
     map.insert("len", get_def!(1, public_len));
     // map.insert("sort", get_def!(1, sort));
-    // map.insert("removeKey", get_def!(2, dict_remove_key));
+    map.insert("removeKey", get_def!(2, dict_remove_key));
 
     return map;
 }
@@ -242,6 +242,14 @@ pub extern "C" fn public_list_push(list: Value64, val: Value64) -> Value64 {
     Value64::from_list(list)
 }
 
+pub extern "C" fn public_list_pop(list: Value64) -> Value64 {
+    let mut list = list.try_into_list().unwrap();
+    rc_mutate(&mut list, |l| {
+        l.values.pop();
+    });
+    Value64::from_list(list)
+}
+
 pub extern "C" fn list_len_u64(list: Value64Ref) -> u64 {
     list.as_list().unwrap().values.len() as u64
 }
@@ -266,6 +274,14 @@ pub extern "C" fn dict_insert(dict: Value64, key: Value64, val: Value64) -> Valu
     let mut dict = dict.try_into_dict().unwrap();
     rc_mutate(&mut dict, |d| {
         d.values.insert(key, val);
+    });
+    Value64::from_dict(dict)
+}
+
+pub extern "C" fn dict_remove_key(dict: Value64, key: Value64) -> Value64 {
+    let mut dict = dict.try_into_dict().unwrap();
+    rc_mutate(&mut dict, |d| {
+        d.values.remove(&key);
     });
     Value64::from_dict(dict)
 }
