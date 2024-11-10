@@ -8,10 +8,8 @@ use strum::{EnumIter, IntoEnumIterator};
 
 use crate::{
     analysis::Analyzer,
-    ast::{self},
     jit::VmContext,
     lang::ProgramParser,
-    pos::{Span, Spanned},
     stdlib::load_stdlib_module,
     value64::{Boxable, DictInstance, LambdaFunction, ListInstance, Value64},
 };
@@ -384,9 +382,7 @@ pub extern "C" fn construct_lambda(
 ) -> Value64 {
     let closure_slice = unsafe { std::slice::from_raw_parts(captures, capture_count as usize) };
     let lambda = LambdaFunction {
-        params: Rc::new(vec![]), // Not used in JIT
         param_count: param_count as usize,
-        body: Rc::new(Spanned::new(Span::new(0, 0), ast::Expr::Nil)), // Not used in JIT
         closure: closure_slice.to_vec(),
         self_name: Some("TEMP lambda".to_string()),
         recursive: false, // TODO

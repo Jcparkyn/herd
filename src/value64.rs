@@ -8,11 +8,6 @@ use std::{
 #[cfg(debug_assertions)]
 use std::cell::RefCell;
 
-use crate::{
-    ast::{MatchPattern, SpannedExpr},
-    pos::Spanned,
-};
-
 /*
 Pointer layout:
     - Sign bit: 1
@@ -571,9 +566,7 @@ impl Display for Value64 {
 
 #[derive(PartialEq, Debug)]
 pub struct LambdaFunction {
-    pub params: Rc<Vec<Spanned<MatchPattern>>>,
     pub param_count: usize,
-    pub body: Rc<SpannedExpr>,
     pub closure: Vec<Value64>,
     pub self_name: Option<String>,
     pub recursive: bool,

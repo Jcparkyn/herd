@@ -2,11 +2,10 @@ use std::fmt::Debug;
 use std::path::{Path, PathBuf};
 
 use bovine::analysis::{AnalysisError, Analyzer};
-use bovine::interpreter::{Interpreter, InterpreterError};
 use bovine::jit::{self, DefaultModuleLoader};
 use bovine::lang;
 use bovine::lang::ProgramParser;
-use bovine::lines::{Lines, Location};
+use bovine::lines::Lines;
 use bovine::pos::Spanned;
 use bovine::value64::Value64;
 use clap::Parser;
@@ -112,14 +111,11 @@ fn run_repl(args: Args) {
         EventHandler::Simple(Cmd::Indent(Movement::ForwardChar(0))),
     );
     let parser = lang::ProgramParser::new();
-    let mut interpreter = Interpreter::new();
     let mut analyzer = Analyzer::new();
 
     let mut prelude_ast = parser.parse(include_str!("prelude.bovine")).unwrap();
     analyzer.analyze_statements(&mut prelude_ast).unwrap();
-    for stmt in prelude_ast {
-        interpreter.execute(&stmt).unwrap();
-    }
+
     loop {
         let input = match rl.readline("> ") {
             Ok(input) => input,
@@ -151,18 +147,7 @@ fn run_repl(args: Args) {
             }
         }
 
-        for statement in statements {
-            match interpreter.execute(&statement) {
-                Ok(()) => {}
-                Err(err) => {
-                    let formatter = InterpreterErrorFormatter {
-                        err: &err,
-                        lines: &lines,
-                    };
-                    eprintln!("Error: {}", formatter);
-                }
-            }
-        }
+        todo!("REPL is not implemented yet with JIT");
     }
 }
 
@@ -189,59 +174,4 @@ impl Validator for ReplInputValidator {
             _ => Ok(ValidationResult::Valid(None)),
         }
     }
-}
-
-struct InterpreterErrorFormatter<'a> {
-    err: &'a Spanned<InterpreterError>,
-    lines: &'a Lines,
-}
-
-impl<'a> std::fmt::Display for InterpreterErrorFormatter<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        fmt_runtime_error(f, &self.err, &self.lines, true)
-    }
-}
-
-fn fmt_runtime_error(
-    f: &mut std::fmt::Formatter<'_>,
-    err: &Spanned<InterpreterError>,
-    lines: &Lines,
-    outer: bool,
-) -> std::fmt::Result {
-    use InterpreterError::*;
-    match &err.value {
-        KeyNotExists(name) => writeln!(f, "Field {} doesn't exist", name),
-        IndexOutOfRange { list_len, accessed } => writeln!(
-            f,
-            "Cant access index {} of a list with {} elements",
-            accessed, list_len
-        ),
-        WrongArgumentCount { expected, supplied } => writeln!(
-            f,
-            "Wrong number of arguments for function. Expected {expected}, got {supplied}"
-        ),
-        WrongType { message } => writeln!(f, "{}", message),
-        Return(_) => writeln!(f, "You can only use return statements inside a function"),
-        PatternMatchFailed { message } => writeln!(f, "Unsuccessful pattern match: {}", message),
-        FunctionCallFailed { function, inner } => {
-            fmt_runtime_error(f, &inner, lines, false)?;
-            // Spans for prelude functions can be outside of the original source file.
-            // We need to also store the file for each span.
-            let inner_location = lines.location(inner.span.start).unwrap_or(Location {
-                ..Default::default()
-            });
-            write!(f, "\tat ")?;
-            writeln!(
-                f,
-                "{} ({})",
-                function.self_name.as_deref().unwrap_or("<lambda>"),
-                inner_location
-            )
-        }
-    }?;
-    if outer {
-        let location = lines.location(err.span.start).unwrap();
-        writeln!(f, "\tat {}", location)?;
-    };
-    Ok(())
 }
