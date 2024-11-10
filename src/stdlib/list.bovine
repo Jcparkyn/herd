@@ -4,11 +4,11 @@
 
 push = \arr element\ NATIVE:push arr element;
 
-pop = \arr\ NATIVE:pop arr;
+// pop = \arr\ NATIVE:pop arr;
 
 len = \val\ NATIVE:len val;
 
-sort = \arr\ NATIVE:sort arr;
+// sort = \arr\ NATIVE:sort arr;
 
 map = \var arr f\ (
   l = len arr;
@@ -52,9 +52,9 @@ slice = \arr start end\ (
 
 return {
   push,
-  pop,
+  // pop,
   len,
-  sort,
+  // sort,
   map,
   filter,
   reverse,

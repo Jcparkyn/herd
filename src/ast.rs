@@ -233,7 +233,7 @@ pub enum Expr {
         args: Vec<SpannedExpr>,
     },
     CallNative {
-        callee: BuiltInFunction,
+        callee: String,
         args: Vec<SpannedExpr>,
     },
     Lambda(LambdaExpr),

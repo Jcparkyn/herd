@@ -5,6 +5,7 @@ use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{DataDescription, FuncId, FuncOrDataId, Linkage, Module, ModuleError};
 use std::{
     collections::HashMap,
+    hash::Hash,
     mem::{self, size_of},
     ops::Deref,
     path::{Path, PathBuf},
@@ -15,10 +16,10 @@ use types::I64;
 
 use crate::{
     ast::{
-        self, BuiltInFunction, Expr, LambdaExpr, MatchConstant, MatchExpr, MatchPattern, Opcode,
-        SpannedExpr, SpannedStatement, Statement,
+        self, Expr, LambdaExpr, MatchConstant, MatchExpr, MatchPattern, Opcode, SpannedExpr,
+        SpannedStatement, Statement,
     },
-    builtins,
+    builtins::{self, NativeFuncDef, NativeFuncId},
     pos::{Span, Spanned},
     value64::{self, PointerTag},
     Value64,
@@ -72,8 +73,6 @@ pub struct JIT {
     /// functions.
     module: JITModule,
 
-    natives: NativeMethods,
-
     /// Interned string constants, which are used for string literals.
     string_constants: HashMap<String, Value64>,
 
@@ -82,6 +81,8 @@ pub struct JIT {
     pub modules: HashMap<String, Option<Value64>>,
 
     pub module_loader: Box<dyn ModuleLoader>,
+    builtins_map: HashMap<&'static str, NativeMethod>,
+    natives_map: HashMap<NativeFuncId, NativeMethod>,
 }
 
 /// An owned Value64
@@ -97,108 +98,24 @@ struct NativeMethod {
     sig: Signature,
 }
 
-#[derive(Debug, Clone)]
-struct NativeMethods {
-    list_new: NativeMethod,
-    list_push: NativeMethod,
-    list_len_u64: NativeMethod,
-    list_get_u64: NativeMethod,
-    range: NativeMethod,
-    clone: NativeMethod,
-    print: NativeMethod,
-    len: NativeMethod,
-    val_get_index: NativeMethod,
-    val_eq: NativeMethod,
-    val_truthy: NativeMethod,
-    val_shift_left: NativeMethod,
-    val_xor: NativeMethod,
-    val_not: NativeMethod,
-    dict_new: NativeMethod,
-    dict_insert: NativeMethod,
-    val_set_index: NativeMethod,
-    val_get_lambda_details: NativeMethod,
-    construct_lambda: NativeMethod,
-    list_borrow_u64: NativeMethod,
-    val_eq_u8: NativeMethod,
-    drop: NativeMethod,
-    import_module: NativeMethod,
-}
-
-fn make_builtin_sig(
+fn build_native_methods<TKey>(
     module: &mut JITModule,
-    params: &[ir::Type],
-    returns: &[ir::Type],
-) -> ir::Signature {
-    let mut sig = module.make_signature();
-    for param in params {
-        sig.params.push(AbiParam::new(*param));
-    }
-    for ret in returns {
-        sig.returns.push(AbiParam::new(*ret));
-    }
-    sig
-}
-
-fn get_native_methods<'a, 'b>(module: &'b mut JITModule) -> NativeMethods {
-    fn make_method(
-        module: &mut JITModule,
-        name: &str,
-        params: &[ir::Type],
-        returns: &[ir::Type],
-    ) -> NativeMethod {
-        let sig = make_builtin_sig(module, params, returns);
+    methods: HashMap<TKey, NativeFuncDef>,
+) -> HashMap<TKey, NativeMethod>
+where
+    TKey: Eq + Hash,
+{
+    let mut result = HashMap::new();
+    for (key, def) in methods {
+        // let name = format!("NATIVE:{}", def.name);
+        let mut sig = module.make_signature();
+        (def.make_sig)(&mut sig);
         let func = module
-            .declare_function(name, Linkage::Import, &sig)
+            .declare_function(&def.name, Linkage::Import, &sig)
             .expect("problem declaring function");
-        NativeMethod { func, sig }
+        result.insert(key, NativeMethod { func, sig });
     }
-
-    let native_methods = NativeMethods {
-        list_new: make_method(module, "NATIVE:list_new", &[I64, PTR], &[VAL64]),
-        list_push: make_method(module, "NATIVE:list_push", &[VAL64, VAL64], &[VAL64]),
-        list_len_u64: make_method(module, "NATIVE:list_len_u64", &[VAL64], &[I64]),
-        list_get_u64: make_method(module, "NATIVE:list_get_u64", &[VAL64, I64], &[VAL64]),
-        list_borrow_u64: make_method(module, "NATIVE:list_borrow_u64", &[VAL64, I64], &[VAL64]),
-        dict_new: make_method(module, "NATIVE:dict_new", &[I64], &[VAL64]),
-        dict_insert: make_method(
-            module,
-            "NATIVE:dict_insert",
-            &[VAL64, VAL64, VAL64],
-            &[VAL64],
-        ),
-        val_get_index: make_method(module, "NATIVE:val_get_index", &[VAL64, VAL64], &[VAL64]),
-        val_set_index: make_method(
-            module,
-            "NATIVE:val_set_index",
-            &[VAL64, VAL64, VAL64],
-            &[VAL64],
-        ),
-        val_eq: make_method(module, "NATIVE:val_eq", &[VAL64, VAL64], &[VAL64]),
-        val_eq_u8: make_method(module, "NATIVE:val_eq_u8", &[VAL64, VAL64], &[types::I8]),
-        val_truthy: make_method(module, "NATIVE:val_truthy", &[VAL64], &[types::I8]),
-        val_get_lambda_details: make_method(
-            module,
-            "NATIVE:val_get_lambda_details",
-            &[VAL64, types::I32, types::I64],
-            &[I64],
-        ),
-        construct_lambda: make_method(
-            module,
-            "NATIVE:construct_lambda",
-            &[I64, PTR, I64, PTR],
-            &[VAL64],
-        ),
-        val_shift_left: make_method(module, "NATIVE:val_shift_left", &[VAL64, VAL64], &[VAL64]),
-        val_xor: make_method(module, "NATIVE:val_xor", &[VAL64, VAL64], &[VAL64]),
-        range: make_method(module, "NATIVE:range", &[VAL64, VAL64], &[VAL64]),
-        len: make_method(module, "NATIVE:len", &[VAL64], &[VAL64]),
-        clone: make_method(module, "NATIVE:clone", &[VAL64], &[VAL64]),
-        drop: make_method(module, "NATIVE:drop", &[VAL64], &[]),
-        print: make_method(module, "NATIVE:print", &[VAL64], &[]),
-        val_not: make_method(module, "NATIVE:val_not", &[VAL64], &[VAL64]),
-        import_module: make_method(module, "NATIVE:import_module", &[PTR, VAL64], &[VAL64]),
-    };
-    native_methods
+    return result;
 }
 
 impl JIT {
@@ -214,55 +131,32 @@ impl JIT {
         let flags = settings::Flags::new(flag_builder);
         let isa = isa_builder.finish(flags).unwrap();
         let mut builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
-        builder.symbol("NATIVE:list_new", builtins::list_new as *const u8);
-        builder.symbol("NATIVE:list_push", builtins::public_list_push as *const u8);
-        builder.symbol("NATIVE:list_len_u64", builtins::list_len_u64 as *const u8);
-        builder.symbol("NATIVE:list_get_u64", builtins::list_get_u64 as *const u8);
-        builder.symbol(
-            "NATIVE:list_borrow_u64",
-            builtins::list_borrow_u64 as *const u8,
-        );
-        builder.symbol("NATIVE:dict_new", builtins::dict_new as *const u8);
-        builder.symbol("NATIVE:dict_insert", builtins::dict_insert as *const u8);
-        builder.symbol("NATIVE:val_get_index", builtins::val_get_index as *const u8);
-        builder.symbol("NATIVE:val_set_index", builtins::val_set_index as *const u8);
-        builder.symbol("NATIVE:val_eq", builtins::val_eq as *const u8);
-        builder.symbol("NATIVE:val_eq_u8", builtins::val_eq_u8 as *const u8);
-        builder.symbol("NATIVE:val_truthy", builtins::val_truthy as *const u8);
-        builder.symbol(
-            "NATIVE:val_get_lambda_details",
-            builtins::val_get_lambda_details as *const u8,
-        );
-        builder.symbol(
-            "NATIVE:construct_lambda",
-            builtins::construct_lambda as *const u8,
-        );
-        builder.symbol("NATIVE:import_module", builtins::import_module as *const u8);
-        builder.symbol(
-            "NATIVE:val_shift_left",
-            builtins::public_val_shift_left as *const u8,
-        );
-        builder.symbol("NATIVE:val_xor", builtins::public_val_xor as *const u8);
-        builder.symbol("NATIVE:range", builtins::public_range as *const u8);
-        builder.symbol("NATIVE:len", builtins::public_len as *const u8);
-        builder.symbol("NATIVE:clone", builtins::clone as *const u8);
-        builder.symbol("NATIVE:drop", builtins::drop as *const u8);
-        builder.symbol("NATIVE:print", builtins::public_print as *const u8);
-        builder.symbol("NATIVE:val_not", builtins::public_val_not as *const u8);
+        let builtins_map = builtins::get_builtins();
+        let natives_map = builtins::get_natives();
+
+        for (_, func) in &builtins_map {
+            builder.symbol(func.name, func.func_ptr);
+        }
+        for (_, func) in &natives_map {
+            builder.symbol(func.name, func.func_ptr);
+        }
 
         let mut module = JITModule::new(builder);
 
-        let natives = get_native_methods(&mut module);
+        let builtins_map = build_native_methods(&mut module, builtins_map);
+
+        let natives_map = build_native_methods(&mut module, natives_map);
 
         Self {
             builder_context: FunctionBuilderContext::new(),
             ctx: module.make_context(),
             data_description: DataDescription::new(),
             module,
-            natives,
             string_constants: HashMap::new(),
             modules: HashMap::new(),
             module_loader,
+            builtins_map,
+            natives_map,
         }
     }
 
@@ -363,10 +257,11 @@ impl JIT {
             builder,
             variables,
             module: &mut self.module,
-            natives: &self.natives,
             string_constants: &mut self.string_constants,
             return_block,
             entry_block,
+            builtins_map: &self.builtins_map,
+            natives_map: &self.natives_map,
         };
         let return_value = trans.translate_expr(body);
 
@@ -445,7 +340,6 @@ impl<'a, 'b> VariableBuilder<'a, 'b> {
             Expr::Number(_) => {}
             Expr::String(_) => {}
             Expr::Nil => {}
-            // Expr::BuiltInFunction(_) => {}
             Expr::Op { op: _, lhs, rhs } => {
                 self.declare_variables_in_expr(&lhs);
                 self.declare_variables_in_expr(&rhs);
@@ -588,10 +482,11 @@ struct FunctionTranslator<'a> {
     builder: FunctionBuilder<'a>,
     variables: HashMap<String, Variable>,
     module: &'a mut JITModule,
-    natives: &'a NativeMethods,
     string_constants: &'a mut HashMap<String, Value64>,
     entry_block: Block,
     return_block: Block,
+    builtins_map: &'a HashMap<&'static str, NativeMethod>,
+    natives_map: &'a HashMap<NativeFuncId, NativeMethod>,
 }
 
 impl<'a> FunctionTranslator<'a> {
@@ -646,7 +541,7 @@ impl<'a> FunctionTranslator<'a> {
             Expr::ForIn { iter, var, body } => self.translate_for_in(iter, var, body),
             Expr::While { condition, body } => self.translate_while_loop(condition, body),
             Expr::Call { callee, args } => self.translate_indirect_call(callee, args),
-            Expr::CallNative { callee, args } => self.translate_native_call(*callee, args),
+            Expr::CallNative { callee, args } => self.translate_native_call(callee, args),
             Expr::List(l) => {
                 let slot = self.builder.create_sized_stack_slot(StackSlotData::new(
                     StackSlotKind::ExplicitSlot,
@@ -659,23 +554,23 @@ impl<'a> FunctionTranslator<'a> {
                 }
                 let len_value = self.builder.ins().iconst(types::I64, l.len() as i64);
                 let items_ptr = self.builder.ins().stack_addr(PTR, slot, 0);
-                self.call_native(&self.natives.list_new, &[len_value, items_ptr])[0]
+                self.call_native(NativeFuncId::ListNew, &[len_value, items_ptr])[0]
             }
             Expr::GetIndex(val, index) => {
                 let index = self.translate_expr(index);
                 let val = self.translate_expr(val);
-                let result = self.call_native(&self.natives.val_get_index, &[val, index])[0];
+                let result = self.call_native(NativeFuncId::ValGetIndex, &[val, index])[0];
                 self.drop_val64(index);
                 self.drop_val64(val);
                 result
             }
             Expr::Dict(d) => {
                 let len_value = self.builder.ins().iconst(types::I64, d.len() as i64);
-                let mut dict = self.call_native(&self.natives.dict_new, &[len_value])[0];
+                let mut dict = self.call_native(NativeFuncId::DictNew, &[len_value])[0];
                 for (key, value) in d {
                     let key = self.translate_expr(key);
                     let value = self.translate_expr(value);
-                    dict = self.call_native(&self.natives.dict_insert, &[dict, key, value])[0];
+                    dict = self.call_native(NativeFuncId::DictInsert, &[dict, key, value])[0];
                 }
                 dict
             }
@@ -711,7 +606,7 @@ impl<'a> FunctionTranslator<'a> {
                 "ERROR (at {}): Tried to call something that isn't a function (or wrong parameter count): ",
                 callee.span.start
             ));
-            s.call_native(&s.natives.print, &[callee_val]);
+            s.call_native(NativeFuncId::Print, &[callee_val]);
             s.print_string_constant("\n".to_string());
         });
 
@@ -777,51 +672,46 @@ impl<'a> FunctionTranslator<'a> {
             8,
         ));
         let closure_ptr_ptr_val = self.builder.ins().stack_addr(I64, closure_ptr_slot, 0);
-        let arg_count_val = self.builder.ins().iconst(types::I32, args.len() as i64);
+        let arg_count_val = self.builder.ins().iconst(types::I64, args.len() as i64);
         let func_ptr = self.call_native(
-            &self.natives.val_get_lambda_details,
+            NativeFuncId::ValGetLambdaDetails,
             &[callee_val, arg_count_val, closure_ptr_ptr_val],
         )[0];
         let closure_ptr = self.builder.ins().stack_load(I64, closure_ptr_slot, 0);
         (func_ptr, closure_ptr)
     }
 
-    fn translate_native_call(&mut self, callee: BuiltInFunction, args: &Vec<SpannedExpr>) -> Value {
-        use BuiltInFunction::*;
+    fn translate_native_call(&mut self, callee: &str, args: &Vec<SpannedExpr>) -> Value {
+        fn bitwise_op(
+            s: &mut FunctionTranslator,
+            args: &[SpannedExpr],
+            op: impl FnOnce(&mut FunctionTranslator, Value, Value) -> Value,
+        ) -> Value {
+            assert!(args.len() == 2);
+            let lhs = s.translate_expr(&args[0]);
+            let rhs = s.translate_expr(&args[1]);
+            s.guard_f64(lhs);
+            s.guard_f64(rhs);
+            let lhs2 = s.builder.ins().fcvt_to_sint_sat(types::I64, lhs);
+            let rhs2 = s.builder.ins().fcvt_to_sint_sat(types::I64, rhs);
+            let result = op(s, lhs2, rhs2);
+            s.builder.ins().fcvt_from_sint(types::F64, result)
+        }
         match callee {
-            Print => self.call_native_eval(&self.natives.print, args),
-            Range => self.call_native_eval(&self.natives.range, args),
-            Len => self.call_native_eval(&self.natives.len, args),
-            ShiftLeft => self.call_native_eval(&self.natives.val_shift_left, args),
-            BitwiseXOR => self.call_native_eval(&self.natives.val_xor, args),
-            BitwiseAnd => {
-                assert!(args.len() == 2);
-                let lhs = self.translate_expr(&args[0]);
-                let rhs = self.translate_expr(&args[1]);
-                self.guard_f64(lhs);
-                self.guard_f64(rhs);
-                let lhs = self.builder.ins().fcvt_to_sint_sat(types::I64, lhs);
-                let rhs = self.builder.ins().fcvt_to_sint_sat(types::I64, rhs);
-                let result = self.builder.ins().band(lhs, rhs);
-                self.builder.ins().fcvt_from_sint(types::F64, result)
-            }
-            Not => self.call_native_eval(&self.natives.val_not, args),
-            Push => self.call_native_eval(&self.natives.list_push, args),
-            Floor => {
+            "bitwiseAnd" => bitwise_op(self, args, |s, lhs, rhs| s.builder.ins().band(lhs, rhs)),
+            "bitwiseOr" => bitwise_op(self, args, |s, lhs, rhs| s.builder.ins().bor(lhs, rhs)),
+            "bitwiseXor" => bitwise_op(self, args, |s, lhs, rhs| s.builder.ins().bxor(lhs, rhs)),
+            "floor" => {
                 assert!(args.len() == 1);
                 let val = self.translate_expr(&args[0]);
                 self.guard_f64(val);
                 self.builder.ins().floor(val)
             }
             _ => {
-                // FIXME: using trapz because trap makes it impossible to return Value
-                let message = self
-                    .string_literal_borrow(format!("ERROR: Method not implemented ({})\n", callee));
-                self.clone_val64(message);
-                self.call_native(&self.natives.print, &[message]);
-                let zero = self.builder.ins().iconst(types::I8, 0);
-                self.builder.ins().trapz(zero, TrapCode::User(1));
-                return self.const_nil();
+                if let Some(func) = self.builtins_map.get(callee) {
+                    return self.call_native_eval(&func, args);
+                }
+                panic!("ERROR: Native function not implemented ({})\n", callee);
             }
         }
     }
@@ -840,7 +730,7 @@ impl<'a> FunctionTranslator<'a> {
         for arg in args {
             arg_values.push(self.translate_expr(arg))
         }
-        match self.call_native(method, &arg_values) {
+        match self.call_native_method(method, &arg_values) {
             [val] => *val,
             [] => self.const_nil(),
             _ => panic!("Built-in functions should only return zero or one value"),
@@ -911,7 +801,7 @@ impl<'a> FunctionTranslator<'a> {
                         "ERROR: pattern match failed on non-list\n".to_string(),
                     );
                 });
-                let value_len = self.call_native(&self.natives.list_len_u64, &[value])[0];
+                let value_len = self.call_native(NativeFuncId::ListLenU64, &[value])[0];
                 let len_eq =
                     self.builder
                         .ins()
@@ -923,7 +813,7 @@ impl<'a> FunctionTranslator<'a> {
                 });
                 for (i, part) in parts.iter().enumerate() {
                     let ival = self.builder.ins().iconst(I64, i as i64);
-                    let element = self.call_native(&self.natives.list_get_u64, &[value, ival])[0];
+                    let element = self.call_native(NativeFuncId::ListGetU64, &[value, ival])[0];
                     self.translate_match_pattern(part, element);
                 }
                 self.drop_val64(value);
@@ -934,8 +824,7 @@ impl<'a> FunctionTranslator<'a> {
             MatchPattern::Dict(dict) => {
                 for (key, pattern) in &dict.entries {
                     let keyval = self.string_literal_borrow(key.clone());
-                    let element =
-                        self.call_native(&self.natives.val_get_index, &[value, keyval])[0];
+                    let element = self.call_native(NativeFuncId::ValGetIndex, &[value, keyval])[0];
                     self.translate_match_pattern(pattern, element);
                 }
                 self.drop_val64(value);
@@ -967,7 +856,7 @@ impl<'a> FunctionTranslator<'a> {
                 self.builder.seal_block(block0);
 
                 // Return false if length doesn't match
-                let value_len = self.call_native(&self.natives.list_len_u64, &[value])[0];
+                let value_len = self.call_native(NativeFuncId::ListLenU64, &[value])[0];
                 let len_eq =
                     self.builder
                         .ins()
@@ -981,8 +870,7 @@ impl<'a> FunctionTranslator<'a> {
                 let mut matches_all = self.builder.ins().iconst(types::I8, 1);
                 for (i, part) in parts.iter().enumerate() {
                     let ival = self.builder.ins().iconst(I64, i as i64);
-                    let element =
-                        self.call_native(&self.natives.list_borrow_u64, &[value, ival])[0];
+                    let element = self.call_native(NativeFuncId::ListBorrowU64, &[value, ival])[0];
                     let matches = self.translate_matches_pattern(part, element);
                     // TODO short-circuit
                     matches_all = self.builder.ins().band(matches_all, matches);
@@ -1015,8 +903,7 @@ impl<'a> FunctionTranslator<'a> {
                 for (key, pattern) in &dict_pattern.entries {
                     let keyval = self.string_literal_borrow(key.clone());
                     // TODO: check if contains
-                    let element =
-                        self.call_native(&self.natives.val_get_index, &[value, keyval])[0];
+                    let element = self.call_native(NativeFuncId::ValGetIndex, &[value, keyval])[0];
                     let matches = self.translate_matches_pattern(pattern, element);
                     self.drop_val64(element);
                     // TODO short-circuit
@@ -1046,7 +933,7 @@ impl<'a> FunctionTranslator<'a> {
             MatchConstant::Number(f) => self.cmp_bits_imm(IntCC::Equal, value, (*f).to_bits()),
             MatchConstant::String(s) => {
                 let comp_val = self.string_literal_borrow(s.clone());
-                self.call_native(&self.natives.val_eq_u8, &[comp_val, value])[0]
+                self.call_native(NativeFuncId::ValEqU8, &[comp_val, value])[0]
             }
         }
     }
@@ -1078,12 +965,12 @@ impl<'a> FunctionTranslator<'a> {
     fn assign_part(&mut self, val: Value, index: Value, rest_path: &[Value], rhs: OValue) -> Value {
         match rest_path {
             [] => {
-                return self.call_native(&self.natives.val_set_index, &[val, index, rhs])[0];
+                return self.call_native(NativeFuncId::ValSetIndex, &[val, index, rhs])[0];
             }
             [next_index, rest @ ..] => {
-                let old_val = self.call_native(&self.natives.val_get_index, &[val, index])[0];
+                let old_val = self.call_native(NativeFuncId::ValGetIndex, &[val, index])[0];
                 let new_val = self.assign_part(old_val, *next_index, rest, rhs);
-                return self.call_native(&self.natives.val_set_index, &[val, index, new_val])[0];
+                return self.call_native(NativeFuncId::ValSetIndex, &[val, index, new_val])[0];
             }
         }
     }
@@ -1102,7 +989,7 @@ impl<'a> FunctionTranslator<'a> {
         else_body: &Option<Box<SpannedExpr>>,
     ) -> Value {
         let condition_value = self.translate_expr(condition);
-        let condition_value = self.call_native(&self.natives.val_truthy, &[condition_value])[0];
+        let condition_value = self.call_native(NativeFuncId::ValTruthy, &[condition_value])[0];
 
         let then_block = self.builder.create_block();
         let else_block = self.builder.create_block();
@@ -1161,7 +1048,7 @@ impl<'a> FunctionTranslator<'a> {
         let exit_block = self.builder.create_block();
 
         let iter_value = self.translate_expr(iter);
-        let len_value = self.call_native(&self.natives.list_len_u64, &[iter_value])[0];
+        let len_value = self.call_native(NativeFuncId::ListLenU64, &[iter_value])[0];
         let initial_index = self.builder.ins().iconst(I64, 0);
         self.builder.ins().jump(header_block, &[initial_index]);
 
@@ -1191,7 +1078,7 @@ impl<'a> FunctionTranslator<'a> {
 
         let current_index = self.builder.block_params(header_block)[0];
         let current_item =
-            self.call_native(&self.natives.list_get_u64, &[iter_value, current_index])[0];
+            self.call_native(NativeFuncId::ListGetU64, &[iter_value, current_index])[0];
         self.translate_match_pattern(&var.value, current_item);
         self.translate_expr(body);
         let next_index = self.builder.ins().iadd_imm(current_index, 1);
@@ -1272,7 +1159,7 @@ impl<'a> FunctionTranslator<'a> {
             Opcode::Eq => {
                 let lhs_val = self.translate_expr(lhs);
                 let rhs_val = self.translate_expr(rhs);
-                let result = self.call_native(&self.natives.val_eq, &[lhs_val, rhs_val])[0];
+                let result = self.call_native(NativeFuncId::ValEq, &[lhs_val, rhs_val])[0];
                 self.drop_val64(lhs_val);
                 self.drop_val64(rhs_val);
                 result
@@ -1329,10 +1216,11 @@ impl<'a> FunctionTranslator<'a> {
             builder,
             variables,
             module: &mut self.module,
-            natives: &self.natives,
             string_constants: &mut self.string_constants,
             return_block,
             entry_block,
+            builtins_map: &self.builtins_map,
+            natives_map: &self.natives_map,
         };
         trans.translate_function_entry(lambda, entry_block);
 
@@ -1384,7 +1272,7 @@ impl<'a> FunctionTranslator<'a> {
         }
         let closure_ptr = self.builder.ins().stack_addr(PTR, closure_slot, 0);
         let lambda_val = self.call_native(
-            &self.natives.construct_lambda,
+            NativeFuncId::ConstructLambda,
             &[
                 param_count_val,
                 func_ptr_val,
@@ -1454,10 +1342,19 @@ impl<'a> FunctionTranslator<'a> {
         phi
     }
 
-    fn call_native(&mut self, method: &NativeMethod, args: &[Value]) -> &[Value] {
+    fn call_native_method(&mut self, method: &NativeMethod, args: &[Value]) -> &[Value] {
         let local_callee = self
             .module
             .declare_func_in_func(method.func, self.builder.func);
+        let call = self.builder.ins().call(local_callee, args);
+        self.builder.inst_results(call)
+    }
+
+    fn call_native(&mut self, func: NativeFuncId, args: &[Value]) -> &[Value] {
+        let func_def = self.natives_map.get(&func).unwrap();
+        let local_callee = self
+            .module
+            .declare_func_in_func(func_def.func, self.builder.func);
         let call = self.builder.ins().call(local_callee, args);
         self.builder.inst_results(call)
     }
@@ -1503,7 +1400,7 @@ impl<'a> FunctionTranslator<'a> {
     }
 
     fn clone_val64(&mut self, val: BValue) -> OValue {
-        self.call_native(&self.natives.clone, &[val])[0]
+        self.call_native(NativeFuncId::Clone, &[val])[0]
     }
 
     /// Same as [Self::clone_val64] but only does a method call if the value is a reference type.
@@ -1520,7 +1417,7 @@ impl<'a> FunctionTranslator<'a> {
             .brif(is_ptr, clone_block, &[], after_block, &[]);
         self.builder.switch_to_block(clone_block);
         self.builder.seal_block(clone_block);
-        self.call_native(&self.natives.clone, &[val]);
+        self.call_native(NativeFuncId::Clone, &[val]);
         self.builder.ins().jump(after_block, &[]);
 
         self.builder.switch_to_block(after_block);
@@ -1540,7 +1437,7 @@ impl<'a> FunctionTranslator<'a> {
             .brif(is_ptr, drop_block, &[], after_block, &[]);
         self.builder.switch_to_block(drop_block);
         self.builder.seal_block(drop_block);
-        self.call_native(&self.natives.drop, &[val]);
+        self.call_native(NativeFuncId::Drop, &[val]);
         self.builder.ins().jump(after_block, &[]);
 
         self.builder.switch_to_block(after_block);
@@ -1553,7 +1450,7 @@ impl<'a> FunctionTranslator<'a> {
     }
 
     fn is_truthy(&mut self, val: Value) -> Value {
-        self.call_native(&self.natives.val_truthy, &[val])[0]
+        self.call_native(NativeFuncId::ValTruthy, &[val])[0]
     }
 
     fn is_nil(&mut self, val: Value) -> Value {
@@ -1611,14 +1508,14 @@ impl<'a> FunctionTranslator<'a> {
     fn print_string_constant(&mut self, string: String) {
         let string_val64 = self.string_literal_borrow(string);
         self.clone_val64(string_val64);
-        self.call_native(&self.natives.print, &[string_val64]);
+        self.call_native(NativeFuncId::Print, &[string_val64]);
     }
 
     fn translate_import(&mut self, path: &str) -> Value {
         let vm_ptr = self.get_vm_ptr();
         let path_val = self.string_literal_borrow(path.to_string());
         let path_val = self.clone_val64(path_val);
-        let result = self.call_native(&self.natives.import_module, &[vm_ptr, path_val])[0];
+        let result = self.call_native(NativeFuncId::ImportModule, &[vm_ptr, path_val])[0];
         let is_ok = self.cmp_bits_imm(IntCC::NotEqual, result, value64::ERROR_VALUE);
 
         self.assert(is_ok, |s| {

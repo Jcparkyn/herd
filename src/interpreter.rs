@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::Debug, rc::Rc, vec};
+use std::{collections::HashMap, fmt::Debug, rc::Rc, str::FromStr, vec};
 
 use crate::{
     ast::{
@@ -367,7 +367,8 @@ impl Interpreter {
                 s.call_lambda(&lambda, args.len()).with_span(&expr.span)
             }),
             Expr::CallNative { callee, args } => self.run_with_args(args, |s| {
-                s.call_builtin(*callee, args.len()).with_span(&expr.span)
+                let callee = BuiltInFunction::from_str(&callee).unwrap();
+                s.call_builtin(callee, args.len()).with_span(&expr.span)
             }),
             Expr::Lambda(l) => {
                 let f = self.eval_lambda_definition(l);

@@ -1,8 +1,14 @@
-use std::{collections::HashMap, mem::ManuallyDrop, ops::Deref, path::PathBuf, ptr::null, rc::Rc};
+use std::{
+    collections::HashMap, mem::ManuallyDrop, ops::Deref, panic::AssertUnwindSafe, path::PathBuf,
+    ptr::null, rc::Rc,
+};
+
+use cranelift::prelude::{types, AbiParam, Signature, Type};
+use strum::{EnumIter, IntoEnumIterator};
 
 use crate::{
     analysis::Analyzer,
-    ast,
+    ast::{self},
     jit::VmContext,
     lang::ProgramParser,
     pos::{Span, Spanned},
@@ -12,6 +18,176 @@ use crate::{
 
 #[cfg(debug_assertions)]
 use crate::value64::RC_TRACKER;
+
+#[derive(Clone, Copy, Debug)]
+pub struct NativeFuncDef {
+    pub name: &'static str,
+    pub func_ptr: *const u8,
+    pub make_sig: fn(&mut Signature) -> (),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, EnumIter)]
+pub enum NativeFuncId {
+    ListNew,
+    ListLenU64,
+    ListGetU64,
+    ListBorrowU64,
+    DictNew,
+    DictInsert,
+    Clone,
+    Drop,
+    ValGetIndex,
+    ValSetIndex,
+    ValEq,
+    ValEqU8,
+    ValTruthy,
+    ValGetLambdaDetails,
+    ConstructLambda,
+    ImportModule,
+    Print,
+}
+
+trait AbiType {
+    const TYPE: Type;
+}
+
+impl AbiType for () {
+    // HACK: use as sentinel value for no return
+    const TYPE: Type = types::INVALID;
+}
+
+impl AbiType for Value64 {
+    const TYPE: Type = types::F64;
+}
+
+impl AbiType for Value64Ref {
+    const TYPE: Type = types::F64;
+}
+
+impl AbiType for i64 {
+    const TYPE: Type = types::I64;
+}
+
+impl AbiType for u64 {
+    const TYPE: Type = types::I64;
+}
+
+impl AbiType for u8 {
+    const TYPE: Type = types::I8;
+}
+
+impl AbiType for f64 {
+    const TYPE: Type = types::F64;
+}
+
+impl<T> AbiType for *const T {
+    const TYPE: Type = types::I64;
+}
+
+impl<T> AbiType for *mut T {
+    const TYPE: Type = types::I64;
+}
+
+impl AbiType for &mut VmContext {
+    const TYPE: Type = types::I64;
+}
+
+macro_rules! func_name {
+    ($func:expr) => {
+        concat!("NATIVE:", stringify!($func))
+    };
+}
+
+macro_rules! get_def {
+    (0, $func:expr) => {
+        get_def0(func_name!($func), $func)
+    };
+    (1, $func:expr) => {
+        get_def1(func_name!($func), $func)
+    };
+    (2, $func:expr) => {
+        get_def2(func_name!($func), $func)
+    };
+    (3, $func:expr) => {
+        get_def3(func_name!($func), $func)
+    };
+    (4, $func:expr) => {
+        get_def4(func_name!($func), $func)
+    };
+}
+
+fn get_native_func_def(func: NativeFuncId) -> NativeFuncDef {
+    match func {
+        NativeFuncId::ListNew => get_def!(2, list_new),
+        NativeFuncId::ListLenU64 => get_def!(1, list_len_u64),
+        NativeFuncId::ListGetU64 => get_def!(2, list_get_u64),
+        NativeFuncId::ListBorrowU64 => get_def!(2, list_borrow_u64),
+        NativeFuncId::DictNew => get_def!(1, dict_new),
+        NativeFuncId::DictInsert => get_def!(3, dict_insert),
+        NativeFuncId::Clone => get_def!(1, clone),
+        NativeFuncId::Drop => get_def!(1, drop),
+        NativeFuncId::ValGetIndex => get_def!(2, val_get_index),
+        NativeFuncId::ValSetIndex => get_def!(3, val_set_index),
+        NativeFuncId::ValEq => get_def!(2, val_eq),
+        NativeFuncId::ValEqU8 => get_def!(2, val_eq_u8),
+        NativeFuncId::ValTruthy => get_def!(1, val_truthy_u8),
+        NativeFuncId::ValGetLambdaDetails => get_def!(3, get_lambda_details),
+        NativeFuncId::ConstructLambda => get_def!(4, construct_lambda),
+        NativeFuncId::ImportModule => get_def!(2, import_module),
+        NativeFuncId::Print => get_def!(1, public_print),
+    }
+}
+
+pub fn get_natives() -> HashMap<NativeFuncId, NativeFuncDef> {
+    let mut map = HashMap::new();
+    for func in NativeFuncId::iter() {
+        map.insert(func, get_native_func_def(func));
+    }
+    return map;
+}
+
+pub fn get_builtins() -> HashMap<&'static str, NativeFuncDef> {
+    let mut map = HashMap::new();
+    map.insert("print", get_def!(1, public_print));
+    map.insert("not", get_def!(1, public_val_not));
+    map.insert("shiftLeft", get_def!(2, public_val_shift_left));
+    map.insert("range", get_def!(2, public_range));
+    map.insert("push", get_def!(2, public_list_push));
+    // map.insert("pop", get_def!(1, public_list_pop));
+    map.insert("len", get_def!(1, public_len));
+    // map.insert("sort", get_def!(1, sort));
+    // map.insert("removeKey", get_def!(2, dict_remove_key));
+
+    return map;
+}
+
+macro_rules! generate_get_def {
+    ($fname:ident $(, $param:ident)*) => {
+        fn $fname<$($param: AbiType,)* TRet: AbiType>(
+            name: &'static str,
+            func: extern "C" fn($($param),*) -> TRet,
+        ) -> NativeFuncDef {
+            NativeFuncDef {
+                name,
+                func_ptr: func as *const u8,
+                make_sig: |sig| {
+                    $(
+                        sig.params.push(AbiParam::new($param::TYPE));
+                    )*
+                    if TRet::TYPE != types::INVALID {
+                        sig.returns.push(AbiParam::new(TRet::TYPE));
+                    }
+                },
+            }
+        }
+    };
+}
+
+// generate_get_def!(get_def0);
+generate_get_def!(get_def1, T1);
+generate_get_def!(get_def2, T1, T2);
+generate_get_def!(get_def3, T1, T2, T3);
+generate_get_def!(get_def4, T1, T2, T3, T4);
 
 // Not using &Value64, so that the ABI for these functions still takes
 // regular f64 values.
@@ -156,13 +332,13 @@ pub extern "C" fn val_eq_u8(val1: Value64Ref, val2: Value64Ref) -> u8 {
     (*val1 == *val2) as u8
 }
 
-pub extern "C" fn val_truthy(val: Value64Ref) -> i8 {
-    val.truthy() as i8
+pub extern "C" fn val_truthy_u8(val: Value64Ref) -> u8 {
+    val.truthy() as u8
 }
 
-pub extern "C" fn val_get_lambda_details(
+pub extern "C" fn get_lambda_details(
     val: Value64Ref,
-    param_count: u32,
+    param_count: u64,
     closure_out: *mut *const Value64,
 ) -> *const u8 {
     let lambda = match val.as_lambda() {
@@ -185,15 +361,15 @@ pub extern "C" fn val_get_lambda_details(
 }
 
 pub extern "C" fn construct_lambda(
-    param_count: usize,
+    param_count: u64,
     func_ptr: *const u8,
-    capture_count: usize,
+    capture_count: u64,
     captures: *const Value64,
 ) -> Value64 {
-    let closure_slice = unsafe { std::slice::from_raw_parts(captures, capture_count) };
+    let closure_slice = unsafe { std::slice::from_raw_parts(captures, capture_count as usize) };
     let lambda = LambdaFunction {
         params: Rc::new(vec![]), // Not used in JIT
-        param_count,
+        param_count: param_count as usize,
         body: Rc::new(Spanned::new(Span::new(0, 0), ast::Expr::Nil)), // Not used in JIT
         closure: closure_slice.to_vec(),
         self_name: Some("TEMP lambda".to_string()),
@@ -204,11 +380,11 @@ pub extern "C" fn construct_lambda(
 }
 
 pub extern "C" fn import_module(vm: &mut VmContext, name: Value64) -> Value64 {
-    let result = import_module_panic(vm, &name);
+    let result = std::panic::catch_unwind(AssertUnwindSafe(|| import_module_panic(vm, &name)));
     match result {
-        Ok(result) => result,
-        Err(panic) => {
-            println!("Error while importing {}: {:?}", name, panic);
+        Ok(Ok(result)) => result,
+        err => {
+            println!("Error while importing {}: {:?}", name, err);
             Value64::ERROR
         }
     }
