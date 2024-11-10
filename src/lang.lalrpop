@@ -76,7 +76,7 @@ ComparisonExpr = Tier<ComparisonOp, AddSubCallExpr>;
 AddSubCallExpr: Expr = {
     <callee:Box<Sp<Term>>> <args:Sp<Term>+> => Expr::Call { callee, args },
     "import" <path:StringLiteral> => Expr::Import { path },
-    "NATIVE" ":" <callee:Identifier> <args:Sp<Term>+> => Expr::CallNative {
+    "BUILTIN" ":" <callee:Identifier> <args:Sp<Term>+> => Expr::CallNative {
         callee,
         args,
     },
