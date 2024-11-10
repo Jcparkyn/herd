@@ -19,7 +19,7 @@ use crate::{
         self, Expr, LambdaExpr, MatchConstant, MatchExpr, MatchPattern, Opcode, SpannedExpr,
         SpannedStatement, Statement,
     },
-    builtins::{self, NativeFuncDef, NativeFuncId},
+    natives::{self, NativeFuncDef, NativeFuncId},
     pos::{Span, Spanned},
     value64::{self, PointerTag},
     Value64,
@@ -81,8 +81,8 @@ pub struct JIT {
     pub modules: HashMap<String, Option<Value64>>,
 
     pub module_loader: Box<dyn ModuleLoader>,
-    builtins_map: HashMap<&'static str, NativeMethod>,
-    natives_map: HashMap<NativeFuncId, NativeMethod>,
+    builtins_map: HashMap<&'static str, NativeFunc>,
+    natives_map: HashMap<NativeFuncId, NativeFunc>,
 }
 
 /// An owned Value64
@@ -92,28 +92,27 @@ type OValue = Value;
 type BValue = Value;
 
 #[derive(Debug, Clone)]
-struct NativeMethod {
+struct NativeFunc {
     func: FuncId,
     #[allow(dead_code)]
     sig: Signature,
 }
 
-fn build_native_methods<TKey>(
+fn build_native_funcs<TKey>(
     module: &mut JITModule,
-    methods: HashMap<TKey, NativeFuncDef>,
-) -> HashMap<TKey, NativeMethod>
+    funcs: HashMap<TKey, NativeFuncDef>,
+) -> HashMap<TKey, NativeFunc>
 where
     TKey: Eq + Hash,
 {
     let mut result = HashMap::new();
-    for (key, def) in methods {
-        // let name = format!("NATIVE:{}", def.name);
+    for (key, def) in funcs {
         let mut sig = module.make_signature();
         (def.make_sig)(&mut sig);
         let func = module
             .declare_function(&def.name, Linkage::Import, &sig)
             .expect("problem declaring function");
-        result.insert(key, NativeMethod { func, sig });
+        result.insert(key, NativeFunc { func, sig });
     }
     return result;
 }
@@ -131,8 +130,8 @@ impl JIT {
         let flags = settings::Flags::new(flag_builder);
         let isa = isa_builder.finish(flags).unwrap();
         let mut builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
-        let builtins_map = builtins::get_builtins();
-        let natives_map = builtins::get_natives();
+        let builtins_map = natives::get_builtins();
+        let natives_map = natives::get_natives();
 
         for (_, func) in &builtins_map {
             builder.symbol(func.name, func.func_ptr);
@@ -143,9 +142,9 @@ impl JIT {
 
         let mut module = JITModule::new(builder);
 
-        let builtins_map = build_native_methods(&mut module, builtins_map);
+        let builtins_map = build_native_funcs(&mut module, builtins_map);
 
-        let natives_map = build_native_methods(&mut module, natives_map);
+        let natives_map = build_native_funcs(&mut module, natives_map);
 
         Self {
             builder_context: FunctionBuilderContext::new(),
@@ -485,8 +484,8 @@ struct FunctionTranslator<'a> {
     string_constants: &'a mut HashMap<String, Value64>,
     entry_block: Block,
     return_block: Block,
-    builtins_map: &'a HashMap<&'static str, NativeMethod>,
-    natives_map: &'a HashMap<NativeFuncId, NativeMethod>,
+    builtins_map: &'a HashMap<&'static str, NativeFunc>,
+    natives_map: &'a HashMap<NativeFuncId, NativeFunc>,
 }
 
 impl<'a> FunctionTranslator<'a> {
@@ -717,7 +716,7 @@ impl<'a> FunctionTranslator<'a> {
     }
 
     /// Wraps [Self::call_native] and evaluates arguments
-    fn call_native_eval(&mut self, method: &NativeMethod, args: &Vec<SpannedExpr>) -> Value {
+    fn call_native_eval(&mut self, func: &NativeFunc, args: &Vec<SpannedExpr>) -> Value {
         let mut sig = self.module.make_signature();
 
         for _arg in args {
@@ -730,7 +729,7 @@ impl<'a> FunctionTranslator<'a> {
         for arg in args {
             arg_values.push(self.translate_expr(arg))
         }
-        match self.call_native_method(method, &arg_values) {
+        match self.call_native_func(func, &arg_values) {
             [val] => *val,
             [] => self.const_nil(),
             _ => panic!("Built-in functions should only return zero or one value"),
@@ -1342,10 +1341,10 @@ impl<'a> FunctionTranslator<'a> {
         phi
     }
 
-    fn call_native_method(&mut self, method: &NativeMethod, args: &[Value]) -> &[Value] {
+    fn call_native_func(&mut self, func: &NativeFunc, args: &[Value]) -> &[Value] {
         let local_callee = self
             .module
-            .declare_func_in_func(method.func, self.builder.func);
+            .declare_func_in_func(func.func, self.builder.func);
         let call = self.builder.ins().call(local_callee, args);
         self.builder.inst_results(call)
     }
@@ -1403,7 +1402,7 @@ impl<'a> FunctionTranslator<'a> {
         self.call_native(NativeFuncId::Clone, &[val])[0]
     }
 
-    /// Same as [Self::clone_val64] but only does a method call if the value is a reference type.
+    /// Same as [Self::clone_val64] but only does a function call if the value is a reference type.
     /// This slows things down when used everywhere, should only be used in places where reference types are unlikely.
     #[allow(dead_code)]
     fn clone_val64_sometimes(&mut self, val: BValue) -> OValue {

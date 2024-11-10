@@ -1,9 +1,9 @@
 pub mod analysis;
 pub mod ast;
-pub mod builtins;
 pub mod interpreter;
 pub mod jit;
 pub mod lines;
+pub mod natives;
 pub mod parse_helpers;
 pub mod pos;
 mod stdlib;
