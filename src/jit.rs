@@ -507,12 +507,19 @@ impl<'a> FunctionTranslator<'a> {
         self.set_src_span(&expr.span);
         match &expr.value {
             Expr::Variable(ref var) => {
-                let variable = self
+                let variable = *self
                     .variables
                     .get(&var.name)
                     .unwrap_or_else(|| panic!("variable {} not defined", var.name));
-                let val = self.builder.use_var(*variable);
-                self.clone_val64(val)
+                let val = self.builder.use_var(variable);
+                if var.is_final {
+                    // Replace the variable instead of copying, because we know this won't be accessed again.
+                    let nil = self.const_nil();
+                    self.builder.def_var(variable, nil);
+                    val
+                } else {
+                    self.clone_val64(val)
+                }
             }
             Expr::Block(b) => {
                 for stmt in &b.statements {
@@ -948,20 +955,29 @@ impl<'a> FunctionTranslator<'a> {
             .get(&target.var.name)
             .copied()
             .expect("variable not defined");
-        let new_val = match &path_values[..] {
-            [] => rhs,
-            [index, rest @ ..] => {
+        match &path_values[..] {
+            [] => {
                 let old_val = self.builder.use_var(variable);
-                let old_val = self.clone_val64(old_val);
-                self.assign_part(old_val, *index, rest, rhs)
+                self.drop_val64(old_val);
+                self.builder.def_var(variable, rhs);
+            }
+            [index, rest @ ..] => {
+                // "move" the value to update it, then write it back.
+                // We don't need to explicitly replace the value with NIL because we overwrite it later.
+                let old_val = self.builder.use_var(variable);
+                let new_val = self.assign_part(old_val, *index, rest, rhs);
+                self.builder.def_var(variable, new_val);
             }
         };
-        let old_val = self.builder.use_var(variable);
-        self.drop_val64(old_val);
-        self.builder.def_var(variable, new_val);
     }
 
-    fn assign_part(&mut self, val: Value, index: Value, rest_path: &[Value], rhs: OValue) -> Value {
+    fn assign_part(
+        &mut self,
+        val: OValue,
+        index: OValue,
+        rest_path: &[Value],
+        rhs: OValue,
+    ) -> Value {
         match rest_path {
             [] => {
                 return self.call_native(NativeFuncId::ValSetIndex, &[val, index, rhs])[0];

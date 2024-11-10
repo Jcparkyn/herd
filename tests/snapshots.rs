@@ -350,13 +350,14 @@ fn dict_literal_shorthand() {
 #[test]
 fn array_assign() {
     let program = r#"
-        a = ['1', '2'];
+        a = ['1', '2', '3'];
         var b = a;
         set b.[0] = '4';
+        set b.[1] = '5';
         return [a, b];
     "#;
     let result = eval_snapshot_str(program);
-    insta::assert_snapshot!(result, @"[['1', '2'], ['4', '2']]");
+    insta::assert_snapshot!(result, @"[['1', '2', '3'], ['4', '5', '3']]");
     assert_rcs_dropped();
 }
 
