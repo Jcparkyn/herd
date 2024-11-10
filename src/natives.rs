@@ -134,7 +134,7 @@ fn get_native_func_def(func: NativeFuncId) -> NativeFuncDef {
         NativeFuncId::ValGetLambdaDetails => get_def!(3, get_lambda_details),
         NativeFuncId::ConstructLambda => get_def!(4, construct_lambda),
         NativeFuncId::ImportModule => get_def!(2, import_module),
-        NativeFuncId::Print => get_def!(1, public_print),
+        NativeFuncId::Print => get_def!(1, print),
     }
 }
 
@@ -148,13 +148,13 @@ pub fn get_natives() -> HashMap<NativeFuncId, NativeFuncDef> {
 
 pub fn get_builtins() -> HashMap<&'static str, NativeFuncDef> {
     let mut map = HashMap::new();
-    map.insert("print", get_def!(1, public_print));
-    map.insert("not", get_def!(1, public_val_not));
-    map.insert("shiftLeft", get_def!(2, public_val_shift_left));
-    map.insert("range", get_def!(2, public_range));
-    map.insert("push", get_def!(2, public_list_push));
-    map.insert("pop", get_def!(1, public_list_pop));
-    map.insert("len", get_def!(1, public_len));
+    map.insert("print", get_def!(1, print));
+    map.insert("not", get_def!(1, val_not));
+    map.insert("shiftLeft", get_def!(2, val_shift_left));
+    map.insert("range", get_def!(2, range));
+    map.insert("push", get_def!(2, list_push));
+    map.insert("pop", get_def!(1, list_pop));
+    map.insert("len", get_def!(1, len));
     // map.insert("sort", get_def!(1, sort));
     map.insert("removeKey", get_def!(2, dict_remove_key));
 
@@ -236,13 +236,13 @@ pub extern "C" fn list_new(len: u64, items: *const Value64) -> Value64 {
     Value64::from_list(rc_new(ListInstance::new(items)))
 }
 
-pub extern "C" fn public_list_push(list: Value64, val: Value64) -> Value64 {
+pub extern "C" fn list_push(list: Value64, val: Value64) -> Value64 {
     let mut list = list.try_into_list().unwrap();
     rc_mutate(&mut list, |l| l.values.push(val));
     Value64::from_list(list)
 }
 
-pub extern "C" fn public_list_pop(list: Value64) -> Value64 {
+pub extern "C" fn list_pop(list: Value64) -> Value64 {
     let mut list = list.try_into_list().unwrap();
     rc_mutate(&mut list, |l| {
         l.values.pop();
@@ -286,7 +286,7 @@ pub extern "C" fn dict_remove_key(dict: Value64, key: Value64) -> Value64 {
     Value64::from_dict(dict)
 }
 
-pub extern "C" fn public_range(start: Value64, stop: Value64) -> Value64 {
+pub extern "C" fn range(start: Value64, stop: Value64) -> Value64 {
     let start_int = start.as_f64().unwrap() as i64;
     let stop_int = stop.as_f64().unwrap() as i64;
     let mut values = Vec::new();
@@ -296,7 +296,7 @@ pub extern "C" fn public_range(start: Value64, stop: Value64) -> Value64 {
     return Value64::from_list(rc_new(ListInstance::new(values)));
 }
 
-pub extern "C" fn public_len(list: Value64) -> Value64 {
+pub extern "C" fn len(list: Value64) -> Value64 {
     let list2 = list.as_list().unwrap();
     Value64::from_f64(list2.values.len() as f64)
 }
@@ -447,25 +447,25 @@ fn import_module_panic(vm: &mut VmContext, name: &Value64) -> Result<Value64, St
     return Ok(result);
 }
 
-pub extern "C" fn public_val_shift_left(val: Value64, by: Value64) -> Value64 {
+pub extern "C" fn val_shift_left(val: Value64, by: Value64) -> Value64 {
     let a = val.as_f64().unwrap() as u64;
     let b = by.as_f64().unwrap() as u8;
     let result = Value64::from_f64((a << b) as f64);
     result
 }
 
-pub extern "C" fn public_val_xor(val1: Value64, val2: Value64) -> Value64 {
+pub extern "C" fn val_xor(val1: Value64, val2: Value64) -> Value64 {
     let a = val1.as_f64().unwrap() as u64;
     let b = val2.as_f64().unwrap() as u64;
     Value64::from_f64((a ^ b) as f64)
 }
 
-pub extern "C" fn public_val_not(val: Value64) -> Value64 {
+pub extern "C" fn val_not(val: Value64) -> Value64 {
     Value64::from_bool(!val.truthy())
 }
 
 // TODO: Variadic functions
-pub extern "C" fn public_print(val: Value64) {
+pub extern "C" fn print(val: Value64) {
     match val.try_into_string() {
         Ok(s) => print!("{s}"),
         Err(v) => print!("{v}"),
