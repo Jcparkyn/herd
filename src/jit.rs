@@ -6,7 +6,7 @@ use cranelift_module::{DataDescription, FuncId, FuncOrDataId, Linkage, Module, M
 use std::{
     collections::HashMap,
     hash::Hash,
-    mem::{self, size_of},
+    mem::{self, forget, size_of},
     ops::Deref,
     path::{Path, PathBuf},
     rc::Rc,
@@ -168,33 +168,60 @@ impl JIT {
             statements: program.to_vec(),
             expression: None,
         }));
-        let func_id = self.compile_main_func(&body, src_path)?;
+        let func_id = self.compile_main_func(&body, src_path, &[], false)?;
         Ok(func_id)
     }
 
-    pub unsafe fn run_func(&mut self, func_id: FuncId, input: Value64) -> Value64 {
+    pub fn compile_repl_as_function(
+        &mut self,
+        program: &[SpannedStatement],
+        src_path: &Path,
+        globals: &[String],
+    ) -> JITResult<FuncId> {
+        let body = Spanned::with_zero_span(Expr::Block(ast::Block {
+            statements: program.to_vec(),
+            expression: None,
+        }));
+        let func_id = self.compile_main_func(&body, src_path, globals, true)?;
+        Ok(func_id)
+    }
+
+    pub unsafe fn run_func(&mut self, func_id: FuncId, inputs: Vec<Value64>) -> Value64 {
         let func_ptr = self.module.get_finalized_function(func_id);
         // Cast the raw pointer to a typed function pointer. This is unsafe, because
         // this is the critical point where you have to trust that the generated code
         // is safe to be called.
-        let code_fn = mem::transmute::<_, extern "C" fn(&mut JIT, Value64) -> Value64>(func_ptr);
+        let code_fn =
+            mem::transmute::<_, extern "C" fn(&mut JIT, *const Value64) -> Value64>(func_ptr);
+        let inputs_ptr = inputs.as_ptr();
+        // Make code_fn "consume" the inputs
+        forget(inputs);
         // And now we can call it!
-        code_fn(self, input)
+        code_fn(self, inputs_ptr)
     }
 
-    fn compile_main_func(&mut self, body: &SpannedExpr, src_path: &Path) -> JITResult<FuncId> {
+    fn compile_main_func(
+        &mut self,
+        body: &SpannedExpr,
+        src_path: &Path,
+        implicit_vars: &[String],
+        repl_mode: bool,
+    ) -> JITResult<FuncId> {
         // Then, translate the AST nodes into Cranelift IR.
-        self.translate_main_func(body, src_path)?;
+        self.translate_main_func(body, src_path, implicit_vars, repl_mode)?;
 
-        // TODO: Use file path
-        let func_name = format!("MAIN:{}", src_path.to_str().unwrap());
+        let id = if repl_mode {
+            // Don't use a name in JIT mode, to avoid collisions
+            self.module
+                .declare_anonymous_function(&self.ctx.func.signature)
+                .map_err(JITError::Module)?
+        } else {
+            let func_name = format!("MAIN:{}", src_path.to_str().unwrap());
 
-        // Next, declare the function to jit. Functions must be declared
-        // before they can be called, or defined.
-        let id = self
-            .module
-            .declare_function(&func_name, Linkage::Export, &self.ctx.func.signature)
-            .map_err(JITError::Module)?;
+            self.module
+                .declare_function(&func_name, Linkage::Export, &self.ctx.func.signature)
+                .map_err(JITError::Module)?
+        };
 
         // Define the function to jit. This finishes compilation, although
         // there may be outstanding relocations to perform. Currently, jit
@@ -225,10 +252,17 @@ impl JIT {
         }
     }
 
-    fn translate_main_func(&mut self, body: &SpannedExpr, src_path: &Path) -> JITResult<()> {
+    fn translate_main_func(
+        &mut self,
+        body: &SpannedExpr,
+        src_path: &Path,
+        implicit_vars: &[String],
+        repl_mode: bool,
+    ) -> JITResult<()> {
         self.ctx.func.collect_debug_info();
         self.ctx.func.signature.params.push(AbiParam::new(PTR)); // VmContext ptr
-        self.ctx.func.signature.params.push(AbiParam::new(VAL64)); // program args
+        self.ctx.func.signature.params.push(AbiParam::new(PTR)); // args (array of VAL64)
+
         self.ctx.func.signature.returns.push(AbiParam::new(VAL64));
 
         let mut builder = FunctionBuilder::new(&mut self.ctx.func, &mut self.builder_context);
@@ -240,9 +274,22 @@ impl JIT {
 
         // Walk the AST and declare all implicitly-declared variables.
         let variables = {
-            let args_val = builder.block_params(entry_block)[1];
+            let implicit_vars_ptr = builder.block_params(entry_block)[1]; // Value64 array
+            let mut implicit_var_vals = vec![];
+            for (i, var) in implicit_vars.iter().enumerate() {
+                let val = builder.ins().load(
+                    VAL64,
+                    MemFlags::new(),
+                    implicit_vars_ptr,
+                    (i * size_of::<Value64>()) as i32,
+                );
+                implicit_var_vals.push((var.as_str(), val));
+            }
+
             let mut variable_builder = VariableBuilder::new(&mut builder);
-            variable_builder.create_variable("args", args_val);
+            for (var, val) in implicit_var_vals {
+                variable_builder.create_variable(var, val);
+            }
             variable_builder.declare_variables_in_expr(body);
             variable_builder.variables
         };
@@ -270,7 +317,7 @@ impl JIT {
             .ins()
             .jump(trans.return_block, &[return_value]);
 
-        trans.translate_return_block();
+        trans.translate_return_block(repl_mode);
         // Tell the builder we're done with this function.
         trans.builder.finalize();
         Ok(())
@@ -586,19 +633,40 @@ impl<'a> FunctionTranslator<'a> {
         }
     }
 
-    fn translate_return_block(&mut self) {
+    fn translate_return_block(&mut self, repl_mode: bool) {
         self.builder.switch_to_block(self.return_block);
         self.builder.seal_block(self.return_block);
         self.builder.append_block_param(self.return_block, VAL64);
 
-        let variables = self.variables.values().cloned().collect::<Vec<_>>();
-        for var in variables {
-            let val = self.builder.use_var(var);
-            self.drop_val64(val);
-        }
+        if repl_mode {
+            let variables = self
+                .variables
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect::<Vec<_>>();
+            let capacity = self
+                .builder
+                .ins()
+                .iconst(types::I64, variables.len() as i64);
+            let mut return_dict = self.call_native(NativeFuncId::DictNew, &[capacity])[0];
+            for (name, var) in variables {
+                let val = self.builder.use_var(var);
+                let key = self.string_literal_borrow(name);
+                let key = self.clone_val64(key);
+                return_dict =
+                    self.call_native(NativeFuncId::DictInsert, &[return_dict, key, val])[0];
+            }
+            self.builder.ins().return_(&[return_dict]);
+        } else {
+            let variables = self.variables.values().cloned().collect::<Vec<_>>();
+            for var in variables {
+                let val = self.builder.use_var(var);
+                self.drop_val64(val);
+            }
 
-        let return_value = self.builder.block_params(self.return_block)[0];
-        self.builder.ins().return_(&[return_value]);
+            let return_value = self.builder.block_params(self.return_block)[0];
+            self.builder.ins().return_(&[return_value]);
+        }
     }
 
     fn translate_indirect_call(&mut self, callee: &SpannedExpr, args: &Vec<SpannedExpr>) -> Value {
@@ -1246,7 +1314,7 @@ impl<'a> FunctionTranslator<'a> {
             .ins()
             .jump(trans.return_block, &[return_value]);
 
-        trans.translate_return_block();
+        trans.translate_return_block(false);
         trans.builder.finalize();
 
         // Using a name here (instead of declare_anonymous_function) for profiling info on Linux.

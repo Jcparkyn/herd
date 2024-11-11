@@ -768,7 +768,7 @@ fn eval_snapshot(program: &str, modules: HashMap<String, String>) -> Value64 {
         .compile_program_as_function(&program_ast, &src_path)
         .unwrap();
     reset_tracker();
-    let result = unsafe { jit.run_func(main_func, Value64::NIL) };
+    let result = unsafe { jit.run_func(main_func, vec![]) };
 
     result
 }

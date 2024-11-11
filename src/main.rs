@@ -90,8 +90,17 @@ fn run_file(path: &Path, args: &Args) {
             return;
         }
     };
-    let result = unsafe { jit.run_func(main_func, Value64::NIL) };
+    let result = unsafe { jit.run_func(main_func, vec![]) };
     println!("Result: {}", result);
+}
+
+fn get_repl_globals(return_val: &Value64) -> Vec<(String, Value64)> {
+    let mut globals = vec![];
+    for (k, v) in return_val.as_dict().unwrap().values.iter() {
+        // globals.insert(k.as_string().unwrap().clone(), v.clone());
+        globals.push((k.as_string().unwrap().clone(), v.clone()));
+    }
+    globals
 }
 
 fn run_repl(args: Args) {
@@ -115,6 +124,18 @@ fn run_repl(args: Args) {
 
     let mut prelude_ast = parser.parse(include_str!("prelude.bovine")).unwrap();
     analyzer.analyze_statements(&mut prelude_ast).unwrap();
+
+    let current_dir = std::env::current_dir().unwrap();
+    let module_loader = DefaultModuleLoader {
+        base_path: current_dir.clone(),
+    };
+    let mut jit = jit::JIT::new(Box::new(module_loader));
+
+    let prelude_func = jit
+        .compile_repl_as_function(&prelude_ast, &current_dir, &[])
+        .unwrap();
+    let prelude_return = unsafe { jit.run_func(prelude_func, vec![]) };
+    let mut globals = get_repl_globals(&prelude_return);
 
     loop {
         let input = match rl.readline("> ") {
@@ -147,7 +168,13 @@ fn run_repl(args: Args) {
             }
         }
 
-        todo!("REPL is not implemented yet with JIT");
+        let (names, values): (Vec<String>, Vec<Value64>) = globals.into_iter().unzip();
+        let func = jit
+            .compile_repl_as_function(&statements, &current_dir, &names)
+            .unwrap();
+
+        let func_return = unsafe { jit.run_func(func, values) };
+        globals = get_repl_globals(&func_return);
     }
 }
 

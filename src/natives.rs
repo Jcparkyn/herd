@@ -438,7 +438,7 @@ fn import_module_panic(vm: &mut VmContext, name: &Value64) -> Result<Value64, St
         .compile_program_as_function(&program_ast, &PathBuf::from(path))
         .map_err(|e| e.to_string())?;
 
-    let result = unsafe { vm.run_func(main_func, Value64::NIL) };
+    let result = unsafe { vm.run_func(main_func, vec![]) };
     vm.modules.insert(path.to_string(), Some(result.clone()));
     return Ok(result);
 }
