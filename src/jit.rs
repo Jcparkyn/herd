@@ -580,10 +580,7 @@ impl<'a> FunctionTranslator<'a> {
             }
             Expr::Bool(b) => self.const_bool(*b),
             Expr::Number(f) => self.builder.ins().f64const(*f),
-            Expr::String(s) => {
-                let val = self.string_literal_borrow(s.deref().clone());
-                self.clone_val64(val)
-            }
+            Expr::String(s) => self.string_literal_owned(s.deref().clone()),
             Expr::Nil => self.const_nil(),
             Expr::Op { op, lhs, rhs } => self.translate_op(*op, lhs, rhs),
             Expr::If {
@@ -638,6 +635,8 @@ impl<'a> FunctionTranslator<'a> {
         self.builder.seal_block(self.return_block);
         self.builder.append_block_param(self.return_block, VAL64);
 
+        let return_value = self.builder.block_params(self.return_block)[0];
+
         if repl_mode {
             let variables = self
                 .variables
@@ -651,11 +650,15 @@ impl<'a> FunctionTranslator<'a> {
             let mut return_dict = self.call_native(NativeFuncId::DictNew, &[capacity])[0];
             for (name, var) in variables {
                 let val = self.builder.use_var(var);
-                let key = self.string_literal_borrow(name);
-                let key = self.clone_val64(key);
+                let key = self.string_literal_owned(name);
                 return_dict =
                     self.call_native(NativeFuncId::DictInsert, &[return_dict, key, val])[0];
             }
+            let return_key = self.string_literal_owned("<returnval>".to_string());
+            return_dict = self.call_native(
+                NativeFuncId::DictInsert,
+                &[return_dict, return_key, return_value],
+            )[0];
             self.builder.ins().return_(&[return_dict]);
         } else {
             let variables = self.variables.values().cloned().collect::<Vec<_>>();
@@ -663,8 +666,6 @@ impl<'a> FunctionTranslator<'a> {
                 let val = self.builder.use_var(var);
                 self.drop_val64(val);
             }
-
-            let return_value = self.builder.block_params(self.return_block)[0];
             self.builder.ins().return_(&[return_value]);
         }
     }
@@ -1588,16 +1589,19 @@ impl<'a> FunctionTranslator<'a> {
         string_val
     }
 
+    fn string_literal_owned(&mut self, string: String) -> BValue {
+        let string_val = self.string_literal_borrow(string);
+        self.clone_val64(string_val)
+    }
+
     fn print_string_constant(&mut self, string: String) {
-        let string_val64 = self.string_literal_borrow(string);
-        self.clone_val64(string_val64);
+        let string_val64 = self.string_literal_owned(string);
         self.call_native(NativeFuncId::Print, &[string_val64]);
     }
 
     fn translate_import(&mut self, path: &str) -> Value {
         let vm_ptr = self.get_vm_ptr();
-        let path_val = self.string_literal_borrow(path.to_string());
-        let path_val = self.clone_val64(path_val);
+        let path_val = self.string_literal_owned(path.to_string());
         let result = self.call_native(NativeFuncId::ImportModule, &[vm_ptr, path_val])[0];
         let is_ok = self.cmp_bits_imm(IntCC::NotEqual, result, value64::ERROR_VALUE);
 

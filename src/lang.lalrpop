@@ -23,6 +23,22 @@ pub Program: Vec<ast::SpannedStatement> = {
     SpStatement+
 }
 
+
+// The last line in a REPL input can be an expression, which we automatically convert
+// to a return statement.
+pub ReplProgram: Vec<ast::SpannedStatement> = {
+    // separate patterns to remove ambiguity.
+    // If there's no trailing semicolon it should always be an Expr.
+    <mut s:SpStatement*> <e:SpExpr> => {
+        s.push(e.span.wrap(Statement::Return(e)));
+        s
+    },
+    <mut s1:SpStatement*> <s2:Sp<StatementWithSemicolon>> => {
+        s1.push(s2);
+        s1
+    },
+}
+
 Statement: Statement = {
     StatementWithSemicolon,
     Sp<ExprWithBlock> => Statement::Expression(<>),

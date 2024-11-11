@@ -1,5 +1,6 @@
 use std::fmt::Debug;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 use bovine::analysis::{AnalysisError, Analyzer};
 use bovine::jit::{self, DefaultModuleLoader};
@@ -94,13 +95,22 @@ fn run_file(path: &Path, args: &Args) {
     println!("Result: {}", result);
 }
 
-fn get_repl_globals(return_val: &Value64) -> Vec<(String, Value64)> {
+struct ReplResponseValues {
+    retval: Value64,
+    globals: Vec<(String, Value64)>,
+}
+
+fn get_repl_globals(return_val: &Value64) -> ReplResponseValues {
     let mut globals = vec![];
-    for (k, v) in return_val.as_dict().unwrap().values.iter() {
-        // globals.insert(k.as_string().unwrap().clone(), v.clone());
-        globals.push((k.as_string().unwrap().clone(), v.clone()));
+    let return_dict = return_val.as_dict().unwrap();
+    let retval_key = Value64::from_string(Rc::new("<returnval>".to_string()));
+    for (k, v) in return_dict.values.iter() {
+        if k != &retval_key {
+            globals.push((k.as_string().unwrap().clone(), v.clone()));
+        }
     }
-    globals
+    let retval = return_dict.values.get(&retval_key).unwrap().clone();
+    ReplResponseValues { retval, globals }
 }
 
 fn run_repl(args: Args) {
@@ -110,7 +120,7 @@ fn run_repl(args: Args) {
         .indent_size(4)
         .build();
     let helper = ReplInputValidator {
-        parser: lang::ProgramParser::new(),
+        parser: lang::ReplProgramParser::new(),
         highlighter: MatchingBracketHighlighter::new(),
     };
     let mut rl = Editor::with_config(rl_config).unwrap();
@@ -119,7 +129,7 @@ fn run_repl(args: Args) {
         KeyEvent(KeyCode::Tab, Modifiers::NONE),
         EventHandler::Simple(Cmd::Indent(Movement::ForwardChar(0))),
     );
-    let parser = lang::ProgramParser::new();
+    let parser = lang::ReplProgramParser::new();
     let mut analyzer = Analyzer::new();
 
     let mut prelude_ast = parser.parse(include_str!("prelude.bovine")).unwrap();
@@ -135,7 +145,7 @@ fn run_repl(args: Args) {
         .compile_repl_as_function(&prelude_ast, &current_dir, &[])
         .unwrap();
     let prelude_return = unsafe { jit.run_func(prelude_func, vec![]) };
-    let mut globals = get_repl_globals(&prelude_return);
+    let mut globals = get_repl_globals(&prelude_return).globals;
 
     loop {
         let input = match rl.readline("> ") {
@@ -174,7 +184,13 @@ fn run_repl(args: Args) {
             .unwrap();
 
         let func_return = unsafe { jit.run_func(func, values) };
-        globals = get_repl_globals(&func_return);
+        let response = get_repl_globals(&func_return);
+        if response.retval.is_error() {
+            println!("Error");
+        } else if !response.retval.is_nil() {
+            println!("Result: {}", response.retval);
+        }
+        globals = response.globals;
     }
 }
 
@@ -188,7 +204,7 @@ fn print_analysis_errors(errs: Vec<Spanned<AnalysisError>>, lines: Lines) {
 
 #[derive(Completer, Helper, Hinter, Highlighter)]
 struct ReplInputValidator {
-    parser: lang::ProgramParser,
+    parser: lang::ReplProgramParser,
     #[rustyline(Highlighter)]
     highlighter: MatchingBracketHighlighter,
 }
