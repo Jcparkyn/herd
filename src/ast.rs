@@ -4,12 +4,12 @@ use std::fmt::Display;
 use std::fmt::Error;
 use std::fmt::Formatter;
 use std::iter;
-use std::rc::Rc;
 
 use strum::EnumString;
 use strum::FromRepr;
 
 use crate::pos::Spanned;
+use crate::rc::Rc;
 
 #[repr(u8)]
 #[derive(PartialEq, Debug, Clone, Copy, Hash, FromRepr, EnumString, strum::Display)]

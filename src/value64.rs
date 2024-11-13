@@ -2,8 +2,9 @@ use std::{
     cmp::Ordering,
     collections::HashMap,
     fmt::{Debug, Display},
-    rc::{Rc, Weak},
 };
+
+use crate::rc::{Rc, Weak};
 
 #[cfg(debug_assertions)]
 use std::cell::RefCell;

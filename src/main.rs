@@ -1,6 +1,6 @@
+use bovine::rc::Rc;
 use std::fmt::Debug;
 use std::path::{Path, PathBuf};
-use std::rc::Rc;
 
 use bovine::analysis::{AnalysisError, Analyzer};
 use bovine::jit::{self, DefaultModuleLoader};

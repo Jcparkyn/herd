@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::path::PathBuf;
-use std::rc::Weak;
 
 use bovine::analysis::Analyzer;
 use bovine::jit::{self, ModuleLoader};
 use bovine::lang::ProgramParser;
+use bovine::rc::Weak;
 use bovine::value64::{Value64, RC_TRACKER};
 
 fn reset_tracker() {

@@ -1,11 +1,10 @@
-use std::rc::Rc;
-
 use crate::{
     ast::{
         AssignmentTarget, Block, DeclarationType, Expr, LambdaExpr, MatchPattern, SpannedExpr,
         SpreadListPattern, Statement, VarRef,
     },
     pos::Spanned,
+    rc::Rc,
 };
 
 pub fn parse_string_literal(s: &str) -> String {

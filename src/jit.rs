@@ -9,7 +9,6 @@ use std::{
     mem::{self, forget, size_of},
     ops::Deref,
     path::{Path, PathBuf},
-    rc::Rc,
 };
 use strum::Display;
 use types::I64;
@@ -21,6 +20,7 @@ use crate::{
     },
     natives::{self, NativeFuncDef, NativeFuncId},
     pos::{Span, Spanned},
+    rc::Rc,
     value64::{self, PointerTag},
     Value64,
 };

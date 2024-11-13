@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap, mem::ManuallyDrop, ops::Deref, panic::AssertUnwindSafe, path::PathBuf,
-    ptr::null, rc::Rc,
+    ptr::null,
 };
 
 use cranelift::prelude::{types, AbiParam, Signature, Type};
@@ -10,6 +10,7 @@ use crate::{
     analysis::Analyzer,
     jit::VmContext,
     lang::ProgramParser,
+    rc::Rc,
     stdlib::load_stdlib_module,
     value64::{Boxable, DictInstance, LambdaFunction, ListInstance, Value64},
 };

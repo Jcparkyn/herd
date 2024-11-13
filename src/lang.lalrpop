@@ -1,6 +1,7 @@
-use std::{str::FromStr,rc::Rc};
+use std::{str::FromStr};
 use crate::pos::{Span, Spanned};
 use crate::ast;
+use crate::rc::Rc;
 use crate::ast::{Expr, Opcode, Statement, Block, AssignmentTarget, VarRef, LambdaExpr, MatchPattern, MatchExpr};
 use crate::parse_helpers::{
     parse_string_literal,

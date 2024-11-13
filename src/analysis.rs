@@ -1,4 +1,4 @@
-use std::{collections::HashSet, fmt::Display, rc::Rc};
+use std::{collections::HashSet, fmt::Display};
 
 use crate::{
     ast::{
@@ -6,6 +6,7 @@ use crate::{
         VarRef,
     },
     pos::{Span, Spanned},
+    rc::Rc,
 };
 
 #[derive(Debug)]
