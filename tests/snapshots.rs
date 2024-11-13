@@ -509,6 +509,29 @@ fn pattern_assignment_dict() {
 }
 
 #[test]
+fn string_concat() {
+    let program = r#"
+        return [
+            'hello ' ++ 'world',
+            'hello ' ++ 'world' ++ '!',
+        ];
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"['hello world', 'hello world!']");
+    assert_rcs_dropped();
+}
+
+#[test]
+fn list_concat() {
+    let program = r#"
+        return ['hello', 'world'] ++ ['!'];
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"['hello', 'world', '!']");
+    assert_rcs_dropped();
+}
+
+#[test]
 fn match_expression() {
     let program = r#"
         a = [2, 3];

@@ -274,6 +274,7 @@ ComparisonOp: Opcode = {
 
 AddSubOp: Opcode = {
     "+" => Opcode::Add,
+    "++" => Opcode::Concat,
     "-" => Opcode::Sub,
 };
 

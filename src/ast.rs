@@ -274,6 +274,7 @@ pub enum Opcode {
     Neq,
     And,
     Or,
+    Concat,
 }
 
 impl Debug for Expr {
@@ -345,6 +346,7 @@ impl Debug for Opcode {
             Opcode::Neq => "!=",
             Opcode::And => "and",
             Opcode::Or => "or",
+            Opcode::Concat => "++",
         })
     }
 }

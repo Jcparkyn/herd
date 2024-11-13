@@ -1271,6 +1271,11 @@ impl<'a> FunctionTranslator<'a> {
                 let bool_val = self.builder.ins().bor(lhs_truthy, rhs_truthy);
                 self.bool_to_val64(bool_val)
             }
+            Opcode::Concat => {
+                let lhs = self.translate_expr(lhs);
+                let rhs = self.translate_expr(rhs);
+                self.call_native(NativeFuncId::ValConcat, &[lhs, rhs])[0]
+            }
         }
     }
 

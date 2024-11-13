@@ -40,6 +40,7 @@ pub enum NativeFuncId {
     ValEq,
     ValEqU8,
     ValTruthy,
+    ValConcat,
     ValGetLambdaDetails,
     ConstructLambda,
     ImportModule,
@@ -130,6 +131,7 @@ fn get_native_func_def(func: NativeFuncId) -> NativeFuncDef {
         NativeFuncId::ValEq => get_def!(2, val_eq),
         NativeFuncId::ValEqU8 => get_def!(2, val_eq_u8),
         NativeFuncId::ValTruthy => get_def!(1, val_truthy_u8),
+        NativeFuncId::ValConcat => get_def!(2, val_concat),
         NativeFuncId::ValGetLambdaDetails => get_def!(3, get_lambda_details),
         NativeFuncId::ConstructLambda => get_def!(4, construct_lambda),
         NativeFuncId::ImportModule => get_def!(2, import_module),
@@ -349,6 +351,30 @@ pub extern "C" fn val_eq_u8(val1: Value64Ref, val2: Value64Ref) -> u8 {
 
 pub extern "C" fn val_truthy_u8(val: Value64Ref) -> u8 {
     val.truthy() as u8
+}
+
+pub extern "C" fn val_concat(val1: Value64, val2: Value64) -> Value64 {
+    if val1.is_string() {
+        if !val2.is_string() {
+            panic!("Expected string, was {}", val2)
+        }
+        let mut str1 = val1.try_into_string().unwrap();
+        let str2 = val2.as_string().unwrap();
+        rc_mutate(&mut str1, |s| s.push_str(&str2));
+        Value64::from_string(str1)
+    } else if val1.is_list() {
+        if !val2.is_list() {
+            panic!("Expected list, was {}", val2)
+        }
+        let mut list1 = val1.try_into_list().unwrap();
+        let list2 = val2.try_into_list().unwrap();
+        rc_mutate(&mut list1, |l| {
+            l.values.extend(list2.values.iter().cloned())
+        });
+        Value64::from_list(list1)
+    } else {
+        panic!("Expected string or list, was {}", val1)
+    }
 }
 
 pub extern "C" fn get_lambda_details(
