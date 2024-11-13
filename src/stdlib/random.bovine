@@ -1,0 +1,8 @@
+
+randomInt = \min max\ BUILTIN:randomInt min max;
+randomFloat = \min max\ BUILTIN:randomFloat min max;
+
+return {
+  randomInt,
+  randomFloat,
+};

@@ -4,6 +4,7 @@ use std::{
 };
 
 use cranelift::prelude::{types, AbiParam, Signature, Type};
+use rand::Rng;
 use strum::{EnumIter, IntoEnumIterator};
 
 use crate::{
@@ -158,6 +159,8 @@ pub fn get_builtins() -> HashMap<&'static str, NativeFuncDef> {
     map.insert("len", get_def!(1, len));
     // map.insert("sort", get_def!(1, sort));
     map.insert("removeKey", get_def!(2, dict_remove_key));
+    map.insert("randomInt", get_def!(2, random_int));
+    map.insert("randomFloat", get_def!(2, random_float));
 
     return map;
 }
@@ -485,6 +488,20 @@ pub extern "C" fn val_xor(val1: Value64, val2: Value64) -> Value64 {
 
 pub extern "C" fn val_not(val: Value64) -> Value64 {
     Value64::from_bool(!val.truthy())
+}
+
+pub extern "C" fn random_int(min: Value64, max: Value64) -> Value64 {
+    let min_int = min.as_f64().unwrap() as i64;
+    let max_int = max.as_f64().unwrap() as i64;
+    let result = rand::thread_rng().gen_range(min_int..=max_int);
+    Value64::from_f64(result as f64)
+}
+
+pub extern "C" fn random_float(min: Value64, max: Value64) -> Value64 {
+    let min_float = min.as_f64().unwrap();
+    let max_float = max.as_f64().unwrap();
+    let result = rand::thread_rng().gen_range(min_float..=max_float);
+    Value64::from_f64(result)
 }
 
 // TODO: Variadic functions
