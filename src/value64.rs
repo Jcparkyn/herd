@@ -446,7 +446,7 @@ impl std::hash::Hash for Value64 {
     }
 }
 
-pub struct RcTrackList<T: Boxable>(pub Vec<Weak<T>>);
+pub struct RcTrackList<T: Boxable>(pub Vec<(Weak<T>, usize)>);
 
 impl<T: Boxable> RcTrackList<T> {
     pub fn new() -> Self {
@@ -454,7 +454,7 @@ impl<T: Boxable> RcTrackList<T> {
     }
 
     pub fn push(&mut self, value: Weak<T>) {
-        self.0.push(value);
+        self.0.push((value, 0));
     }
 }
 

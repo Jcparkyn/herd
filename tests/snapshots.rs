@@ -6,38 +6,51 @@ use bovine::analysis::Analyzer;
 use bovine::jit::{self, ModuleLoader};
 use bovine::lang::ProgramParser;
 use bovine::rc::Weak;
-use bovine::value64::{Value64, RC_TRACKER};
+use bovine::value64::{Boxable, RcTrackList, Value64, RC_TRACKER};
 
 fn reset_tracker() {
+    fn reset_list<T: Boxable>(list: &mut RcTrackList<T>) {
+        list.0.retain_mut(|(rc, count)| {
+            if rc.strong_count() == 0 {
+                return false;
+            }
+            *count = rc.strong_count();
+            return true;
+        });
+    }
     RC_TRACKER.with(|tracker| {
         let mut tracker = tracker.borrow_mut();
-        tracker.lists.0.clear();
+        reset_list(&mut tracker.lists);
+        reset_list(&mut tracker.dicts);
+        reset_list(&mut tracker.strings);
+        reset_list(&mut tracker.lambdas);
     });
 }
 
 fn assert_rcs_dropped() {
-    fn assert_rc_dropped<T: Display>(rc: &Weak<T>) {
+    fn assert_rc_dropped<T: Display>(rc: &Weak<T>, expected_count: usize) {
         assert_eq!(
-            0,
+            expected_count,
             rc.strong_count(),
-            "This Rc still has {} references: {}",
+            "This Rc still has {} references but should have {}: {}",
             rc.strong_count(),
+            expected_count,
             rc.upgrade().unwrap()
         );
     }
     RC_TRACKER.with(|tracker| {
         let tracker = tracker.borrow_mut();
-        for l in tracker.lists.0.iter() {
-            assert_rc_dropped(&l);
+        for (l, c) in tracker.lists.0.iter() {
+            assert_rc_dropped(l, *c);
         }
-        for d in tracker.dicts.0.iter() {
-            assert_rc_dropped(&d);
+        for (d, c) in tracker.dicts.0.iter() {
+            assert_rc_dropped(d, *c);
         }
-        for s in tracker.strings.0.iter() {
-            assert_rc_dropped(&s);
+        for (s, c) in tracker.strings.0.iter() {
+            assert_rc_dropped(s, *c);
         }
-        for l in tracker.lambdas.0.iter() {
-            assert_rc_dropped(&l);
+        for (l, c) in tracker.lambdas.0.iter() {
+            assert_rc_dropped(l, *c);
         }
     });
 }
