@@ -776,6 +776,18 @@ fn stdlib_bitwise_and() {
     assert_rcs_dropped();
 }
 
+#[test]
+fn stdlib_sort() {
+    let main_program = r#"
+        !{ sort } = import '@list';
+        return sort [1, 'dog', 3, 2, 'zebra', 'cat'];
+    "#;
+
+    let result = eval_snapshot_str(main_program);
+    insta::assert_snapshot!(result, @"['cat', 'dog', 'zebra', 1, 2, 3]");
+    assert_rcs_dropped();
+}
+
 fn eval_snapshot(program: &str, modules: HashMap<String, String>) -> Value64 {
     let parser = ProgramParser::new();
     let prelude_ast = parser.parse(include_str!("../src/prelude.bovine")).unwrap();

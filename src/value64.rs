@@ -244,30 +244,30 @@ impl Value64 {
         } else if da > db {
             return Ordering::Greater;
         }
-        match try_get_ptr_tag(self.bits()) {
-            Some(PointerTag::String) => {
+        match da {
+            0 => {
                 let a = self.as_string().unwrap();
                 let b = other.as_string().unwrap();
                 return a.cmp(b);
             }
-            Some(PointerTag::Dict) => Ordering::Equal, // TODO
-            Some(PointerTag::List) => Ordering::Equal, // TODO
-            Some(PointerTag::Lambda) => Ordering::Equal, // TODO
-            None => {
-                if self.is_f64() {
-                    let a = self.as_f64().unwrap();
-                    let b = other.as_f64().unwrap();
-                    return a.partial_cmp(&b).unwrap_or(Ordering::Equal);
-                } else if self.is_bool() {
-                    let a = self.as_bool().unwrap();
-                    let b = other.as_bool().unwrap();
-                    return a.cmp(&b);
-                } else if self.is_nil() {
-                    return Ordering::Equal;
-                } else {
-                    unreachable!()
+            1 => Ordering::Equal, // TODO
+            2 => Ordering::Equal, // TODO
+            3 => Ordering::Equal, // TODO
+            4 => {
+                let a = self.as_f64().unwrap();
+                let b = other.as_f64().unwrap();
+                match a.partial_cmp(&b) {
+                    Some(ordering) => ordering,
+                    None => a.is_nan().cmp(&b.is_nan()),
                 }
             }
+            5 => {
+                let a = self.as_bool().unwrap();
+                let b = other.as_bool().unwrap();
+                return a.cmp(&b);
+            }
+            6 => Ordering::Equal,
+            _ => unreachable!(),
         }
     }
 

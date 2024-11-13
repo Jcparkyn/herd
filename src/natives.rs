@@ -157,7 +157,7 @@ pub fn get_builtins() -> HashMap<&'static str, NativeFuncDef> {
     map.insert("push", get_def!(2, list_push));
     map.insert("pop", get_def!(1, list_pop));
     map.insert("len", get_def!(1, len));
-    // map.insert("sort", get_def!(1, sort));
+    map.insert("sort", get_def!(1, list_sort));
     map.insert("removeKey", get_def!(2, dict_remove_key));
     map.insert("randomInt", get_def!(2, random_int));
     map.insert("randomFloat", get_def!(2, random_float));
@@ -266,6 +266,14 @@ pub extern "C" fn list_get_u64(list: Value64Ref, index: u64) -> Value64 {
 pub extern "C" fn list_borrow_u64(list: Value64Ref, index: u64) -> Value64Ref {
     let list2 = list.as_list().unwrap();
     Value64Ref::from_ref(&list2.values[index as usize])
+}
+
+pub extern "C" fn list_sort(list_val: Value64) -> Value64 {
+    let mut list = list_val.try_into_list().unwrap();
+    rc_mutate(&mut list, |l| {
+        l.values.sort_by(|a, b| a.display_cmp(b));
+    });
+    Value64::from_list(list)
 }
 
 pub extern "C" fn dict_new(capacity: u64) -> Value64 {

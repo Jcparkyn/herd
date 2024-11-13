@@ -8,7 +8,7 @@ pop = \arr\ BUILTIN:pop arr;
 
 len = \val\ BUILTIN:len val;
 
-// sort = \arr\ BUILTIN:sort arr;
+sort = \arr\ BUILTIN:sort arr;
 
 map = \var arr f\ (
   l = len arr;
@@ -54,7 +54,7 @@ return {
   push,
   pop,
   len,
-  // sort,
+  sort,
   map,
   filter,
   reverse,
