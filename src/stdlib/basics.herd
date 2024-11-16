@@ -3,7 +3,10 @@ not = \val\ BUILTIN:not val;
 
 range = \start stop\ BUILTIN:range start stop;
 
+assert = \val\ BUILTIN:assertTruthy val;
+
 return {
   not,
   range,
+  assert,
 };
