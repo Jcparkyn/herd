@@ -146,10 +146,12 @@ fn run_repl(args: Args) {
         .unwrap();
     let prelude_return = unsafe { jit.run_func(prelude_func, vec![]) };
     let mut globals = get_repl_globals(&prelude_return).globals;
+    // Keep track of previous number of lines entered, so new code has unique line counts.
+    let mut line_count = 0usize;
 
     loop {
         let input = match rl.readline("> ") {
-            Ok(input) => input,
+            Ok(input) => "\n".repeat(line_count) + &input,
             Err(ReadlineError::Interrupted) => return,
             Err(err) => {
                 println!("Error: {err}");
@@ -159,6 +161,7 @@ fn run_repl(args: Args) {
 
         let ast_result = parser.parse(&input);
         let lines = Lines::new(input.clone().into_bytes());
+        line_count = lines.line_count();
         let mut statements = match ast_result {
             Err(err) => {
                 println!("Error while parsing: {}", err);

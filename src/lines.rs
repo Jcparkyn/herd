@@ -94,4 +94,8 @@ impl Lines {
             .next()
             .unwrap_or(num_lines - 1)
     }
+
+    pub fn line_count(&self) -> usize {
+        self.starting_bytes.len()
+    }
 }
