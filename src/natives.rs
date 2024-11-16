@@ -159,6 +159,8 @@ pub fn get_builtins() -> HashMap<&'static str, NativeFuncDef> {
     map.insert("len", get_def!(1, len));
     map.insert("sort", get_def!(1, list_sort));
     map.insert("removeKey", get_def!(2, dict_remove_key));
+    map.insert("dictKeys", get_def!(1, dict_keys));
+    map.insert("dictEntries", get_def!(1, dict_entries));
     map.insert("randomInt", get_def!(2, random_int));
     map.insert("randomFloat", get_def!(2, random_float));
     map.insert("floatPow", get_def!(2, float_pow));
@@ -297,6 +299,25 @@ pub extern "C" fn dict_remove_key(dict: Value64, key: Value64) -> Value64 {
         d.values.remove(&key);
     });
     Value64::from_dict(dict)
+}
+
+pub extern "C" fn dict_keys(dict: Value64) -> Value64 {
+    let dict = dict.as_dict().unwrap();
+    let keys: Vec<Value64> = dict.values.keys().cloned().collect();
+    Value64::from_list(rc_new(ListInstance::new(keys)))
+}
+
+pub extern "C" fn dict_entries(dict: Value64) -> Value64 {
+    let dict = dict.as_dict().unwrap();
+    let entries: Vec<Value64> = dict
+        .values
+        .iter()
+        .map(|(k, v)| {
+            let entry = vec![k.clone(), v.clone()];
+            Value64::from_list(rc_new(ListInstance::new(entry)))
+        })
+        .collect();
+    Value64::from_list(rc_new(ListInstance::new(entries)))
 }
 
 pub extern "C" fn range(start: Value64, stop: Value64) -> Value64 {

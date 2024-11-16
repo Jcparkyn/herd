@@ -1,6 +1,6 @@
 
-!{ range, min } = import '@basics';
-!{ floor, clamp } = import '@math';
+!{ range } = import '@basics';
+!{ floor, min, clamp } = import '@math';
 
 push = \arr element\ BUILTIN:push arr element;
 
@@ -50,6 +50,33 @@ slice = \arr start end\ (
   result
 );
 
+repeat = \val n\ (
+  var result = [];
+  for i in range 0 n do (
+    set result |= push val;
+  )
+  result
+);
+
+zip = \a b f\ (
+  var result = [];
+  l = min (len a) (len b);
+  for i in range 0 l do (
+    set result |= push (f a.[i] b.[i]);
+  )
+  result
+);
+
+flatten = \l\ (
+  var result = [];
+  for sublist in l do (
+    for item in sublist do (
+      set result |= push item;
+    )
+  )
+  result
+);
+
 return {
   push,
   pop,
@@ -59,4 +86,7 @@ return {
   filter,
   reverse,
   slice,
+  repeat,
+  zip,
+  flatten,
 };

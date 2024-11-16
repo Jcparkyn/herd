@@ -1,6 +1,12 @@
 
 removeKey = \val key\ BUILTIN:removeKey val key;
 
+keys = \dict\ BUILTIN:dictKeys dict;
+
+entries = \dict\ BUILTIN:dictEntries dict;
+
 return {
+  keys,
   removeKey,
+  entries,
 };
