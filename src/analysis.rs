@@ -263,9 +263,10 @@ impl VariableAnalyzer {
             }
             Expr::ForIn { iter, var, body } => {
                 self.analyze_expr(iter);
+                self.push_scope();
                 self.analyze_pattern(&mut var.value, span);
                 self.analyze_expr(body);
-                self.vars.pop();
+                self.pop_scope();
             }
             Expr::While { condition, body } => {
                 self.analyze_expr(condition);

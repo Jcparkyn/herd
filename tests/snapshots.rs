@@ -244,6 +244,23 @@ fn for_in_loop() {
 }
 
 #[test]
+fn for_in_loop_scope() {
+    let program = r#"
+        var result = [];
+        for [x, y] in [['a', 'b']] do (
+            set result |= push x;
+            set result |= push y;
+        )
+        x = 1;
+        y = 2;
+        return result;
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"['a', 'b']");
+    assert_rcs_dropped();
+}
+
+#[test]
 fn while_loop() {
     let program = r#"
         var sum = 1;
