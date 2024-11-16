@@ -9,7 +9,7 @@ Herd is a simple interpreted programming language where everything is a value.
 In Herd, everything is pass-by-value, including arrays and dicts.
 This means that when you pass an array or dict to a function, **you can guarantee that the function won't modify your copy**.
 
-*But isn't that just immutability?* Not quite, because arrays and dicts in herd are actually mutable.
+*But isn't that just immutability?* Not quite, because arrays and dicts in Herd are actually mutable.
 This means you can modify them locally just like you would in an imperative language, but there will be no side-effects on other copies of the value.
 
 ## How does it work?
