@@ -416,7 +416,7 @@ impl<'a, 'b> VariableBuilder<'a, 'b> {
                 }
                 self.declare_variables_in_expr(callee);
             }
-            Expr::CallNative { callee: _, args } => {
+            Expr::CallBuiltin { callee: _, args } => {
                 for arg in args {
                     self.declare_variables_in_expr(arg);
                 }
@@ -591,7 +591,7 @@ impl<'a> FunctionTranslator<'a> {
             Expr::ForIn { iter, var, body } => self.translate_for_in(iter, var, body),
             Expr::While { condition, body } => self.translate_while_loop(condition, body),
             Expr::Call { callee, args } => self.translate_indirect_call(callee, args),
-            Expr::CallNative { callee, args } => self.translate_native_call(callee, args),
+            Expr::CallBuiltin { callee, args } => self.translate_builtin_call(callee, args),
             Expr::List(l) => {
                 let slot = self.builder.create_sized_stack_slot(StackSlotData::new(
                     StackSlotKind::ExplicitSlot,
@@ -756,7 +756,7 @@ impl<'a> FunctionTranslator<'a> {
         (func_ptr, closure_ptr)
     }
 
-    fn translate_native_call(&mut self, callee: &str, args: &Vec<SpannedExpr>) -> Value {
+    fn translate_builtin_call(&mut self, callee: &str, args: &Vec<SpannedExpr>) -> Value {
         fn bitwise_op(
             s: &mut FunctionTranslator,
             args: &[SpannedExpr],

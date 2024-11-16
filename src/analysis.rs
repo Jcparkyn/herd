@@ -212,7 +212,7 @@ impl VariableAnalyzer {
                 }
                 self.analyze_expr(callee);
             }
-            Expr::CallNative { callee: _, args } => {
+            Expr::CallBuiltin { callee: _, args } => {
                 for arg in args {
                     self.analyze_expr(arg);
                 }
@@ -422,7 +422,7 @@ fn analyze_expr_liveness(expr: &mut Expr, deps: &mut HashSet<String>) {
                 analyze_expr_liveness(&mut arg.value, deps);
             }
         }
-        Expr::CallNative { callee: _, args } => {
+        Expr::CallBuiltin { callee: _, args } => {
             for arg in args.iter_mut().rev() {
                 analyze_expr_liveness(&mut arg.value, deps);
             }

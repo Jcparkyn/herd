@@ -232,7 +232,7 @@ pub enum Expr {
         callee: Box<SpannedExpr>,
         args: Vec<SpannedExpr>,
     },
-    CallNative {
+    CallBuiltin {
         callee: String,
         args: Vec<SpannedExpr>,
     },
@@ -302,7 +302,7 @@ impl Debug for Expr {
             }
             Expr::Match(m) => m.fmt(f),
             Expr::Call { callee, args } => f.debug_tuple("Call").field(callee).field(args).finish(),
-            Expr::CallNative { callee, args } => f
+            Expr::CallBuiltin { callee, args } => f
                 .debug_tuple("CallNative")
                 .field(callee)
                 .field(args)
