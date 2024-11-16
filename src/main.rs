@@ -181,19 +181,22 @@ fn run_repl(args: Args) {
             }
         }
 
-        let (names, values): (Vec<String>, Vec<Value64>) = globals.into_iter().unzip();
+        let (names, values): (Vec<String>, Vec<Value64>) = globals.iter().cloned().unzip();
         let func = jit
             .compile_repl_as_function(&statements, &current_dir, &names)
             .unwrap();
 
         let func_return = unsafe { jit.run_func(func, values) };
-        let response = get_repl_globals(&func_return);
-        if response.retval.is_error() {
-            println!("Error");
-        } else if !response.retval.is_nil() {
-            println!("Result: {}", response.retval);
+        if func_return.is_error() {
+            // TODO: We need to roll back the analyzer state here.
+            println!("Error!");
+        } else {
+            let response = get_repl_globals(&func_return);
+            if !response.retval.is_nil() {
+                println!("Result: {}", response.retval);
+            }
+            globals = response.globals;
         }
-        globals = response.globals;
     }
 }
 
