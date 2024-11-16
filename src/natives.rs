@@ -492,7 +492,7 @@ fn import_module_panic(vm: &mut VmContext, name: &Value64) -> Result<Value64, St
     let parser = ProgramParser::new();
     let mut program_ast = parser.parse(&program).map_err(|e| e.to_string())?;
     if !is_stdlib {
-        let prelude_ast = parser.parse(include_str!("../src/prelude.bovine")).unwrap();
+        let prelude_ast = parser.parse(include_str!("../src/prelude.herd")).unwrap();
         program_ast.splice(0..0, prelude_ast);
     }
     let mut analyzer = Analyzer::new();

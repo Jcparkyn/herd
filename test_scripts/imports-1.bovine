@@ -1,4 +1,0 @@
-
-mod = import 'imports-2.bovine';
-
-println (mod.fn1 7);

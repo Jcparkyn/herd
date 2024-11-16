@@ -3,6 +3,6 @@
 indent_style = space
 indent_size = 4
 
-[*.bovine]
+[*.herd]
 indent_style = space
 indent_size = 2

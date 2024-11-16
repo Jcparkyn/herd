@@ -1,15 +1,15 @@
-use bovine::rc::Rc;
+use herd::rc::Rc;
 use std::fmt::Debug;
 use std::path::{Path, PathBuf};
 
-use bovine::analysis::{AnalysisError, Analyzer};
-use bovine::jit::{self, DefaultModuleLoader};
-use bovine::lang;
-use bovine::lang::ProgramParser;
-use bovine::lines::Lines;
-use bovine::pos::Spanned;
-use bovine::value64::Value64;
 use clap::Parser;
+use herd::analysis::{AnalysisError, Analyzer};
+use herd::jit::{self, DefaultModuleLoader};
+use herd::lang;
+use herd::lang::ProgramParser;
+use herd::lines::Lines;
+use herd::pos::Spanned;
+use herd::value64::Value64;
 use lalrpop_util::ParseError;
 use mimalloc::MiMalloc;
 use rustyline::error::ReadlineError;
@@ -64,7 +64,7 @@ fn run_file(path: &Path, args: &Args) {
         }
         Ok(program) => program,
     };
-    let prelude_ast = parser.parse(include_str!("prelude.bovine")).unwrap();
+    let prelude_ast = parser.parse(include_str!("prelude.herd")).unwrap();
     program.splice(0..0, prelude_ast);
     let mut analyzer = Analyzer::new();
     let analyze_result = analyzer.analyze_statements(&mut program);
@@ -132,7 +132,7 @@ fn run_repl(args: Args) {
     let parser = lang::ReplProgramParser::new();
     let mut analyzer = Analyzer::new();
 
-    let mut prelude_ast = parser.parse(include_str!("prelude.bovine")).unwrap();
+    let mut prelude_ast = parser.parse(include_str!("prelude.herd")).unwrap();
     analyzer.analyze_statements(&mut prelude_ast).unwrap();
 
     let current_dir = std::env::current_dir().unwrap();

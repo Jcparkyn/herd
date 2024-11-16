@@ -1,12 +1,12 @@
 pub fn load_stdlib_module(name: &str) -> &'static str {
     match name {
-        "@basics" => include_str!("basics.bovine"),
-        "@bitwise" => include_str!("bitwise.bovine"),
-        "@dict" => include_str!("dict.bovine"),
-        "@io" => include_str!("io.bovine"),
-        "@list" => include_str!("list.bovine"),
-        "@math" => include_str!("math.bovine"),
-        "@random" => include_str!("random.bovine"),
+        "@basics" => include_str!("basics.herd"),
+        "@bitwise" => include_str!("bitwise.herd"),
+        "@dict" => include_str!("dict.herd"),
+        "@io" => include_str!("io.herd"),
+        "@list" => include_str!("list.herd"),
+        "@math" => include_str!("math.herd"),
+        "@random" => include_str!("random.herd"),
         _ => panic!("No such stdlib module: {}", name),
     }
 }

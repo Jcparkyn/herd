@@ -127,25 +127,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b048fb63fd8b5923fc5aa7b340d8e156aec7ec02f0c78fa8a6ddc2613f6f71de"
 
 [[package]]
-name = "bovine"
-version = "0.1.0"
-dependencies = [
- "clap",
- "cranelift",
- "cranelift-jit",
- "cranelift-module",
- "cranelift-native",
- "insta",
- "lalrpop",
- "lalrpop-util",
- "mimalloc",
- "rand",
- "rstest",
- "rustyline",
- "strum",
-]
-
-[[package]]
 name = "bumpalo"
 version = "3.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -534,6 +515,25 @@ name = "heck"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
+
+[[package]]
+name = "herd"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "cranelift",
+ "cranelift-jit",
+ "cranelift-module",
+ "cranelift-native",
+ "insta",
+ "lalrpop",
+ "lalrpop-util",
+ "mimalloc",
+ "rand",
+ "rstest",
+ "rustyline",
+ "strum",
+]
 
 [[package]]
 name = "home"

@@ -76,7 +76,7 @@ pub struct JIT {
     /// Interned string constants, which are used for string literals.
     string_constants: HashMap<String, Value64>,
 
-    /// Return values from bovine modules (files). Files currently being evaluated
+    /// Return values from herd modules (files). Files currently being evaluated
     /// are stored as `None`.
     pub modules: HashMap<String, Option<Value64>>,
 

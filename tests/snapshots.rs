@@ -2,11 +2,11 @@ use std::collections::HashMap;
 use std::fmt::Display;
 use std::path::PathBuf;
 
-use bovine::analysis::Analyzer;
-use bovine::jit::{self, ModuleLoader};
-use bovine::lang::ProgramParser;
-use bovine::rc::Weak;
-use bovine::value64::{Boxable, RcTrackList, Value64, RC_TRACKER};
+use herd::analysis::Analyzer;
+use herd::jit::{self, ModuleLoader};
+use herd::lang::ProgramParser;
+use herd::rc::Weak;
+use herd::value64::{Boxable, RcTrackList, Value64, RC_TRACKER};
 
 fn reset_tracker() {
     fn reset_list<T: Boxable>(list: &mut RcTrackList<T>) {
@@ -695,7 +695,7 @@ fn mutual_recursion() {
 #[test]
 fn simple_imports() {
     let main_program = r#"
-        foo = import 'foo.bovine';
+        foo = import 'foo.herd';
         return foo.fn1 41;
     "#;
 
@@ -704,7 +704,7 @@ fn simple_imports() {
         return { fn1 };
     "#;
 
-    let modules = HashMap::from([("foo.bovine".to_string(), foo_program.to_string())]);
+    let modules = HashMap::from([("foo.herd".to_string(), foo_program.to_string())]);
     let result = eval_snapshot_str_modules(main_program, modules);
     insta::assert_snapshot!(result, @"42");
     assert_rcs_dropped();
@@ -820,7 +820,7 @@ fn stdlib_sort() {
 
 fn eval_snapshot(program: &str, modules: HashMap<String, String>) -> Value64 {
     let parser = ProgramParser::new();
-    let prelude_ast = parser.parse(include_str!("../src/prelude.bovine")).unwrap();
+    let prelude_ast = parser.parse(include_str!("../src/prelude.herd")).unwrap();
     let mut program_ast = parser.parse(program).unwrap();
     program_ast.splice(0..0, prelude_ast);
     let mut analyzer = Analyzer::new();
