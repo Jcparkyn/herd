@@ -161,6 +161,7 @@ pub fn get_builtins() -> HashMap<&'static str, NativeFuncDef> {
     map.insert("removeKey", get_def!(2, dict_remove_key));
     map.insert("randomInt", get_def!(2, random_int));
     map.insert("randomFloat", get_def!(2, random_float));
+    map.insert("floatPow", get_def!(2, float_pow));
 
     return map;
 }
@@ -386,6 +387,12 @@ pub extern "C" fn val_concat(val1: Value64, val2: Value64) -> Value64 {
     } else {
         panic!("Expected string or list, was {}", val1)
     }
+}
+
+pub extern "C" fn float_pow(base: Value64, exponent: Value64) -> Value64 {
+    let base_float = base.as_f64().unwrap();
+    let exp_float = exponent.as_f64().unwrap();
+    Value64::from_f64(base_float.powf(exp_float))
 }
 
 pub extern "C" fn get_lambda_details(

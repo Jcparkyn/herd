@@ -13,10 +13,13 @@ clamp = \x min max\ (
   )
 );
 
+pow = \a b\ BUILTIN:floatPow a b;
+
 return {
   floor,
   ceiling,
   max,
   min,
   clamp,
+  pow,
 };
