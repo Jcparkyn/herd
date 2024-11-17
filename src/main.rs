@@ -1,6 +1,7 @@
 use herd::rc::Rc;
 use std::fmt::Debug;
 use std::path::{Path, PathBuf};
+use std::process::ExitCode;
 
 use clap::Parser;
 use herd::analysis::{AnalysisError, Analyzer};
@@ -36,23 +37,24 @@ struct Args {
     jit: bool,
 }
 
-fn main() {
+fn main() -> ExitCode {
     let args = Args::parse();
 
     if let Some(ref path_str) = args.file {
         let path = PathBuf::from(path_str);
-        run_file(&path, &args);
+        run_file(&path, &args)
     } else {
         run_repl(args);
+        ExitCode::SUCCESS
     }
 }
 
-fn run_file(path: &Path, args: &Args) {
+fn run_file(path: &Path, args: &Args) -> ExitCode {
     let program_str = match std::fs::read_to_string(path) {
         Ok(program) => program,
         Err(err) => {
             println!("Error while reading file: {}", err);
-            return;
+            return ExitCode::FAILURE;
         }
     };
     let lines = Lines::new(program_str.clone().into_bytes());
@@ -60,7 +62,7 @@ fn run_file(path: &Path, args: &Args) {
     let mut program = match parser.parse(&program_str) {
         Err(err) => {
             println!("Error while parsing: {}", err);
-            return;
+            return ExitCode::FAILURE;
         }
         Ok(program) => program,
     };
@@ -75,7 +77,7 @@ fn run_file(path: &Path, args: &Args) {
         Ok(()) => {}
         Err(errs) => {
             print_analysis_errors(errs, lines);
-            return;
+            return ExitCode::FAILURE;
         }
     }
     let module_loader = DefaultModuleLoader {
@@ -88,11 +90,17 @@ fn run_file(path: &Path, args: &Args) {
         Ok(id) => id,
         Err(err) => {
             println!("Error while compiling function: {:?}", err);
-            return;
+            return ExitCode::FAILURE;
         }
     };
     let result = unsafe { jit.run_func(main_func, vec![]) };
-    println!("Result: {}", result);
+    if result.is_error() {
+        return ExitCode::FAILURE;
+    }
+    if !result.is_nil() {
+        println!("Result: {}", result);
+    }
+    return ExitCode::SUCCESS;
 }
 
 struct ReplResponseValues {
