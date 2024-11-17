@@ -900,11 +900,12 @@ impl<'a> FunctionTranslator<'a> {
             MatchPattern::Dict(dict) => {
                 for (key, pattern) in &dict.entries {
                     let keyval = self.string_literal_borrow(key.clone());
-                    let found = self.create_stack_slot(types::I8, 1);
-                    let found_ptr = self.builder.ins().stack_addr(types::I64, found, 0);
-                    let element =
-                        self.call_native(NativeFuncId::DictLookup, &[value, keyval, found_ptr])[0];
-                    // TODO: skip if not found
+                    let (element, found) = self.dict_lookup(value, keyval);
+                    self.assert(found, |s| {
+                        s.print_string_constant(format!(
+                            "ERROR: pattern match failed on dict, key {key} not found\n",
+                        ));
+                    });
                     self.translate_match_pattern(pattern, element);
                 }
                 self.drop_val64(value);
@@ -982,11 +983,12 @@ impl<'a> FunctionTranslator<'a> {
                 let mut matches_all = self.builder.ins().iconst(types::I8, 1);
                 for (key, pattern) in &dict_pattern.entries {
                     let keyval = self.string_literal_borrow(key.clone());
-                    // TODO: check if contains
-                    let element = self.call_native(NativeFuncId::ValGetIndex, &[value, keyval])[0];
+
+                    let (element, found) = self.dict_lookup(value, keyval);
                     let matches = self.translate_matches_pattern(pattern, element);
                     self.drop_val64(element);
                     // TODO short-circuit
+                    matches_all = self.builder.ins().band(matches_all, found);
                     matches_all = self.builder.ins().band(matches_all, matches);
                 }
                 self.builder.ins().jump(merge_block, &[matches_all]);
@@ -1016,6 +1018,14 @@ impl<'a> FunctionTranslator<'a> {
                 self.call_native(NativeFuncId::ValEqU8, &[comp_val, value])[0]
             }
         }
+    }
+
+    fn dict_lookup(&mut self, value: Value, keyval: Value) -> (Value, Value) {
+        let found_slot = self.create_stack_slot(types::I8, 1);
+        let found_ptr = self.builder.ins().stack_addr(types::I64, found_slot, 0);
+        let element = self.call_native(NativeFuncId::DictLookup, &[value, keyval, found_ptr])[0];
+        let found = self.builder.ins().stack_load(types::I8, found_slot, 0);
+        (element, found)
     }
 
     fn translate_assignment(&mut self, target: &ast::AssignmentTarget, rhs: OValue) {
@@ -1477,6 +1487,22 @@ impl<'a> FunctionTranslator<'a> {
         self.builder.insert_block_after(ok_block, before_block);
     }
 
+    fn do_if(&mut self, cond: Value, then: impl FnOnce(&mut Self)) {
+        let then_block = self.builder.create_block();
+        let after_block = self.builder.create_block();
+        self.builder
+            .ins()
+            .brif(cond, then_block, &[], after_block, &[]);
+
+        self.builder.switch_to_block(then_block);
+        self.builder.seal_block(then_block);
+        then(self);
+        self.builder.ins().jump(after_block, &[]);
+
+        self.builder.switch_to_block(after_block);
+        self.builder.seal_block(after_block);
+    }
+
     fn const_nil(&mut self) -> Value {
         self.const_value64_bits(value64::NIL_VALUE)
     }
@@ -1522,20 +1548,10 @@ impl<'a> FunctionTranslator<'a> {
 
     fn drop_val64(&mut self, val: OValue) {
         let is_ptr = self.is_ptr_val(val);
-        let drop_block = self.builder.create_block();
         // Short-circuit if it's not a reference type
-        let after_block = self.builder.create_block();
-
-        self.builder
-            .ins()
-            .brif(is_ptr, drop_block, &[], after_block, &[]);
-        self.builder.switch_to_block(drop_block);
-        self.builder.seal_block(drop_block);
-        self.call_native(NativeFuncId::Drop, &[val]);
-        self.builder.ins().jump(after_block, &[]);
-
-        self.builder.switch_to_block(after_block);
-        self.builder.seal_block(after_block);
+        self.do_if(is_ptr, |s| {
+            s.call_native(NativeFuncId::Drop, &[val]);
+        });
     }
 
     fn set_src_span(&mut self, span: &Span) {

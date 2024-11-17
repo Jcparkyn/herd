@@ -622,6 +622,7 @@ fn match_dict() {
         return [
             f (),
             f [],
+            f {a: 'A'},
             f {a: 'A', b: 0},
             f {a: 'A', b: 1},
             f {a: 'A', b: [2, 3]},
@@ -629,7 +630,7 @@ fn match_dict() {
         ];
     "#;
     let result = eval_snapshot_str(program);
-    insta::assert_snapshot!(result, @"['nil', 'empty_list', ['dict0', 'A'], ['dict1', 'A'], ['dict2', 'A', 3], 'any_dict']");
+    insta::assert_snapshot!(result, @"['nil', 'empty_list', 'any_dict', ['dict0', 'A'], ['dict1', 'A'], ['dict2', 'A', 3], 'any_dict']");
     assert_rcs_dropped();
 }
 
