@@ -1,7 +1,7 @@
 !{
   shiftLeft,
   xor,
-} = import '@bitwise'
+} = import '@bitwise';
 
 mandelbrot = \size\ (
   var sum = 0;
@@ -44,7 +44,7 @@ mandelbrot = \size\ (
           set byteAcc |= shiftLeft (8 - bitNum);
           set sum = xor sum byteAcc;
           set byteAcc = 0;
-          set bitNum  = 0;
+          set bitNum = 0;
         )
       )
     )
@@ -57,7 +57,7 @@ main = \\ (
   println (mandelbrot 1);
   println (mandelbrot 500);
   println (mandelbrot 750);
-  println (mandelbrot 3000);
+  // println (mandelbrot 1500);
 );
 
 main ();
