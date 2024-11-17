@@ -175,8 +175,13 @@ MatchDictPart: (String, MatchPattern) = {
     },
 }
 
+ElseClause: Expr = {
+    Term,
+    IfExpr,
+}
+
 IfExpr: Expr =
-    "if " <cond:SpExpr> "then" <b1:Sp<Term>> <b2:("else" <Box<Sp<Term>>>)?> =>
+    "if " <cond:SpExpr> "then" <b1:Sp<Term>> <b2:("else" <Box<Sp<ElseClause>>>)?> =>
         Expr::If {
             condition: Box::new(cond),
             then_branch: Box::new(b1),

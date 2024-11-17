@@ -200,6 +200,21 @@ fn if_else() {
 }
 
 #[test]
+fn if_else_else_if() {
+    let program = r#"
+        f = \n\ if n == 1 then '1' else if n == 2 then '2' else 'unknown';
+        return [
+            f 1,
+            f 2,
+            f 3,
+        ];
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"['1', '2', 'unknown']");
+    assert_rcs_dropped();
+}
+
+#[test]
 fn logic_and() {
     let program = r#"
         return [
