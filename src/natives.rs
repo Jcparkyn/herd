@@ -120,22 +120,22 @@ macro_rules! get_def {
 fn get_native_func_def(func: NativeFuncId) -> NativeFuncDef {
     match func {
         NativeFuncId::ListNew => get_def!(2, list_new),
-        NativeFuncId::ListLenU64 => get_def!(1, list_len_u64),
-        NativeFuncId::ListGetU64 => get_def!(2, list_get_u64),
-        NativeFuncId::ListBorrowU64 => get_def!(2, list_borrow_u64),
+        NativeFuncId::ListLenU64 => get_def!(1, list_len_u64), // assert in JIT
+        NativeFuncId::ListGetU64 => get_def!(2, list_get_u64), // assert in JIT (TODO: for loops)
+        NativeFuncId::ListBorrowU64 => get_def!(2, list_borrow_u64), // assert in JIT
         NativeFuncId::DictNew => get_def!(1, dict_new),
-        NativeFuncId::DictInsert => get_def!(3, dict_insert),
+        NativeFuncId::DictInsert => get_def!(3, dict_insert), // assert in JIT
         NativeFuncId::Clone => get_def!(1, clone),
         NativeFuncId::Drop => get_def!(1, drop),
-        NativeFuncId::ValGetIndex => get_def!(2, val_get_index),
-        NativeFuncId::ValSetIndex => get_def!(3, val_set_index),
+        NativeFuncId::ValGetIndex => get_def!(2, val_get_index), // TODO
+        NativeFuncId::ValSetIndex => get_def!(3, val_set_index), // TODO
         NativeFuncId::ValEq => get_def!(2, val_eq),
         NativeFuncId::ValEqU8 => get_def!(2, val_eq_u8),
         NativeFuncId::ValTruthy => get_def!(1, val_truthy_u8),
-        NativeFuncId::ValConcat => get_def!(2, val_concat),
-        NativeFuncId::ValGetLambdaDetails => get_def!(3, get_lambda_details),
+        NativeFuncId::ValConcat => get_def!(2, val_concat), // TODO
+        NativeFuncId::ValGetLambdaDetails => get_def!(3, get_lambda_details), // check result in JIT
         NativeFuncId::ConstructLambda => get_def!(4, construct_lambda),
-        NativeFuncId::ImportModule => get_def!(2, import_module),
+        NativeFuncId::ImportModule => get_def!(2, import_module), // check result in JIT
         NativeFuncId::Print => get_def!(1, print),
     }
 }
@@ -216,6 +216,12 @@ impl Deref for Value64Ref {
     }
 }
 
+impl std::fmt::Display for Value64Ref {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(&*self.0, f)
+    }
+}
+
 fn rc_new<T: Boxable>(val: T) -> Rc<T> {
     let rc = Rc::new(val);
     #[cfg(debug_assertions)]
@@ -234,6 +240,68 @@ fn rc_mutate<T: Boxable + Clone, F: FnOnce(&mut T)>(rc: &mut Rc<T>, action: F) {
     });
 }
 
+macro_rules! guard_f64 {
+    ($val:expr) => {
+        match $val.as_f64() {
+            Some(f) => f,
+            None => {
+                println!("ERROR: Expected f64, got {}", $val);
+                return Value64::ERROR;
+            }
+        }
+    };
+}
+
+macro_rules! guard_usize {
+    ($val:expr) => {
+        // TODO assert int
+        guard_f64!($val) as usize
+    };
+}
+
+macro_rules! guard_i64 {
+    ($val:expr) => {
+        // TODO assert int
+        guard_f64!($val) as i64
+    };
+}
+
+macro_rules! guard_list {
+    ($val:expr) => {
+        match $val.as_list() {
+            Some(l) => l,
+            None => {
+                println!("ERROR: Expected a list, got {}", $val);
+                return Value64::ERROR;
+            }
+        }
+    };
+}
+
+macro_rules! guard_into_list {
+    ($val:expr) => {
+        match $val.try_into_list() {
+            Ok(l) => l,
+            Err(v) => {
+                println!("ERROR: Expected a list, got {}", v);
+                return Value64::ERROR;
+            }
+        }
+    };
+}
+
+macro_rules! guard_into_dict {
+    ($val:expr) => {
+        match $val.try_into_dict() {
+            Ok(d) => d,
+            Err(v) => {
+                println!("ERROR: Expected a list, got {}", v);
+                return Value64::ERROR;
+            }
+        }
+    };
+}
+
 pub extern "C" fn list_new(len: u64, items: *const Value64) -> Value64 {
     let items_slice = unsafe { std::slice::from_raw_parts(items, len as usize) };
     let mut items = Vec::with_capacity(len as usize);
@@ -245,13 +313,13 @@ pub extern "C" fn list_new(len: u64, items: *const Value64) -> Value64 {
 }
 
 pub extern "C" fn list_push(list: Value64, val: Value64) -> Value64 {
-    let mut list = list.try_into_list().unwrap();
+    let mut list = guard_into_list!(list);
     rc_mutate(&mut list, |l| l.values.push(val));
     Value64::from_list(list)
 }
 
 pub extern "C" fn list_pop(list: Value64) -> Value64 {
-    let mut list = list.try_into_list().unwrap();
+    let mut list = guard_into_list!(list);
     rc_mutate(&mut list, |l| {
         l.values.pop();
     });
@@ -273,7 +341,7 @@ pub extern "C" fn list_borrow_u64(list: Value64Ref, index: u64) -> Value64Ref {
 }
 
 pub extern "C" fn list_sort(list_val: Value64) -> Value64 {
-    let mut list = list_val.try_into_list().unwrap();
+    let mut list = guard_into_list!(list_val);
     rc_mutate(&mut list, |l| {
         l.values.sort_by(|a, b| a.display_cmp(b));
     });
@@ -295,7 +363,7 @@ pub extern "C" fn dict_insert(dict: Value64, key: Value64, val: Value64) -> Valu
 }
 
 pub extern "C" fn dict_remove_key(dict: Value64, key: Value64) -> Value64 {
-    let mut dict = dict.try_into_dict().unwrap();
+    let mut dict = guard_into_dict!(dict);
     rc_mutate(&mut dict, |d| {
         d.values.remove(&key);
     });
@@ -303,13 +371,13 @@ pub extern "C" fn dict_remove_key(dict: Value64, key: Value64) -> Value64 {
 }
 
 pub extern "C" fn dict_keys(dict: Value64) -> Value64 {
-    let dict = dict.as_dict().unwrap();
+    let dict = guard_into_dict!(dict);
     let keys: Vec<Value64> = dict.values.keys().cloned().collect();
     Value64::from_list(rc_new(ListInstance::new(keys)))
 }
 
 pub extern "C" fn dict_entries(dict: Value64) -> Value64 {
-    let dict = dict.as_dict().unwrap();
+    let dict = guard_into_dict!(dict);
     let entries: Vec<Value64> = dict
         .values
         .iter()
@@ -322,8 +390,8 @@ pub extern "C" fn dict_entries(dict: Value64) -> Value64 {
 }
 
 pub extern "C" fn range(start: Value64, stop: Value64) -> Value64 {
-    let start_int = start.as_f64().unwrap() as i64;
-    let stop_int = stop.as_f64().unwrap() as i64;
+    let start_int = guard_i64!(start);
+    let stop_int = guard_i64!(stop);
     let mut values = Vec::new();
     for i in start_int..stop_int {
         values.push(Value64::from_f64(i as f64));
@@ -332,7 +400,7 @@ pub extern "C" fn range(start: Value64, stop: Value64) -> Value64 {
 }
 
 pub extern "C" fn len(list: Value64) -> Value64 {
-    let list2 = list.as_list().unwrap();
+    let list2 = guard_list!(list);
     Value64::from_f64(list2.values.len() as f64)
 }
 
@@ -346,8 +414,9 @@ pub extern "C" fn drop(val: Value64) {
 
 pub extern "C" fn val_get_index(val: Value64Ref, index: Value64Ref) -> Value64 {
     if let Some(list) = val.as_list() {
+        let index_int = guard_usize!(index) as usize;
         list.values
-            .get(index.as_f64().unwrap() as usize)
+            .get(index_int)
             .unwrap() // TODO
             .clone()
     } else if let Some(dict) = val.as_dict() {
@@ -359,9 +428,10 @@ pub extern "C" fn val_get_index(val: Value64Ref, index: Value64Ref) -> Value64 {
 
 pub extern "C" fn val_set_index(val: Value64, index: Value64, new_val: Value64) -> Value64 {
     if val.is_list() {
+        let index_int = guard_usize!(index);
         let mut list = val.try_into_list().unwrap();
         rc_mutate(&mut list, |l| {
-            l.values[index.as_f64().unwrap() as usize] = new_val;
+            l.values[index_int] = new_val;
         });
         Value64::from_list(list)
     } else if val.is_dict() {
@@ -412,8 +482,8 @@ pub extern "C" fn val_concat(val1: Value64, val2: Value64) -> Value64 {
 }
 
 pub extern "C" fn float_pow(base: Value64, exponent: Value64) -> Value64 {
-    let base_float = base.as_f64().unwrap();
-    let exp_float = exponent.as_f64().unwrap();
+    let base_float = guard_f64!(base);
+    let exp_float = guard_f64!(exponent);
     Value64::from_f64(base_float.powf(exp_float))
 }
 
@@ -517,15 +587,15 @@ fn import_module_panic(vm: &mut VmContext, name: &Value64) -> Result<Value64, St
 }
 
 pub extern "C" fn val_shift_left(val: Value64, by: Value64) -> Value64 {
-    let a = val.as_f64().unwrap() as u64;
-    let b = by.as_f64().unwrap() as u8;
+    let a = guard_i64!(val);
+    let b = guard_i64!(by);
     let result = Value64::from_f64((a << b) as f64);
     result
 }
 
 pub extern "C" fn val_xor(val1: Value64, val2: Value64) -> Value64 {
-    let a = val1.as_f64().unwrap() as u64;
-    let b = val2.as_f64().unwrap() as u64;
+    let a = guard_usize!(val1);
+    let b = guard_usize!(val2);
     Value64::from_f64((a ^ b) as f64)
 }
 
@@ -534,15 +604,15 @@ pub extern "C" fn val_not(val: Value64) -> Value64 {
 }
 
 pub extern "C" fn random_int(min: Value64, max: Value64) -> Value64 {
-    let min_int = min.as_f64().unwrap() as i64;
-    let max_int = max.as_f64().unwrap() as i64;
+    let min_int = guard_i64!(min);
+    let max_int = guard_i64!(max);
     let result = rand::thread_rng().gen_range(min_int..=max_int);
     Value64::from_f64(result as f64)
 }
 
 pub extern "C" fn random_float(min: Value64, max: Value64) -> Value64 {
-    let min_float = min.as_f64().unwrap();
-    let max_float = max.as_f64().unwrap();
+    let min_float = guard_f64!(min);
+    let max_float = guard_f64!(max);
     let result = rand::thread_rng().gen_range(min_float..=max_float);
     Value64::from_f64(result)
 }

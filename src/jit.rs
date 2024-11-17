@@ -806,8 +806,17 @@ impl<'a> FunctionTranslator<'a> {
             arg_values.push(self.translate_expr(arg))
         }
         match self.call_native_func(func, &arg_values) {
-            [val] => *val,
-            [] => self.const_nil(),
+            [val] => {
+                let val = *val;
+                let is_ok = self.cmp_bits_imm(IntCC::NotEqual, val, value64::ERROR_VALUE);
+                self.assert(is_ok, |s| {
+                    s.print_string_constant(format!("ERROR: Native function call failed\n"));
+                });
+                return val;
+            }
+            [] => {
+                return self.const_nil();
+            }
             _ => panic!("Built-in functions should only return zero or one value"),
         }
     }
