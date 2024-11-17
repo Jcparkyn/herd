@@ -1220,33 +1220,30 @@ impl<'a> FunctionTranslator<'a> {
     }
 
     fn translate_op(&mut self, op: Opcode, lhs: &SpannedExpr, rhs: &SpannedExpr) -> Value {
+        fn eval_f64(s: &mut FunctionTranslator, expr: &SpannedExpr) -> Value {
+            let result = s.translate_expr(expr);
+            s.guard_f64(result);
+            result
+        }
         match op {
             Opcode::Add => {
-                let lhs = self.translate_expr(lhs);
-                self.guard_f64(lhs);
-                let rhs = self.translate_expr(rhs);
-                self.guard_f64(rhs);
+                let lhs = eval_f64(self, lhs);
+                let rhs = eval_f64(self, rhs);
                 self.builder.ins().fadd(lhs, rhs)
             }
             Opcode::Sub => {
-                let lhs = self.translate_expr(lhs);
-                self.guard_f64(lhs);
-                let rhs = self.translate_expr(rhs);
-                self.guard_f64(rhs);
+                let lhs = eval_f64(self, lhs);
+                let rhs = eval_f64(self, rhs);
                 self.builder.ins().fsub(lhs, rhs)
             }
             Opcode::Mul => {
-                let lhs = self.translate_expr(lhs);
-                self.guard_f64(lhs);
-                let rhs = self.translate_expr(rhs);
-                self.guard_f64(rhs);
+                let lhs = eval_f64(self, lhs);
+                let rhs = eval_f64(self, rhs);
                 self.builder.ins().fmul(lhs, rhs)
             }
             Opcode::Div => {
-                let lhs = self.translate_expr(lhs);
-                self.guard_f64(lhs);
-                let rhs = self.translate_expr(rhs);
-                self.guard_f64(rhs);
+                let lhs = eval_f64(self, lhs);
+                let rhs = eval_f64(self, rhs);
                 self.builder.ins().fdiv(lhs, rhs)
             }
             Opcode::Eq => {
@@ -1554,8 +1551,13 @@ impl<'a> FunctionTranslator<'a> {
         self.cmp_bits_imm(IntCC::Equal, val, value64::NIL_VALUE)
     }
 
+    fn val_bits(&mut self, val: BValue) -> Value {
+        assert_eq!(VAL64, self.builder.func.dfg.value_type(val));
+        self.builder.ins().bitcast(I64, MemFlags::new(), val)
+    }
+
     fn cmp_bits_imm(&mut self, cond: IntCC, lhs: Value, rhs: u64) -> Value {
-        let lhs_bits = self.builder.ins().bitcast(I64, MemFlags::new(), lhs);
+        let lhs_bits = self.val_bits(lhs);
         self.builder.ins().icmp_imm(cond, lhs_bits, rhs as i64)
     }
 
@@ -1566,17 +1568,19 @@ impl<'a> FunctionTranslator<'a> {
     }
 
     fn is_ptr_val(&mut self, val: BValue) -> Value {
-        let val_int = self.builder.ins().bitcast(I64, MemFlags::new(), val);
+        let val_int = self.val_bits(val);
         let and = self
             .builder
             .ins()
             .band_imm(val_int, 0xFFFC000000000000u64 as i64);
-        self.cmp_bits_imm(IntCC::Equal, and, 0xFFFC000000000000)
+        self.builder
+            .ins()
+            .icmp_imm(IntCC::Equal, and, 0xFFFC000000000000u64 as i64)
     }
 
     fn is_ptr_type(&mut self, val: BValue, tag: PointerTag) -> Value {
         let mask = value64::NANISH_MASK as i64;
-        let val_int = self.builder.ins().bitcast(I64, MemFlags::new(), val);
+        let val_int = self.val_bits(val);
         let and = self.builder.ins().band_imm(val_int, mask);
         self.builder
             .ins()
@@ -1584,7 +1588,7 @@ impl<'a> FunctionTranslator<'a> {
     }
 
     fn guard_f64(&mut self, val: Value) {
-        let val_int = self.builder.ins().bitcast(I64, MemFlags::new(), val);
+        let val_int = self.val_bits(val);
         let nanish = value64::NANISH as i64;
         let and = self.builder.ins().band_imm(val_int, nanish);
         let is_f64 = self.builder.ins().icmp_imm(IntCC::NotEqual, and, nanish);
