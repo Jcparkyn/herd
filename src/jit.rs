@@ -1472,10 +1472,7 @@ impl<'a> FunctionTranslator<'a> {
         self.builder.switch_to_block(fail_block);
         self.builder.seal_block(fail_block);
         on_fail(self);
-        let err_val = self
-            .builder
-            .ins()
-            .f64const(f64::from_bits(value64::ERROR_VALUE));
+        let err_val = self.const_value64_bits(value64::ERROR_VALUE);
         self.builder.ins().return_(&[err_val]);
 
         self.builder.switch_to_block(ok_block);
@@ -1484,17 +1481,19 @@ impl<'a> FunctionTranslator<'a> {
     }
 
     fn const_nil(&mut self) -> Value {
-        self.builder
-            .ins()
-            .f64const(f64::from_bits(value64::NIL_VALUE))
+        self.const_value64_bits(value64::NIL_VALUE)
     }
 
     fn const_bool(&mut self, b: bool) -> Value {
-        self.builder.ins().f64const(if b {
-            f64::from_bits(value64::TRUE_VALUE)
+        self.const_value64_bits(if b {
+            value64::TRUE_VALUE
         } else {
-            f64::from_bits(value64::FALSE_VALUE)
+            value64::FALSE_VALUE
         })
+    }
+
+    fn const_value64_bits(&mut self, bits: u64) -> Value {
+        self.builder.ins().f64const(f64::from_bits(bits))
     }
 
     fn clone_val64(&mut self, val: BValue) -> OValue {
@@ -1599,8 +1598,8 @@ impl<'a> FunctionTranslator<'a> {
             .string_constants
             .entry(string)
             .or_insert_with_key(|key| Value64::from_string(Rc::new(key.clone())));
-        let string_val = self.builder.ins().f64const(string_val64.bits_f64());
-        string_val
+        let bits = string_val64.bits();
+        self.const_value64_bits(bits)
     }
 
     fn string_literal_owned(&mut self, string: String) -> BValue {

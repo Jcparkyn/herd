@@ -284,7 +284,7 @@ impl Value64 {
 
     pub fn as_f64(&self) -> Option<f64> {
         if self.is_f64() {
-            Some(self.val)
+            Some(self.bits_f64())
         } else {
             None
         }
@@ -428,7 +428,9 @@ impl Eq for Value64 {}
 
 impl Debug for Value64 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Value64").field("bits", &self.val).finish()
+        f.debug_struct("Value64")
+            .field("bits", &self.bits_f64())
+            .finish()
     }
 }
 

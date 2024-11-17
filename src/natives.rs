@@ -77,10 +77,6 @@ impl AbiType for u8 {
     const TYPE: Type = types::I8;
 }
 
-impl AbiType for f64 {
-    const TYPE: Type = types::F64;
-}
-
 impl<T> AbiType for *const T {
     const TYPE: Type = types::I64;
 }
