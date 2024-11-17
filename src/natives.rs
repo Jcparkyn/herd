@@ -34,6 +34,7 @@ pub enum NativeFuncId {
     ListBorrowU64,
     DictNew,
     DictInsert,
+    DictLookup,
     Clone,
     Drop,
     ValGetIndex,
@@ -121,6 +122,7 @@ fn get_native_func_def(func: NativeFuncId) -> NativeFuncDef {
         NativeFuncId::ListBorrowU64 => get_def!(2, list_borrow_u64), // assert in JIT
         NativeFuncId::DictNew => get_def!(1, dict_new),
         NativeFuncId::DictInsert => get_def!(3, dict_insert), // assert in JIT
+        NativeFuncId::DictLookup => get_def!(3, dict_lookup),
         NativeFuncId::Clone => get_def!(1, clone),
         NativeFuncId::Drop => get_def!(1, drop),
         NativeFuncId::ValGetIndex => get_def!(2, val_get_index), // TODO
@@ -356,6 +358,25 @@ pub extern "C" fn dict_insert(dict: Value64, key: Value64, val: Value64) -> Valu
         d.values.insert(key, val);
     });
     Value64::from_dict(dict)
+}
+
+pub extern "C" fn dict_lookup(dict: Value64Ref, key: Value64Ref, found: *mut u8) -> Value64 {
+    // TODO: take a string directly for faster lookup
+    let dict = dict.as_dict().unwrap();
+    match dict.values.get(&key) {
+        Some(v) => {
+            unsafe {
+                *found = 1;
+            }
+            v.clone()
+        }
+        None => {
+            unsafe {
+                *found = 0;
+            }
+            Value64::NIL
+        }
+    }
 }
 
 pub extern "C" fn dict_remove_key(dict: Value64, key: Value64) -> Value64 {

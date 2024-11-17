@@ -1,4 +1,4 @@
-use codegen::ir::{self};
+use codegen::ir::{self, StackSlot};
 use core::panic;
 use cranelift::prelude::*;
 use cranelift_jit::{JITBuilder, JITModule};
@@ -593,11 +593,7 @@ impl<'a> FunctionTranslator<'a> {
             Expr::Call { callee, args } => self.translate_indirect_call(callee, args),
             Expr::CallBuiltin { callee, args } => self.translate_builtin_call(callee, args),
             Expr::List(l) => {
-                let slot = self.builder.create_sized_stack_slot(StackSlotData::new(
-                    StackSlotKind::ExplicitSlot,
-                    8 * l.len() as u32,
-                    8,
-                ));
+                let slot = self.create_stack_slot(VAL64, l.len());
                 for (i, item) in l.iter().enumerate() {
                     let val = self.translate_expr(item);
                     self.builder.ins().stack_store(val, slot, 8 * i as i32);
@@ -741,11 +737,7 @@ impl<'a> FunctionTranslator<'a> {
         args: &Vec<Spanned<Expr>>,
         callee_val: BValue,
     ) -> (Value, Value) {
-        let closure_ptr_slot = self.builder.create_sized_stack_slot(StackSlotData::new(
-            StackSlotKind::ExplicitSlot,
-            8,
-            8,
-        ));
+        let closure_ptr_slot = self.create_stack_slot(PTR, 1);
         let closure_ptr_ptr_val = self.builder.ins().stack_addr(I64, closure_ptr_slot, 0);
         let arg_count_val = self.builder.ins().iconst(types::I64, args.len() as i64);
         let func_ptr = self.call_native(
@@ -908,7 +900,11 @@ impl<'a> FunctionTranslator<'a> {
             MatchPattern::Dict(dict) => {
                 for (key, pattern) in &dict.entries {
                     let keyval = self.string_literal_borrow(key.clone());
-                    let element = self.call_native(NativeFuncId::ValGetIndex, &[value, keyval])[0];
+                    let found = self.create_stack_slot(types::I8, 1);
+                    let found_ptr = self.builder.ins().stack_addr(types::I64, found, 0);
+                    let element =
+                        self.call_native(NativeFuncId::DictLookup, &[value, keyval, found_ptr])[0];
+                    // TODO: skip if not found
                     self.translate_match_pattern(pattern, element);
                 }
                 self.drop_val64(value);
@@ -1353,11 +1349,7 @@ impl<'a> FunctionTranslator<'a> {
             .builder
             .ins()
             .iconst(I64, lambda.potential_captures.len() as i64);
-        let closure_slot = self.builder.create_sized_stack_slot(StackSlotData::new(
-            StackSlotKind::ExplicitSlot,
-            (8 * lambda.potential_captures.len()) as u32,
-            8,
-        ));
+        let closure_slot = self.create_stack_slot(VAL64, lambda.potential_captures.len());
         for (i, var_ref) in lambda.potential_captures.iter().enumerate() {
             let var = self.variables.get(&var_ref.name).unwrap();
             let var_val = self.builder.use_var(*var);
@@ -1452,6 +1444,14 @@ impl<'a> FunctionTranslator<'a> {
             .declare_func_in_func(func_def.func, self.builder.func);
         let call = self.builder.ins().call(local_callee, args);
         self.builder.inst_results(call)
+    }
+
+    fn create_stack_slot(&mut self, ty: Type, count: usize) -> StackSlot {
+        self.builder.create_sized_stack_slot(StackSlotData::new(
+            StackSlotKind::ExplicitSlot,
+            ty.bytes() * (count as u32),
+            8, // align by 2^8 = 64
+        ))
     }
 
     /// Returns a sentinel value if the assertion is zero.
