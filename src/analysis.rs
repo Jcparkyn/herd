@@ -207,10 +207,10 @@ impl VariableAnalyzer {
             }
             Expr::Block(b) => self.analyze_block(b),
             Expr::Call { callee, args } => {
+                self.analyze_expr(callee);
                 for arg in args {
                     self.analyze_expr(arg);
                 }
-                self.analyze_expr(callee);
             }
             Expr::CallBuiltin { callee: _, args } => {
                 for arg in args {
@@ -417,10 +417,10 @@ fn analyze_expr_liveness(expr: &mut Expr, deps: &mut HashSet<String>) {
             analyze_block_liveness(block, deps);
         }
         Expr::Call { callee, args } => {
-            analyze_expr_liveness(&mut callee.value, deps);
             for arg in args.iter_mut().rev() {
                 analyze_expr_liveness(&mut arg.value, deps);
             }
+            analyze_expr_liveness(&mut callee.value, deps);
         }
         Expr::CallBuiltin { callee: _, args } => {
             for arg in args.iter_mut().rev() {

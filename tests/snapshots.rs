@@ -445,6 +445,17 @@ fn lambda_func() {
 }
 
 #[test]
+fn call_order() {
+    let program = r#"
+        f = \a\ not a;
+        return true | f | f;
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"true");
+    assert_rcs_dropped();
+}
+
+#[test]
 fn func_with_captures() {
     let program = r#"
         a = 'a';
