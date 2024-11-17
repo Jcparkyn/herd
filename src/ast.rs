@@ -122,6 +122,15 @@ pub enum MatchPattern {
 
 impl MatchPattern {
     pub const NIL: MatchPattern = MatchPattern::Constant(MatchConstant::Nil);
+
+    /// True if this pattern will match any value, otherwise false.
+    pub fn always_matches(&self) -> bool {
+        match self {
+            MatchPattern::Constant(_) => true,
+            MatchPattern::Discard => true,
+            _ => false,
+        }
+    }
 }
 
 type SpannedPattern = Spanned<MatchPattern>;

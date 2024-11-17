@@ -899,6 +899,9 @@ impl<'a> FunctionTranslator<'a> {
             }
             MatchPattern::Dict(dict) => {
                 for (key, pattern) in &dict.entries {
+                    if pattern == &MatchPattern::Discard {
+                        continue;
+                    }
                     let keyval = self.string_literal_borrow(key.clone());
                     let (element, found) = self.dict_lookup(value, keyval);
                     self.assert(found, |s| {
@@ -950,6 +953,10 @@ impl<'a> FunctionTranslator<'a> {
                 self.builder.seal_block(block1);
                 let mut matches_all = self.builder.ins().iconst(types::I8, 1);
                 for (i, part) in parts.iter().enumerate() {
+                    if pattern.always_matches() {
+                        // skip simple patterns that will always be true (e.g. _)
+                        continue;
+                    }
                     let ival = self.builder.ins().iconst(I64, i as i64);
                     let element = self.call_native(NativeFuncId::ListBorrowU64, &[value, ival])[0];
                     let matches = self.translate_matches_pattern(part, element);
@@ -982,6 +989,10 @@ impl<'a> FunctionTranslator<'a> {
 
                 let mut matches_all = self.builder.ins().iconst(types::I8, 1);
                 for (key, pattern) in &dict_pattern.entries {
+                    if pattern.always_matches() {
+                        // skip simple patterns that will always be true (e.g. _)
+                        continue;
+                    }
                     let keyval = self.string_literal_borrow(key.clone());
 
                     let (element, found) = self.dict_lookup(value, keyval);
