@@ -487,10 +487,15 @@ pub extern "C" fn float_pow(base: Value64, exponent: Value64) -> Value64 {
     Value64::from_f64(base_float.powf(exp_float))
 }
 
-pub extern "C" fn assert_truthy(val: Value64) {
+pub extern "C" fn assert_truthy(val: Value64) -> Value64 {
     if !val.truthy() {
-        panic!("Expected truthy value, was {}", val)
+        println!(
+            "ERROR: Assertion failed. Expected truthy value, was {}",
+            val
+        );
+        return Value64::ERROR;
     }
+    return Value64::NIL;
 }
 
 pub extern "C" fn get_lambda_details(
