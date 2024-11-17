@@ -5,17 +5,15 @@ iterRange = \start stop\ {
   next: \state\ if state == stop - 1 then () else (state + 1),
 };
 
-iterToList = \iter\ (
+iterToList = \{init, current, next}\ (
   var arr = [];
-  var state = iter.init;
-  getCurrent = iter.current;
-  getNext = iter.next;
+  var state = init;
   while true do (
     if state == () then (
       return arr;
     )
-    set arr |= push (getCurrent state);
-    set state |= getNext;
+    set arr |= push (current state);
+    set state |= next;
   )
   return arr;
 );
@@ -42,16 +40,16 @@ iterMap = \var iter f\ (
   iter
 );
 
-iterRepeat = \iter iterations\ {
-  init: [1, iter.init],
-  current: \[_, i]\ iter.current i,
+iterRepeat = \{init, current, next} iterations\ {
+  init: [1, init],
+  current: \[_, i]\ current i,
   next: \var state\ (
     ![iteration, var innerState] = state;
-    set innerState = iter.next innerState;
+    set innerState = next innerState;
     if innerState == () then (
       if iteration < iterations then (
         set state.[0] = iteration + 1;
-        set state.[1] = iter.init;
+        set state.[1] = init;
         return state;
       ) else (
         return ();
@@ -62,8 +60,12 @@ iterRepeat = \iter iterations\ {
   )
 };
 
-iter2 = iterRange 0 100000000
+list = iterRange 0 10000000
   | iterMap (\x\ 0 - x)
   | iterRepeat 2
-  | iterStep 10000000;
-println (iterToList iter2);
+  | iterStep 3000000
+  | iterToList;
+
+println list;
+assert (len list == 7);
+assert (list.[(len list) - 1] == -8000000);
