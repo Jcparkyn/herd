@@ -761,7 +761,6 @@ fn stdlib_reverse() {
 #[test]
 fn stdlib_slice() {
     let main_program = r#"
-        List = import '@list';
         list = [1, 2, 3];
         return [
             List.slice list 1 2,
