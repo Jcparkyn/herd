@@ -1,15 +1,19 @@
 
 !{
-  print,
-  println,
-  printf,
-} = import '@io';
-
-!{
   not,
   range,
   assert,
 } = import '@basics';
+
+IO = import '@io';
+
+!{
+  print,
+  println,
+  printf,
+} = IO;
+
+List = import '@list';
 
 !{
   push,
@@ -17,8 +21,12 @@
   len,
   map,
   filter,
-} = import '@list';
+} = List;
 
-! {
-  removeKey,
-} = import '@dict';
+Dict = import '@dict';
+
+Math = import '@math';
+
+Bitwise = import '@bitwise';
+
+Random = import '@random';
