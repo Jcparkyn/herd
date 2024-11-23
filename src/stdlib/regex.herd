@@ -1,0 +1,9 @@
+
+find = \text regex\ BUILTIN:regexFind text regex;
+
+replace = \text regex replacement\ BUILTIN:regexReplace text regex replacement;
+
+return {
+  find,
+  replace,
+};

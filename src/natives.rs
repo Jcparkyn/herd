@@ -5,6 +5,7 @@ use std::{
 
 use cranelift::prelude::{types, AbiParam, Signature, Type};
 use rand::Rng;
+use regex::Regex;
 use strum::{EnumIter, IntoEnumIterator};
 
 use crate::{
@@ -163,6 +164,8 @@ pub fn get_builtins() -> HashMap<&'static str, NativeFuncDef> {
     map.insert("randomFloat", get_def!(2, random_float));
     map.insert("floatPow", get_def!(2, float_pow));
     map.insert("assertTruthy", get_def!(1, assert_truthy));
+    map.insert("regexFind", get_def!(2, regex_find));
+    map.insert("regexReplace", get_def!(3, regex_replace));
 
     return map;
 }
@@ -294,6 +297,18 @@ macro_rules! guard_into_dict {
             Ok(d) => d,
             Err(v) => {
                 println!("ERROR: Expected a list, got {}", v);
+                return Value64::ERROR;
+            }
+        }
+    };
+}
+
+macro_rules! guard_string {
+    ($val:expr) => {
+        match $val.as_string() {
+            Some(l) => l,
+            None => {
+                println!("ERROR: Expected a list, got {}", $val);
                 return Value64::ERROR;
             }
         }
@@ -639,6 +654,30 @@ pub extern "C" fn random_float(min: Value64, max: Value64) -> Value64 {
     let max_float = guard_f64!(max);
     let result = rand::thread_rng().gen_range(min_float..=max_float);
     Value64::from_f64(result)
+}
+
+pub extern "C" fn regex_find(text: Value64, regex: Value64) -> Value64 {
+    let regex_str = guard_string!(regex);
+    let text_str = guard_string!(text);
+    let regex = Regex::new(regex_str).unwrap();
+    let result = regex.find(text_str);
+    match result {
+        Some(m) => {
+            let start = Value64::from_usize(m.start());
+            let end = Value64::from_usize(m.end());
+            Value64::from_list(rc_new(ListInstance::new(vec![start, end])))
+        }
+        None => Value64::NIL,
+    }
+}
+
+pub extern "C" fn regex_replace(text: Value64, regex: Value64, replacement: Value64) -> Value64 {
+    let regex_str = guard_string!(regex);
+    let text_str = guard_string!(text);
+    let replacement_str = guard_string!(replacement);
+    let regex = Regex::new(regex_str).unwrap();
+    let result = regex.replace_all(text_str, replacement_str);
+    Value64::from_string(rc_new(result.to_string()))
 }
 
 // TODO: Variadic functions

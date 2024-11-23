@@ -7,6 +7,7 @@ pub fn load_stdlib_module(name: &str) -> &'static str {
         "@list" => include_str!("list.herd"),
         "@math" => include_str!("math.herd"),
         "@random" => include_str!("random.herd"),
+        "@regex" => include_str!("regex.herd"),
         _ => panic!("No such stdlib module: {}", name),
     }
 }

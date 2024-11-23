@@ -280,6 +280,10 @@ impl Value64 {
         Value64 { val: value }
     }
 
+    pub fn from_usize(value: usize) -> Self {
+        Self::from_f64(value as f64)
+    }
+
     pub const fn is_f64(&self) -> bool {
         (self.bits() & NANISH) != NANISH
     }
