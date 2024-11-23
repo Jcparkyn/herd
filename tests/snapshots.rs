@@ -134,6 +134,7 @@ fn equals() {
 
 #[test]
 fn cmp_lt() {
+    // TODO: should we panic for non-numbers?
     let program = r#"
         return [
             0 < 1, 1 < 1, 1 < (), () < (),
@@ -448,7 +449,7 @@ fn lambda_func() {
 fn call_order() {
     let program = r#"
         f = \a\ not a;
-        return true | f | f;
+        return (f (f true));
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"true");

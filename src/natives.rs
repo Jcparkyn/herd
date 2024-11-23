@@ -300,6 +300,8 @@ macro_rules! guard_into_dict {
     };
 }
 
+type Out<T> = *mut T;
+
 pub extern "C" fn list_new(len: u64, items: *const Value64) -> Value64 {
     let items_slice = unsafe { std::slice::from_raw_parts(items, len as usize) };
     let mut items = Vec::with_capacity(len as usize);
@@ -360,7 +362,7 @@ pub extern "C" fn dict_insert(dict: Value64, key: Value64, val: Value64) -> Valu
     Value64::from_dict(dict)
 }
 
-pub extern "C" fn dict_lookup(dict: Value64Ref, key: Value64Ref, found: *mut u8) -> Value64 {
+pub extern "C" fn dict_lookup(dict: Value64Ref, key: Value64Ref, found: Out<u8>) -> Value64 {
     // TODO: take a string directly for faster lookup
     let dict = dict.as_dict().unwrap();
     match dict.values.get(&key) {
@@ -518,7 +520,7 @@ pub extern "C" fn assert_truthy(val: Value64) -> Value64 {
 pub extern "C" fn get_lambda_details(
     val: Value64Ref,
     param_count: u64,
-    closure_out: *mut *const Value64,
+    closure_out: Out<*const Value64>,
 ) -> *const u8 {
     let lambda = match val.as_lambda() {
         Some(l) => l,

@@ -126,7 +126,8 @@ impl MatchPattern {
     /// True if this pattern will match any value, otherwise false.
     pub fn always_matches(&self) -> bool {
         match self {
-            MatchPattern::Constant(_) => true,
+            MatchPattern::Declaration(_, _) => true,
+            MatchPattern::Assignment(_) => true,
             MatchPattern::Discard => true,
             _ => false,
         }

@@ -16,7 +16,7 @@ use types::I64;
 use crate::{
     ast::{
         self, Expr, LambdaExpr, MatchConstant, MatchExpr, MatchPattern, Opcode, SpannedExpr,
-        SpannedStatement, Statement,
+        SpannedStatement, Statement, VarRef,
     },
     natives::{self, NativeFuncDef, NativeFuncId},
     pos::{Span, Spanned},
@@ -90,6 +90,68 @@ type OValue = Value;
 
 /// A borrowed Value64
 type BValue = Value;
+
+#[derive(Clone, Copy)]
+struct MValue {
+    value: Value,
+    owned: bool,
+}
+
+impl MValue {
+    pub fn owned(value: Value) -> Self {
+        Self { value, owned: true }
+    }
+
+    pub fn borrowed(value: Value) -> Self {
+        Self {
+            value,
+            owned: false,
+        }
+    }
+
+    pub fn into_owned(&self, translator: &mut FunctionTranslator) -> OValue {
+        if self.owned {
+            return self.value;
+        } else {
+            translator.clone_val64(self.value)
+        }
+    }
+
+    pub fn borrow(&self) -> Value {
+        self.value
+    }
+}
+
+trait AsBValue {
+    fn as_bvalue(&self) -> BValue;
+}
+
+impl AsBValue for MValue {
+    fn as_bvalue(&self) -> BValue {
+        self.borrow()
+    }
+}
+
+impl AsBValue for Value {
+    fn as_bvalue(&self) -> BValue {
+        *self
+    }
+}
+
+trait ValueExt {
+    fn assert_owned(self) -> MValue;
+    fn assert_borrowed(self) -> MValue;
+}
+
+impl ValueExt for Value {
+    fn assert_owned(self) -> MValue {
+        MValue::owned(self)
+    }
+
+    fn assert_borrowed(self) -> MValue {
+        MValue::borrowed(self)
+    }
+}
 
 #[derive(Debug, Clone)]
 struct NativeFunc {
@@ -315,7 +377,7 @@ impl JIT {
         trans
             .builder
             .ins()
-            .jump(trans.return_block, &[return_value]);
+            .jump(trans.return_block, &[return_value.borrow()]);
 
         trans.translate_return_block(repl_mode);
         // Tell the builder we're done with this function.
@@ -544,13 +606,13 @@ impl<'a> FunctionTranslator<'a> {
         }
         for (i, pattern) in lambda.params.iter().enumerate() {
             let value = self.builder.block_params(entry_block)[i + 2];
-            self.translate_match_pattern(&pattern.value, value);
+            self.translate_match_pattern(&pattern.value, value.assert_owned());
         }
     }
 
     /// When you write out instructions in Cranelift, you get back `Value`s. You
     /// can then use these references in other instructions.
-    fn translate_expr(&mut self, expr: &SpannedExpr) -> Value {
+    fn translate_expr(&mut self, expr: &SpannedExpr) -> MValue {
         self.set_src_span(&expr.span);
         match &expr.value {
             Expr::Variable(ref var) => {
@@ -563,9 +625,9 @@ impl<'a> FunctionTranslator<'a> {
                     // Replace the variable instead of copying, because we know this won't be accessed again.
                     let nil = self.const_nil();
                     self.builder.def_var(variable, nil);
-                    val
+                    MValue::owned(val)
                 } else {
-                    self.clone_val64(val)
+                    MValue::borrowed(val)
                 }
             }
             Expr::Block(b) => {
@@ -575,13 +637,15 @@ impl<'a> FunctionTranslator<'a> {
                 if let Some(ref expr) = b.expression {
                     return self.translate_expr(expr);
                 } else {
-                    return self.const_nil();
+                    return MValue::owned(self.const_nil());
                 }
             }
-            Expr::Bool(b) => self.const_bool(*b),
-            Expr::Number(f) => self.builder.ins().f64const(*f),
-            Expr::String(s) => self.string_literal_owned(s.deref().clone()),
-            Expr::Nil => self.const_nil(),
+            Expr::Bool(b) => MValue::owned(self.const_bool(*b)),
+            Expr::Number(f) => self.builder.ins().f64const(*f).assert_owned(),
+            Expr::String(s) => self
+                .string_literal_borrow(s.deref().clone())
+                .assert_borrowed(),
+            Expr::Nil => self.const_nil().assert_owned(),
             Expr::Op { op, lhs, rhs } => self.translate_op(*op, lhs, rhs),
             Expr::If {
                 condition,
@@ -595,32 +659,33 @@ impl<'a> FunctionTranslator<'a> {
             Expr::List(l) => {
                 let slot = self.create_stack_slot(VAL64, l.len());
                 for (i, item) in l.iter().enumerate() {
-                    let val = self.translate_expr(item);
+                    let val = self.translate_expr(item).into_owned(self);
                     self.builder.ins().stack_store(val, slot, 8 * i as i32);
                 }
                 let len_value = self.builder.ins().iconst(types::I64, l.len() as i64);
                 let items_ptr = self.builder.ins().stack_addr(PTR, slot, 0);
-                self.call_native(NativeFuncId::ListNew, &[len_value, items_ptr])[0]
+                self.call_native(NativeFuncId::ListNew, &[len_value, items_ptr])[0].assert_owned()
             }
             Expr::GetIndex(val, index) => {
                 let index = self.translate_expr(index);
                 let val = self.translate_expr(val);
-                let result = self.call_native(NativeFuncId::ValGetIndex, &[val, index])[0];
+                let result =
+                    self.call_native(NativeFuncId::ValGetIndex, &[val.borrow(), index.borrow()])[0];
                 self.drop_val64(index);
                 self.drop_val64(val);
-                result
+                result.assert_owned()
             }
             Expr::Dict(d) => {
                 let len_value = self.builder.ins().iconst(types::I64, d.len() as i64);
                 let mut dict = self.call_native(NativeFuncId::DictNew, &[len_value])[0];
                 for (key, value) in d {
-                    let key = self.translate_expr(key);
-                    let value = self.translate_expr(value);
+                    let key = self.translate_expr(key).into_owned(self);
+                    let value = self.translate_expr(value).into_owned(self);
                     dict = self.call_native(NativeFuncId::DictInsert, &[dict, key, value])[0];
                 }
-                dict
+                dict.assert_owned()
             }
-            Expr::Lambda(l) => self.translate_lambda_definition(l),
+            Expr::Lambda(l) => self.translate_lambda_definition(l).assert_owned(),
             Expr::Match(m) => self.translate_match_expr(m),
             Expr::Import { path } => self.translate_import(path),
         }
@@ -660,14 +725,14 @@ impl<'a> FunctionTranslator<'a> {
             let variables = self.variables.values().cloned().collect::<Vec<_>>();
             for var in variables {
                 let val = self.builder.use_var(var);
-                self.drop_val64(val);
+                self.drop_val64(val.assert_owned()); // TODO
             }
             self.builder.ins().return_(&[return_value]);
         }
     }
 
-    fn translate_indirect_call(&mut self, callee: &SpannedExpr, args: &Vec<SpannedExpr>) -> Value {
-        let callee_val = self.translate_expr(callee);
+    fn translate_indirect_call(&mut self, callee: &SpannedExpr, args: &Vec<SpannedExpr>) -> MValue {
+        let callee_val = self.translate_expr(callee).into_owned(self);
 
         let (func_ptr, closure_ptr) = self.get_lambda_details(args, callee_val);
 
@@ -689,7 +754,7 @@ impl<'a> FunctionTranslator<'a> {
         arg_values.push(self.get_vm_ptr());
         arg_values.push(closure_ptr);
         for arg in args {
-            arg_values.push(self.translate_expr(arg))
+            arg_values.push(self.translate_expr(arg).into_owned(self))
         }
         // Add the function itself as a parameter, to support recursion.
         // HACK: we rely on the function itself to drop this before it returns, which means we don't drop callee_val here.
@@ -709,7 +774,7 @@ impl<'a> FunctionTranslator<'a> {
             ));
         });
 
-        return call_result;
+        return call_result.assert_owned();
     }
 
     fn get_vm_ptr(&mut self) -> Value {
@@ -748,21 +813,24 @@ impl<'a> FunctionTranslator<'a> {
         (func_ptr, closure_ptr)
     }
 
-    fn translate_builtin_call(&mut self, callee: &str, args: &Vec<SpannedExpr>) -> Value {
+    fn translate_builtin_call(&mut self, callee: &str, args: &Vec<SpannedExpr>) -> MValue {
         fn bitwise_op(
             s: &mut FunctionTranslator,
             args: &[SpannedExpr],
             op: impl FnOnce(&mut FunctionTranslator, Value, Value) -> Value,
-        ) -> Value {
+        ) -> MValue {
             assert!(args.len() == 2);
             let lhs = s.translate_expr(&args[0]);
             let rhs = s.translate_expr(&args[1]);
             s.guard_f64(lhs);
             s.guard_f64(rhs);
-            let lhs2 = s.builder.ins().fcvt_to_sint_sat(types::I64, lhs);
-            let rhs2 = s.builder.ins().fcvt_to_sint_sat(types::I64, rhs);
+            let lhs2 = s.builder.ins().fcvt_to_sint_sat(types::I64, lhs.borrow());
+            let rhs2 = s.builder.ins().fcvt_to_sint_sat(types::I64, rhs.borrow());
             let result = op(s, lhs2, rhs2);
-            s.builder.ins().fcvt_from_sint(types::F64, result)
+            s.builder
+                .ins()
+                .fcvt_from_sint(types::F64, result)
+                .assert_owned()
         }
         match callee {
             "bitwiseAnd" => bitwise_op(self, args, |s, lhs, rhs| s.builder.ins().band(lhs, rhs)),
@@ -772,11 +840,11 @@ impl<'a> FunctionTranslator<'a> {
                 assert!(args.len() == 1);
                 let val = self.translate_expr(&args[0]);
                 self.guard_f64(val);
-                self.builder.ins().floor(val)
+                self.builder.ins().floor(val.borrow()).assert_owned()
             }
             _ => {
                 if let Some(func) = self.builtins_map.get(callee) {
-                    return self.call_native_eval(&func, args);
+                    return self.call_native_eval(&func, args).assert_owned();
                 }
                 panic!("ERROR: Native function not implemented ({})\n", callee);
             }
@@ -795,7 +863,7 @@ impl<'a> FunctionTranslator<'a> {
 
         let mut arg_values = Vec::new();
         for arg in args {
-            arg_values.push(self.translate_expr(arg))
+            arg_values.push(self.translate_expr(arg).into_owned(self))
         }
         match self.call_native_func(func, &arg_values) {
             [val] => {
@@ -819,7 +887,7 @@ impl<'a> FunctionTranslator<'a> {
                 self.translate_expr(e);
             }
             Statement::Return(e) => {
-                let return_value = self.translate_expr(e);
+                let return_value = self.translate_expr(e).into_owned(self);
                 self.builder.ins().jump(self.return_block, &[return_value]);
 
                 // Create a new block for after the return instruction, so that other instructions
@@ -844,25 +912,23 @@ impl<'a> FunctionTranslator<'a> {
         self.translate_match_pattern(&pattern.value, rhs_value);
     }
 
-    fn translate_match_pattern(&mut self, pattern: &MatchPattern, value: OValue) {
+    fn translate_match_pattern(&mut self, pattern: &MatchPattern, value: MValue) {
         match pattern {
             MatchPattern::Discard => {
                 self.drop_val64(value);
             }
             MatchPattern::Declaration(var_ref, _) => {
-                let variable = *self
-                    .variables
-                    .get(&var_ref.name)
-                    .expect("variable not defined");
-                let old_value = self.builder.use_var(variable);
+                // TODO add replace_var method?
+                let old_value = self.use_var(var_ref).borrow().assert_owned();
                 self.drop_val64(old_value);
-                self.builder.def_var(variable, value);
+                self.def_var(var_ref, value);
             }
             MatchPattern::Assignment(target) => {
-                self.translate_assignment(target, value);
+                let owned_value = value.into_owned(self);
+                self.translate_assignment(target, owned_value);
             }
             MatchPattern::Constant(c) => {
-                let matches = self.translate_matches_constant(c, value);
+                let matches = self.translate_matches_constant(c, value.borrow());
                 self.drop_val64(value);
                 self.assert(matches, |s| {
                     s.print_string_constant(
@@ -877,7 +943,7 @@ impl<'a> FunctionTranslator<'a> {
                         "ERROR: pattern match failed on non-list\n".to_string(),
                     );
                 });
-                let value_len = self.call_native(NativeFuncId::ListLenU64, &[value])[0];
+                let value_len = self.call_native(NativeFuncId::ListLenU64, &[value.borrow()])[0];
                 let len_eq =
                     self.builder
                         .ins()
@@ -889,8 +955,9 @@ impl<'a> FunctionTranslator<'a> {
                 });
                 for (i, part) in parts.iter().enumerate() {
                     let ival = self.builder.ins().iconst(I64, i as i64);
-                    let element = self.call_native(NativeFuncId::ListGetU64, &[value, ival])[0];
-                    self.translate_match_pattern(part, element);
+                    let element =
+                        self.call_native(NativeFuncId::ListGetU64, &[value.borrow(), ival])[0];
+                    self.translate_match_pattern(part, element.assert_owned());
                 }
                 self.drop_val64(value);
             }
@@ -909,7 +976,7 @@ impl<'a> FunctionTranslator<'a> {
                             "ERROR: pattern match failed on dict, key {key} not found\n",
                         ));
                     });
-                    self.translate_match_pattern(pattern, element);
+                    self.translate_match_pattern(pattern, element.assert_owned());
                 }
                 self.drop_val64(value);
             }
@@ -997,7 +1064,7 @@ impl<'a> FunctionTranslator<'a> {
 
                     let (element, found) = self.dict_lookup(value, keyval);
                     let matches = self.translate_matches_pattern(pattern, element);
-                    self.drop_val64(element);
+                    self.drop_val64(element.assert_owned());
                     // TODO short-circuit
                     matches_all = self.builder.ins().band(matches_all, found);
                     matches_all = self.builder.ins().band(matches_all, matches);
@@ -1031,10 +1098,14 @@ impl<'a> FunctionTranslator<'a> {
         }
     }
 
-    fn dict_lookup(&mut self, value: Value, keyval: Value) -> (Value, Value) {
+    /// Returns (element: OValue, found: u8)
+    fn dict_lookup(&mut self, dict: impl AsBValue, key: impl AsBValue) -> (Value, Value) {
         let found_slot = self.create_stack_slot(types::I8, 1);
         let found_ptr = self.builder.ins().stack_addr(types::I64, found_slot, 0);
-        let element = self.call_native(NativeFuncId::DictLookup, &[value, keyval, found_ptr])[0];
+        let element = self.call_native(
+            NativeFuncId::DictLookup,
+            &[dict.as_bvalue(), key.as_bvalue(), found_ptr],
+        )[0];
         let found = self.builder.ins().stack_load(types::I8, found_slot, 0);
         (element, found)
     }
@@ -1042,7 +1113,7 @@ impl<'a> FunctionTranslator<'a> {
     fn translate_assignment(&mut self, target: &ast::AssignmentTarget, rhs: OValue) {
         let mut path_values = vec![];
         for index in &target.path {
-            let value = self.translate_expr(index);
+            let value = self.translate_expr(index).into_owned(self);
             path_values.push(value);
         }
         let variable = self
@@ -1052,9 +1123,9 @@ impl<'a> FunctionTranslator<'a> {
             .expect("variable not defined");
         match &path_values[..] {
             [] => {
-                let old_val = self.builder.use_var(variable);
+                let old_val = self.use_var(&target.var);
                 self.drop_val64(old_val);
-                self.builder.def_var(variable, rhs);
+                self.def_var(&target.var, rhs.assert_owned());
             }
             [index, rest @ ..] => {
                 // "move" the value to update it, then write it back.
@@ -1070,7 +1141,7 @@ impl<'a> FunctionTranslator<'a> {
         &mut self,
         val: OValue,
         index: OValue,
-        rest_path: &[Value],
+        rest_path: &[OValue],
         rhs: OValue,
     ) -> Value {
         match rest_path {
@@ -1085,11 +1156,11 @@ impl<'a> FunctionTranslator<'a> {
         }
     }
 
-    fn translate_cmp(&mut self, cmp: FloatCC, lhs: &SpannedExpr, rhs: &SpannedExpr) -> Value {
+    fn translate_cmp(&mut self, cmp: FloatCC, lhs: &SpannedExpr, rhs: &SpannedExpr) -> MValue {
         let lhs = self.translate_expr(lhs);
         let rhs = self.translate_expr(rhs);
-        let cmp_val = self.builder.ins().fcmp(cmp, lhs, rhs);
-        self.bool_to_val64(cmp_val)
+        let cmp_val = self.builder.ins().fcmp(cmp, lhs.borrow(), rhs.borrow());
+        self.bool_to_val64(cmp_val).assert_owned()
     }
 
     fn translate_if_else(
@@ -1097,9 +1168,11 @@ impl<'a> FunctionTranslator<'a> {
         condition: &SpannedExpr,
         then_body: &SpannedExpr,
         else_body: &Option<Box<SpannedExpr>>,
-    ) -> Value {
+    ) -> MValue {
         let condition_value = self.translate_expr(condition);
-        let condition_value = self.call_native(NativeFuncId::ValTruthy, &[condition_value])[0];
+        let condition_u8 =
+            self.call_native(NativeFuncId::ValTruthy, &[condition_value.borrow()])[0];
+        self.drop_val64(condition_value);
 
         let then_block = self.builder.create_block();
         let else_block = self.builder.create_block();
@@ -1115,11 +1188,11 @@ impl<'a> FunctionTranslator<'a> {
         // Test the if condition and conditionally branch.
         self.builder
             .ins()
-            .brif(condition_value, then_block, &[], else_block, &[]);
+            .brif(condition_u8, then_block, &[], else_block, &[]);
 
         self.builder.switch_to_block(then_block);
         self.builder.seal_block(then_block);
-        let then_return = self.translate_expr(then_body);
+        let then_return = self.translate_expr(then_body).into_owned(self);
 
         // Jump to the merge block, passing it the block return value.
         self.builder.ins().jump(merge_block, &[then_return]);
@@ -1128,7 +1201,7 @@ impl<'a> FunctionTranslator<'a> {
         self.builder.seal_block(else_block);
         let mut else_return = self.const_nil();
         if let Some(expr) = else_body {
-            else_return = self.translate_expr(expr);
+            else_return = self.translate_expr(expr).into_owned(self);
         }
 
         // Jump to the merge block, passing it the block return value.
@@ -1144,7 +1217,7 @@ impl<'a> FunctionTranslator<'a> {
         // parameter.
         let phi = self.builder.block_params(merge_block)[0];
 
-        phi
+        phi.assert_owned()
     }
 
     fn translate_for_in(
@@ -1152,13 +1225,13 @@ impl<'a> FunctionTranslator<'a> {
         iter: &SpannedExpr,
         var: &Spanned<MatchPattern>,
         body: &SpannedExpr,
-    ) -> Value {
+    ) -> MValue {
         let header_block = self.builder.create_block();
         let body_block = self.builder.create_block();
         let exit_block = self.builder.create_block();
 
         let iter_value = self.translate_expr(iter);
-        let len_value = self.call_native(NativeFuncId::ListLenU64, &[iter_value])[0];
+        let len_value = self.call_native(NativeFuncId::ListLenU64, &[iter_value.borrow()])[0];
         let initial_index = self.builder.ins().iconst(I64, 0);
         self.builder.ins().jump(header_block, &[initial_index]);
 
@@ -1187,8 +1260,11 @@ impl<'a> FunctionTranslator<'a> {
         self.builder.seal_block(body_block);
 
         let current_index = self.builder.block_params(header_block)[0];
-        let current_item =
-            self.call_native(NativeFuncId::ListGetU64, &[iter_value, current_index])[0];
+        let current_item = self.call_native(
+            NativeFuncId::ListGetU64,
+            &[iter_value.borrow(), current_index],
+        )[0]
+        .assert_owned();
         self.translate_match_pattern(&var.value, current_item);
         self.translate_expr(body);
         let next_index = self.builder.ins().iadd_imm(current_index, 1);
@@ -1203,10 +1279,10 @@ impl<'a> FunctionTranslator<'a> {
         self.builder.seal_block(header_block);
         self.builder.seal_block(exit_block);
 
-        self.const_nil()
+        self.const_nil().assert_owned()
     }
 
-    fn translate_while_loop(&mut self, condition: &SpannedExpr, body: &SpannedExpr) -> Value {
+    fn translate_while_loop(&mut self, condition: &SpannedExpr, body: &SpannedExpr) -> MValue {
         let header_block = self.builder.create_block();
         let body_block = self.builder.create_block();
         let exit_block = self.builder.create_block();
@@ -1233,12 +1309,12 @@ impl<'a> FunctionTranslator<'a> {
         self.builder.seal_block(header_block);
         self.builder.seal_block(exit_block);
 
-        self.const_nil()
+        self.const_nil().assert_owned()
     }
 
-    fn translate_op(&mut self, op: Opcode, lhs: &SpannedExpr, rhs: &SpannedExpr) -> Value {
+    fn translate_op(&mut self, op: Opcode, lhs: &SpannedExpr, rhs: &SpannedExpr) -> MValue {
         fn eval_f64(s: &mut FunctionTranslator, expr: &SpannedExpr) -> Value {
-            let result = s.translate_expr(expr);
+            let result = s.translate_expr(expr).borrow();
             s.guard_f64(result);
             result
         }
@@ -1246,30 +1322,31 @@ impl<'a> FunctionTranslator<'a> {
             Opcode::Add => {
                 let lhs = eval_f64(self, lhs);
                 let rhs = eval_f64(self, rhs);
-                self.builder.ins().fadd(lhs, rhs)
+                self.builder.ins().fadd(lhs, rhs).assert_owned()
             }
             Opcode::Sub => {
                 let lhs = eval_f64(self, lhs);
                 let rhs = eval_f64(self, rhs);
-                self.builder.ins().fsub(lhs, rhs)
+                self.builder.ins().fsub(lhs, rhs).assert_owned()
             }
             Opcode::Mul => {
                 let lhs = eval_f64(self, lhs);
                 let rhs = eval_f64(self, rhs);
-                self.builder.ins().fmul(lhs, rhs)
+                self.builder.ins().fmul(lhs, rhs).assert_owned()
             }
             Opcode::Div => {
                 let lhs = eval_f64(self, lhs);
                 let rhs = eval_f64(self, rhs);
-                self.builder.ins().fdiv(lhs, rhs)
+                self.builder.ins().fdiv(lhs, rhs).assert_owned()
             }
             Opcode::Eq => {
                 let lhs_val = self.translate_expr(lhs);
                 let rhs_val = self.translate_expr(rhs);
-                let result = self.call_native(NativeFuncId::ValEq, &[lhs_val, rhs_val])[0];
+                let result =
+                    self.call_native(NativeFuncId::ValEq, &[lhs_val.borrow(), rhs_val.borrow()])[0];
                 self.drop_val64(lhs_val);
                 self.drop_val64(rhs_val);
-                result
+                result.assert_owned()
             }
             Opcode::Neq => self.translate_cmp(FloatCC::NotEqual, lhs, rhs),
             Opcode::Lt => self.translate_cmp(FloatCC::LessThan, lhs, rhs),
@@ -1283,7 +1360,7 @@ impl<'a> FunctionTranslator<'a> {
                 let lhs_truthy = self.is_truthy(lhs);
                 let rhs_truthy = self.is_truthy(rhs);
                 let bool_val = self.builder.ins().band(lhs_truthy, rhs_truthy);
-                self.bool_to_val64(bool_val)
+                self.bool_to_val64(bool_val).assert_owned()
             }
             Opcode::Or => {
                 // TODO: conditional evaluation
@@ -1292,17 +1369,17 @@ impl<'a> FunctionTranslator<'a> {
                 let lhs_truthy = self.is_truthy(lhs);
                 let rhs_truthy = self.is_truthy(rhs);
                 let bool_val = self.builder.ins().bor(lhs_truthy, rhs_truthy);
-                self.bool_to_val64(bool_val)
+                self.bool_to_val64(bool_val).assert_owned()
             }
             Opcode::Concat => {
-                let lhs = self.translate_expr(lhs);
-                let rhs = self.translate_expr(rhs);
-                self.call_native(NativeFuncId::ValConcat, &[lhs, rhs])[0]
+                let lhs = self.translate_expr(lhs).into_owned(self);
+                let rhs = self.translate_expr(rhs).into_owned(self);
+                self.call_native(NativeFuncId::ValConcat, &[lhs, rhs])[0].assert_owned()
             }
         }
     }
 
-    fn translate_lambda_definition(&mut self, lambda: &LambdaExpr) -> Value {
+    fn translate_lambda_definition(&mut self, lambda: &LambdaExpr) -> OValue {
         let mut ctx = self.module.make_context();
         ctx.func.collect_debug_info();
 
@@ -1336,7 +1413,7 @@ impl<'a> FunctionTranslator<'a> {
         };
         trans.translate_function_entry(lambda, entry_block);
 
-        let return_value = trans.translate_expr(&lambda.body);
+        let return_value = trans.translate_expr(&lambda.body).into_owned(&mut trans);
 
         trans
             .builder
@@ -1391,7 +1468,7 @@ impl<'a> FunctionTranslator<'a> {
         return lambda_val;
     }
 
-    fn translate_match_expr(&mut self, match_expr: &MatchExpr) -> Value {
+    fn translate_match_expr(&mut self, match_expr: &MatchExpr) -> MValue {
         let merge_block = self.builder.create_block();
         self.builder.append_block_param(merge_block, VAL64);
 
@@ -1404,16 +1481,14 @@ impl<'a> FunctionTranslator<'a> {
             branch_body_blocks.push(body_block);
         }
 
-        // self.builder
-        //     .seal_block(self.builder.current_block().unwrap());
         let subject = self.translate_expr(&match_expr.condition);
         self.builder.ins().jump(branch_check_blocks[0], &[]);
-        // let mut arms = Vec::new();
+
         for (i, (pattern, body)) in match_expr.branches.iter().enumerate() {
             let is_last_branch = i == match_expr.branches.len() - 1;
             self.builder.switch_to_block(branch_check_blocks[i]);
             self.set_src_span(&pattern.span);
-            let matches = self.translate_matches_pattern(&pattern.value, subject);
+            let matches = self.translate_matches_pattern(&pattern.value, subject.borrow());
             if is_last_branch {
                 self.assert(matches, |s| {
                     s.print_string_constant("ERROR: No branches matched\n".to_string());
@@ -1429,9 +1504,10 @@ impl<'a> FunctionTranslator<'a> {
                 );
             };
 
+            // Branch body
             self.builder.switch_to_block(branch_body_blocks[i]);
             self.translate_match_pattern(&pattern.value, subject);
-            let body_value = self.translate_expr(body);
+            let body_value = self.translate_expr(body).into_owned(self);
             self.builder.ins().jump(merge_block, &[body_value]);
         }
 
@@ -1447,7 +1523,7 @@ impl<'a> FunctionTranslator<'a> {
         self.builder.switch_to_block(merge_block);
         self.builder.seal_block(merge_block);
         let phi = self.builder.block_params(merge_block)[0];
-        phi
+        phi.assert_owned()
     }
 
     fn call_native_func(&mut self, func: &NativeFunc, args: &[Value]) -> &[Value] {
@@ -1514,6 +1590,23 @@ impl<'a> FunctionTranslator<'a> {
         self.builder.seal_block(after_block);
     }
 
+    fn use_var(&mut self, var_ref: &VarRef) -> MValue {
+        let var = self
+            .variables
+            .get(&var_ref.name)
+            .unwrap_or_else(|| panic!("variable {} not defined", &var_ref.name));
+        self.builder.use_var(*var).assert_borrowed()
+    }
+
+    fn def_var(&mut self, var_ref: &VarRef, val: MValue) {
+        let var = *self
+            .variables
+            .get(&var_ref.name)
+            .unwrap_or_else(|| panic!("variable {} not defined", &var_ref.name));
+        let val_owned = val.into_owned(self);
+        self.builder.def_var(var, val_owned); // TODO ?
+    }
+
     fn const_nil(&mut self) -> Value {
         self.const_value64_bits(value64::NIL_VALUE)
     }
@@ -1530,7 +1623,7 @@ impl<'a> FunctionTranslator<'a> {
         self.builder.ins().f64const(f64::from_bits(bits))
     }
 
-    fn clone_val64(&mut self, val: BValue) -> OValue {
+    fn clone_val64(&mut self, val: Value) -> OValue {
         self.call_native(NativeFuncId::Clone, &[val])[0]
     }
 
@@ -1557,11 +1650,14 @@ impl<'a> FunctionTranslator<'a> {
         val
     }
 
-    fn drop_val64(&mut self, val: OValue) {
-        let is_ptr = self.is_ptr_val(val);
+    fn drop_val64(&mut self, val: MValue) {
+        if !val.owned {
+            return;
+        }
+        let is_ptr = self.is_ptr_val(val.borrow());
         // Short-circuit if it's not a reference type
         self.do_if(is_ptr, |s| {
-            s.call_native(NativeFuncId::Drop, &[val]);
+            s.call_native(NativeFuncId::Drop, &[val.borrow()]);
         });
     }
 
@@ -1570,20 +1666,21 @@ impl<'a> FunctionTranslator<'a> {
             .set_srcloc(ir::SourceLoc::new(span.start as u32));
     }
 
-    fn is_truthy(&mut self, val: Value) -> Value {
-        self.call_native(NativeFuncId::ValTruthy, &[val])[0]
+    fn is_truthy(&mut self, val: impl AsBValue) -> Value {
+        self.call_native(NativeFuncId::ValTruthy, &[val.as_bvalue()])[0]
     }
 
-    fn is_nil(&mut self, val: Value) -> Value {
-        self.cmp_bits_imm(IntCC::Equal, val, value64::NIL_VALUE)
+    fn is_nil(&mut self, val: impl AsBValue) -> Value {
+        self.cmp_bits_imm(IntCC::Equal, val.as_bvalue(), value64::NIL_VALUE)
     }
 
-    fn val_bits(&mut self, val: BValue) -> Value {
+    fn val_bits(&mut self, val: impl AsBValue) -> Value {
+        let val = val.as_bvalue();
         assert_eq!(VAL64, self.builder.func.dfg.value_type(val));
         self.builder.ins().bitcast(I64, MemFlags::new(), val)
     }
 
-    fn cmp_bits_imm(&mut self, cond: IntCC, lhs: Value, rhs: u64) -> Value {
+    fn cmp_bits_imm(&mut self, cond: IntCC, lhs: impl AsBValue, rhs: u64) -> Value {
         let lhs_bits = self.val_bits(lhs);
         self.builder.ins().icmp_imm(cond, lhs_bits, rhs as i64)
     }
@@ -1594,7 +1691,7 @@ impl<'a> FunctionTranslator<'a> {
         self.builder.ins().select(b, t, f)
     }
 
-    fn is_ptr_val(&mut self, val: BValue) -> Value {
+    fn is_ptr_val(&mut self, val: impl AsBValue) -> Value {
         let val_int = self.val_bits(val);
         let and = self
             .builder
@@ -1605,7 +1702,7 @@ impl<'a> FunctionTranslator<'a> {
             .icmp_imm(IntCC::Equal, and, 0xFFFC000000000000u64 as i64)
     }
 
-    fn is_ptr_type(&mut self, val: BValue, tag: PointerTag) -> Value {
+    fn is_ptr_type(&mut self, val: impl AsBValue, tag: PointerTag) -> Value {
         let mask = value64::NANISH_MASK as i64;
         let val_int = self.val_bits(val);
         let and = self.builder.ins().band_imm(val_int, mask);
@@ -1614,7 +1711,7 @@ impl<'a> FunctionTranslator<'a> {
             .icmp_imm(IntCC::Equal, and, value64::pointer_mask(tag) as i64)
     }
 
-    fn guard_f64(&mut self, val: Value) {
+    fn guard_f64(&mut self, val: impl AsBValue) {
         let val_int = self.val_bits(val);
         let nanish = value64::NANISH as i64;
         let and = self.builder.ins().band_imm(val_int, nanish);
@@ -1643,7 +1740,7 @@ impl<'a> FunctionTranslator<'a> {
         self.call_native(NativeFuncId::Print, &[string_val64]);
     }
 
-    fn translate_import(&mut self, path: &str) -> Value {
+    fn translate_import(&mut self, path: &str) -> MValue {
         let vm_ptr = self.get_vm_ptr();
         let path_val = self.string_literal_owned(path.to_string());
         let result = self.call_native(NativeFuncId::ImportModule, &[vm_ptr, path_val])[0];
@@ -1652,6 +1749,6 @@ impl<'a> FunctionTranslator<'a> {
         self.assert(is_ok, |s| {
             s.print_string_constant(format!("ERROR: Import failed\n"));
         });
-        result
+        result.assert_owned()
     }
 }
