@@ -350,7 +350,7 @@ impl JIT {
 
             let mut variable_builder = VariableBuilder::new(&mut builder);
             for (var, val) in implicit_var_vals {
-                variable_builder.create_variable(var, val);
+                variable_builder.create_variable(var, val, true);
             }
             variable_builder.declare_variables_in_expr(body);
             variable_builder.variables
@@ -386,9 +386,15 @@ impl JIT {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FuncVar {
+    var: Variable,
+    owned: bool,
+}
+
 struct VariableBuilder<'a, 'b> {
     builder: &'a mut FunctionBuilder<'b>,
-    variables: HashMap<String, Variable>,
+    variables: HashMap<String, FuncVar>,
     index: usize,
 }
 
@@ -410,7 +416,7 @@ impl<'a, 'b> VariableBuilder<'a, 'b> {
                 closure_ptr,
                 (i * size_of::<Value64>()) as i32,
             );
-            self.create_variable(&var.name, val);
+            self.create_variable(&var.name, val, false);
         }
         for pattern in &*func.params {
             self.declare_variables_in_pattern(&pattern.value);
@@ -424,10 +430,10 @@ impl<'a, 'b> VariableBuilder<'a, 'b> {
             .copied()
             .unwrap();
         if let Some(name) = &func.name {
-            self.create_variable(name, self_val);
+            self.create_variable(name, self_val, false);
         } else {
             // HACK: We rely on variables to do cleanup of this value, so add it here even if unused.
-            self.create_variable("<UNUSED SELF>", self_val);
+            self.create_variable("<UNUSED SELF>", self_val, false);
         }
 
         self.declare_variables_in_expr(&func.body);
@@ -532,7 +538,7 @@ impl<'a, 'b> VariableBuilder<'a, 'b> {
                     .builder
                     .ins()
                     .f64const(f64::from_bits(value64::NIL_VALUE));
-                self.create_variable(&var.name, nil);
+                self.create_variable(&var.name, nil, true);
             }
             MatchPattern::Discard => {}
             MatchPattern::Constant(_) => {}
@@ -563,10 +569,10 @@ impl<'a, 'b> VariableBuilder<'a, 'b> {
         }
     }
 
-    fn create_variable(&mut self, name: &str, default_value: Value) {
+    fn create_variable(&mut self, name: &str, default_value: Value, owned: bool) {
         if !self.variables.contains_key(name) {
             let var = Variable::new(self.index);
-            self.variables.insert(name.into(), var);
+            self.variables.insert(name.into(), FuncVar { var, owned });
             self.builder.declare_var(var, VAL64);
             self.index += 1;
             self.define_variable(var, default_value, name);
@@ -588,7 +594,7 @@ impl<'a, 'b> VariableBuilder<'a, 'b> {
 struct FunctionTranslator<'a> {
     src_path: &'a Path,
     builder: FunctionBuilder<'a>,
-    variables: HashMap<String, Variable>,
+    variables: HashMap<String, FuncVar>,
     module: &'a mut JITModule,
     string_constants: &'a mut HashMap<String, Value64>,
     entry_block: Block,
@@ -599,11 +605,11 @@ struct FunctionTranslator<'a> {
 
 impl<'a> FunctionTranslator<'a> {
     fn translate_function_entry(&mut self, lambda: &LambdaExpr, entry_block: Block) {
-        for var in &lambda.potential_captures {
-            let var = *self.variables.get(&var.name).unwrap();
-            let val = self.builder.use_var(var);
-            self.clone_val64(val);
-        }
+        // for var in &lambda.potential_captures {
+        //     let var = *self.variables.get(&var.name).unwrap();
+        //     let val = self.builder.use_var(var.var);
+        //     self.clone_val64(val);
+        // }
         for (i, pattern) in lambda.params.iter().enumerate() {
             let value = self.builder.block_params(entry_block)[i + 2];
             self.translate_match_pattern(&pattern.value, value.assert_owned());
@@ -615,21 +621,7 @@ impl<'a> FunctionTranslator<'a> {
     fn translate_expr(&mut self, expr: &SpannedExpr) -> MValue {
         self.set_src_span(&expr.span);
         match &expr.value {
-            Expr::Variable(ref var) => {
-                let variable = *self
-                    .variables
-                    .get(&var.name)
-                    .unwrap_or_else(|| panic!("variable {} not defined", var.name));
-                let val = self.builder.use_var(variable);
-                if var.is_final {
-                    // Replace the variable instead of copying, because we know this won't be accessed again.
-                    let nil = self.const_nil();
-                    self.builder.def_var(variable, nil);
-                    MValue::owned(val)
-                } else {
-                    MValue::borrowed(val)
-                }
-            }
+            Expr::Variable(ref var) => self.use_var(var),
             Expr::Block(b) => {
                 for stmt in &b.statements {
                     self.translate_stmt(stmt);
@@ -710,7 +702,7 @@ impl<'a> FunctionTranslator<'a> {
                 .iconst(types::I64, variables.len() as i64);
             let mut return_dict = self.call_native(NativeFuncId::DictNew, &[capacity])[0];
             for (name, var) in variables {
-                let val = self.builder.use_var(var);
+                let val = self.builder.use_var(var.var);
                 let key = self.string_literal_owned(name);
                 return_dict =
                     self.call_native(NativeFuncId::DictInsert, &[return_dict, key, val])[0];
@@ -724,17 +716,19 @@ impl<'a> FunctionTranslator<'a> {
         } else {
             let variables = self.variables.values().cloned().collect::<Vec<_>>();
             for var in variables {
-                let val = self.builder.use_var(var);
-                self.drop_val64(val.assert_owned()); // TODO
+                if var.owned {
+                    let val = self.builder.use_var(var.var);
+                    self.drop_val64(val.assert_owned());
+                }
             }
             self.builder.ins().return_(&[return_value]);
         }
     }
 
     fn translate_indirect_call(&mut self, callee: &SpannedExpr, args: &Vec<SpannedExpr>) -> MValue {
-        let callee_val = self.translate_expr(callee).into_owned(self);
+        let callee_val = self.translate_expr(callee);
 
-        let (func_ptr, closure_ptr) = self.get_lambda_details(args, callee_val);
+        let (func_ptr, closure_ptr) = self.get_lambda_details(args, callee_val.borrow());
 
         // Null pointer means callee wasn't a lambda
         self.assert(func_ptr, |s| {
@@ -742,7 +736,7 @@ impl<'a> FunctionTranslator<'a> {
                 "ERROR (at {}): Tried to call something that isn't a function (or wrong parameter count): ",
                 callee.span.start
             ));
-            s.call_native(NativeFuncId::Print, &[callee_val]);
+            s.call_native(NativeFuncId::Print, &[callee_val.borrow()]);
             s.print_string_constant("\n".to_string());
         });
 
@@ -757,8 +751,7 @@ impl<'a> FunctionTranslator<'a> {
             arg_values.push(self.translate_expr(arg).into_owned(self))
         }
         // Add the function itself as a parameter, to support recursion.
-        // HACK: we rely on the function itself to drop this before it returns, which means we don't drop callee_val here.
-        arg_values.push(callee_val);
+        arg_values.push(callee_val.borrow());
         let call = self
             .builder
             .ins()
@@ -766,6 +759,7 @@ impl<'a> FunctionTranslator<'a> {
 
         let call_result = self.builder.inst_results(call)[0];
         let is_ok = self.cmp_bits_imm(IntCC::NotEqual, call_result, value64::ERROR_VALUE);
+        self.drop_val64(callee_val);
 
         self.assert(is_ok, |s| {
             s.print_string_constant(format!(
@@ -1130,9 +1124,9 @@ impl<'a> FunctionTranslator<'a> {
             [index, rest @ ..] => {
                 // "move" the value to update it, then write it back.
                 // We don't need to explicitly replace the value with NIL because we overwrite it later.
-                let old_val = self.builder.use_var(variable);
+                let old_val = self.builder.use_var(variable.var);
                 let new_val = self.assign_part(old_val, *index, rest, rhs);
-                self.builder.def_var(variable, new_val);
+                self.builder.def_var(variable.var, new_val);
             }
         };
     }
@@ -1449,8 +1443,8 @@ impl<'a> FunctionTranslator<'a> {
             .iconst(I64, lambda.potential_captures.len() as i64);
         let closure_slot = self.create_stack_slot(VAL64, lambda.potential_captures.len());
         for (i, var_ref) in lambda.potential_captures.iter().enumerate() {
-            let var = self.variables.get(&var_ref.name).unwrap();
-            let var_val = self.builder.use_var(*var);
+            let var = *self.variables.get(&var_ref.name).unwrap();
+            let var_val = self.builder.use_var(var.var);
             self.builder
                 .ins()
                 .stack_store(var_val, closure_slot, (i * 8) as i32);
@@ -1591,11 +1585,22 @@ impl<'a> FunctionTranslator<'a> {
     }
 
     fn use_var(&mut self, var_ref: &VarRef) -> MValue {
-        let var = self
+        let var = *self
             .variables
             .get(&var_ref.name)
             .unwrap_or_else(|| panic!("variable {} not defined", &var_ref.name));
-        self.builder.use_var(*var).assert_borrowed()
+        let val = self.builder.use_var(var.var);
+        if !var.owned {
+            return val.assert_borrowed();
+        }
+        if var_ref.is_final {
+            // Replace the variable instead of copying, because we know this won't be accessed again.
+            let nil = self.const_nil();
+            self.builder.def_var(var.var, nil);
+            val.assert_owned()
+        } else {
+            val.assert_borrowed()
+        }
     }
 
     fn def_var(&mut self, var_ref: &VarRef, val: MValue) {
@@ -1603,8 +1608,9 @@ impl<'a> FunctionTranslator<'a> {
             .variables
             .get(&var_ref.name)
             .unwrap_or_else(|| panic!("variable {} not defined", &var_ref.name));
+        assert!(var.owned, "can't assign values to borrowed variables");
         let val_owned = val.into_owned(self);
-        self.builder.def_var(var, val_owned); // TODO ?
+        self.builder.def_var(var.var, val_owned); // TODO ?
     }
 
     fn const_nil(&mut self) -> Value {
