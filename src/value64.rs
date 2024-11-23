@@ -183,6 +183,12 @@ impl Value64 {
 
     pub fn truthy(&self) -> bool {
         let bits = self.bits();
+        if bits == TRUE_VALUE {
+            return true;
+        }
+        if bits == FALSE_VALUE {
+            return false;
+        }
         match try_get_ptr_tag(bits) {
             Some(PointerTag::String) => !self.as_string().unwrap().is_empty(),
             Some(PointerTag::Dict) => true,
@@ -191,10 +197,6 @@ impl Value64 {
             None => {
                 if let Some(float) = self.as_f64() {
                     !float.is_nan() && float != 0.0
-                } else if bits == TRUE_VALUE {
-                    true
-                } else if bits == FALSE_VALUE {
-                    false
                 } else if bits == NIL_VALUE {
                     false
                 } else {
