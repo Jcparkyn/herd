@@ -5,6 +5,7 @@ use std::{
 
 use cranelift::prelude::{types, AbiParam, Signature, Type};
 use rand::Rng;
+use rayon::prelude::*;
 use regex::Regex;
 use strum::{EnumIter, IntoEnumIterator};
 
@@ -25,6 +26,14 @@ pub struct NativeFuncDef {
     pub name: &'static str,
     pub func_ptr: *const u8,
     pub make_sig: fn(&mut Signature) -> (),
+    pub needs_vm: bool,
+}
+
+impl NativeFuncDef {
+    pub fn with_vm(mut self) -> Self {
+        self.needs_vm = true;
+        self
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, EnumIter)]
@@ -87,7 +96,7 @@ impl<T> AbiType for *mut T {
     const TYPE: Type = types::I64;
 }
 
-impl AbiType for &mut VmContext {
+impl AbiType for &VmContext {
     const TYPE: Type = types::I64;
 }
 
@@ -125,7 +134,7 @@ fn get_native_func_def(func: NativeFuncId) -> NativeFuncDef {
         NativeFuncId::DictInsert => get_def!(3, dict_insert), // assert in JIT
         NativeFuncId::DictLookup => get_def!(3, dict_lookup),
         NativeFuncId::Clone => get_def!(1, clone),
-        NativeFuncId::Drop => get_def!(1, drop),
+        NativeFuncId::Drop => get_def!(1, val_drop),
         NativeFuncId::ValGetIndex => get_def!(2, val_get_index), // TODO
         NativeFuncId::ValSetIndex => get_def!(3, val_set_index), // TODO
         NativeFuncId::ValEq => get_def!(2, val_eq),
@@ -166,6 +175,7 @@ pub fn get_builtins() -> HashMap<&'static str, NativeFuncDef> {
     map.insert("assertTruthy", get_def!(1, assert_truthy));
     map.insert("regexFind", get_def!(2, regex_find));
     map.insert("regexReplace", get_def!(3, regex_replace));
+    map.insert("parallelMap", get_def!(3, parallel_map).with_vm());
 
     return map;
 }
@@ -187,6 +197,7 @@ macro_rules! generate_get_def {
                         sig.returns.push(AbiParam::new(TRet::TYPE));
                     }
                 },
+                needs_vm: false,
             }
         }
     };
@@ -296,7 +307,7 @@ macro_rules! guard_into_dict {
         match $val.try_into_dict() {
             Ok(d) => d,
             Err(v) => {
-                println!("ERROR: Expected a list, got {}", v);
+                println!("ERROR: Expected a dict, got {}", v);
                 return Value64::ERROR;
             }
         }
@@ -308,7 +319,19 @@ macro_rules! guard_string {
         match $val.as_string() {
             Some(l) => l,
             None => {
-                println!("ERROR: Expected a list, got {}", $val);
+                println!("ERROR: Expected a string, got {}", $val);
+                return Value64::ERROR;
+            }
+        }
+    };
+}
+
+macro_rules! guard_lambda {
+    ($val:expr) => {
+        match $val.as_lambda() {
+            Some(l) => l,
+            None => {
+                println!("ERROR: Expected a lambda, got {}", $val);
                 return Value64::ERROR;
             }
         }
@@ -442,7 +465,7 @@ pub extern "C" fn clone(val: Value64Ref) -> Value64 {
     val.clone()
 }
 
-pub extern "C" fn drop(val: Value64) {
+pub extern "C" fn val_drop(val: Value64) {
     std::mem::drop(val);
 }
 
@@ -573,7 +596,7 @@ pub extern "C" fn construct_lambda(
     Value64::from_lambda(rc_new(lambda))
 }
 
-pub extern "C" fn import_module(vm: &mut VmContext, name: Value64) -> Value64 {
+pub extern "C" fn import_module(vm: &VmContext, name: Value64) -> Value64 {
     let result = std::panic::catch_unwind(AssertUnwindSafe(|| import_module_panic(vm, &name)));
     match result {
         Ok(Ok(result)) => result,
@@ -584,12 +607,13 @@ pub extern "C" fn import_module(vm: &mut VmContext, name: Value64) -> Value64 {
     }
 }
 
-fn import_module_panic(vm: &mut VmContext, name: &Value64) -> Result<Value64, String> {
+fn import_module_panic(vmc: &VmContext, name: &Value64) -> Result<Value64, String> {
     let name = name.as_string().unwrap();
     let path = name.as_str();
 
+    let mut vm = vmc.jit.try_lock().unwrap();
     if let Some(maybe_module) = vm.modules.get(path) {
-        if let Some(module_result) = maybe_module {
+        if let Some(ref module_result) = *maybe_module {
             return Ok(module_result.clone());
         } else {
             return Err("Import cycle detected!".to_string());
@@ -619,8 +643,10 @@ fn import_module_panic(vm: &mut VmContext, name: &Value64) -> Result<Value64, St
     let main_func = vm
         .compile_program_as_function(&program_ast, &PathBuf::from(path))
         .map_err(|e| e.to_string())?;
+    drop(vm);
 
-    let result = unsafe { vm.run_func(main_func, vec![]) };
+    let result = unsafe { vmc.run_func(main_func, vec![]) };
+    let mut vm = vmc.jit.try_lock().unwrap();
     vm.modules.insert(path.to_string(), Some(result.clone()));
     return Ok(result);
 }
@@ -678,6 +704,19 @@ pub extern "C" fn regex_replace(text: Value64, regex: Value64, replacement: Valu
     let regex = Regex::new(regex_str).unwrap();
     let result = regex.replace_all(text_str, replacement_str);
     Value64::from_string(rc_new(result.to_string()))
+}
+
+pub extern "C" fn parallel_map(vm: &VmContext, list: Value64, func: Value64) -> Value64 {
+    let list = guard_list!(list);
+    let _ = guard_lambda!(func);
+
+    let result: Vec<_> = list
+        .values
+        .par_iter()
+        .map(|v| vm.run_lambda(&func, &[v.clone()]))
+        .collect();
+
+    Value64::from_list(rc_new(ListInstance::new(result)))
 }
 
 // TODO: Variadic functions

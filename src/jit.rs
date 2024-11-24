@@ -9,6 +9,7 @@ use std::{
     mem::{self, forget, size_of},
     ops::Deref,
     path::{Path, PathBuf},
+    sync::Mutex,
 };
 use strum::Display;
 use types::I64;
@@ -37,9 +38,7 @@ pub enum JITError {
 
 pub type JITResult<T> = Result<T, JITError>;
 
-pub type VmContext = JIT;
-
-pub trait ModuleLoader {
+pub trait ModuleLoader: Send + Sync {
     fn load(&self, path: &str) -> std::io::Result<String>;
 }
 
@@ -83,6 +82,65 @@ pub struct JIT {
     pub module_loader: Box<dyn ModuleLoader>,
     builtins_map: HashMap<&'static str, NativeFunc>,
     natives_map: HashMap<NativeFuncId, NativeFunc>,
+}
+
+pub struct VmContext {
+    pub jit: Mutex<JIT>,
+}
+
+impl VmContext {
+    pub fn new(jit: JIT) -> Self {
+        Self {
+            jit: Mutex::new(jit),
+        }
+    }
+
+    pub unsafe fn run_func(&self, func_id: FuncId, inputs: Vec<Value64>) -> Value64 {
+        let func_ptr = self
+            .jit
+            .lock()
+            .unwrap()
+            .module
+            .get_finalized_function(func_id);
+        // Cast the raw pointer to a typed function pointer. This is unsafe, because
+        // this is the critical point where you have to trust that the generated code
+        // is safe to be called.
+        let code_fn =
+            mem::transmute::<_, extern "C" fn(&Self, *const Value64) -> Value64>(func_ptr);
+        let inputs_ptr = inputs.as_ptr();
+        // Make code_fn "consume" the inputs
+        forget(inputs);
+        // And now we can call it!
+        code_fn(self, inputs_ptr)
+    }
+
+    pub fn run_lambda(&self, lambda_val: &Value64, params: &[Value64]) -> Value64 {
+        let lambda = lambda_val.as_lambda().unwrap();
+        assert!(lambda.param_count == params.len());
+        let func_ptr = lambda.func_ptr.unwrap();
+        match params {
+            [x1] => unsafe {
+                let code_fn = mem::transmute::<
+                    _,
+                    extern "C" fn(
+                        &Self,
+                        closure: *const Value64,
+                        x1: Value64,
+                        recursion: Value64,
+                    ) -> Value64,
+                >(func_ptr);
+                code_fn(
+                    self,
+                    lambda.closure.as_ptr(),
+                    x1.clone(),
+                    lambda_val.cheeky_copy(),
+                )
+            },
+            _ => {
+                panic!("Argument count not supported: {}", params.len())
+            }
+        }
+    }
 }
 
 /// An owned Value64
@@ -156,8 +214,8 @@ impl ValueExt for Value {
 #[derive(Debug, Clone)]
 struct NativeFunc {
     func: FuncId,
-    #[allow(dead_code)]
     sig: Signature,
+    needs_vm: bool,
 }
 
 fn build_native_funcs<TKey>(
@@ -174,7 +232,14 @@ where
         let func = module
             .declare_function(&def.name, Linkage::Import, &sig)
             .expect("problem declaring function");
-        result.insert(key, NativeFunc { func, sig });
+        result.insert(
+            key,
+            NativeFunc {
+                func,
+                sig,
+                needs_vm: def.needs_vm,
+            },
+        );
     }
     return result;
 }
@@ -246,20 +311,6 @@ impl JIT {
         }));
         let func_id = self.compile_main_func(&body, src_path, globals, true)?;
         Ok(func_id)
-    }
-
-    pub unsafe fn run_func(&mut self, func_id: FuncId, inputs: Vec<Value64>) -> Value64 {
-        let func_ptr = self.module.get_finalized_function(func_id);
-        // Cast the raw pointer to a typed function pointer. This is unsafe, because
-        // this is the critical point where you have to trust that the generated code
-        // is safe to be called.
-        let code_fn =
-            mem::transmute::<_, extern "C" fn(&mut JIT, *const Value64) -> Value64>(func_ptr);
-        let inputs_ptr = inputs.as_ptr();
-        // Make code_fn "consume" the inputs
-        forget(inputs);
-        // And now we can call it!
-        code_fn(self, inputs_ptr)
     }
 
     fn compile_main_func(
@@ -605,11 +656,6 @@ struct FunctionTranslator<'a> {
 
 impl<'a> FunctionTranslator<'a> {
     fn translate_function_entry(&mut self, lambda: &LambdaExpr, entry_block: Block) {
-        // for var in &lambda.potential_captures {
-        //     let var = *self.variables.get(&var.name).unwrap();
-        //     let val = self.builder.use_var(var.var);
-        //     self.clone_val64(val);
-        // }
         for (i, pattern) in lambda.params.iter().enumerate() {
             let value = self.builder.block_params(entry_block)[i + 2];
             self.translate_match_pattern(&pattern.value, value.assert_owned());
@@ -847,15 +893,16 @@ impl<'a> FunctionTranslator<'a> {
 
     /// Wraps [Self::call_native] and evaluates arguments
     fn call_native_eval(&mut self, func: &NativeFunc, args: &Vec<SpannedExpr>) -> Value {
-        let mut sig = self.module.make_signature();
-
-        for _arg in args {
-            sig.params.push(AbiParam::new(VAL64));
+        if func.needs_vm {
+            assert_eq!(func.sig.params.len(), args.len() + 1);
+        } else {
+            assert_eq!(func.sig.params.len(), args.len());
         }
 
-        sig.returns.push(AbiParam::new(VAL64));
-
         let mut arg_values = Vec::new();
+        if func.needs_vm {
+            arg_values.push(self.get_vm_ptr());
+        }
         for arg in args {
             arg_values.push(self.translate_expr(arg).into_owned(self))
         }

@@ -5,7 +5,7 @@ use std::process::ExitCode;
 
 use clap::Parser;
 use herd::analysis::{AnalysisError, Analyzer};
-use herd::jit::{self, DefaultModuleLoader};
+use herd::jit::{self, DefaultModuleLoader, VmContext};
 use herd::lang;
 use herd::lang::ProgramParser;
 use herd::lines::Lines;
@@ -93,7 +93,8 @@ fn run_file(path: &Path, args: &Args) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let result = unsafe { jit.run_func(main_func, vec![]) };
+    let vmc = VmContext::new(jit);
+    let result = unsafe { vmc.run_func(main_func, vec![]) };
     if result.is_error() {
         return ExitCode::FAILURE;
     }
@@ -152,7 +153,9 @@ fn run_repl(args: Args) {
     let prelude_func = jit
         .compile_repl_as_function(&prelude_ast, &current_dir, &[])
         .unwrap();
-    let prelude_return = unsafe { jit.run_func(prelude_func, vec![]) };
+
+    let vmc = VmContext::new(jit);
+    let prelude_return = unsafe { vmc.run_func(prelude_func, vec![]) };
     let mut globals = get_repl_globals(&prelude_return).globals;
     // Keep track of previous number of lines entered, so new code has unique line counts.
     let mut line_count = 0usize;
@@ -190,11 +193,14 @@ fn run_repl(args: Args) {
         }
 
         let (names, values): (Vec<String>, Vec<Value64>) = globals.iter().cloned().unzip();
-        let func = jit
+        let func = vmc
+            .jit
+            .lock()
+            .unwrap()
             .compile_repl_as_function(&statements, &current_dir, &names)
             .unwrap();
 
-        let func_return = unsafe { jit.run_func(func, values) };
+        let func_return = unsafe { vmc.run_func(func, values) };
         if func_return.is_error() {
             // TODO: We need to roll back the analyzer state here.
             println!("Error!");

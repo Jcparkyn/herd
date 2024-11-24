@@ -3,7 +3,7 @@ use std::fmt::Display;
 use std::path::PathBuf;
 
 use herd::analysis::Analyzer;
-use herd::jit::{self, ModuleLoader};
+use herd::jit::{self, ModuleLoader, VmContext};
 use herd::lang::ProgramParser;
 use herd::rc::Weak;
 use herd::value64::{Boxable, RcTrackList, Value64, RC_TRACKER};
@@ -845,6 +845,23 @@ fn stdlib_sort() {
     assert_rcs_dropped();
 }
 
+#[test]
+fn parallel_map() {
+    let main_program = r#"
+        inputs = range 0 10002;
+        results = List.parallelMap inputs (\x\ x - 5000);
+        var sum = 0;
+        for x in results do (
+            set sum = sum + x;
+        )
+        return sum;
+    "#;
+
+    let result = eval_snapshot_str(main_program);
+    insta::assert_snapshot!(result, @"5001");
+    assert_rcs_dropped();
+}
+
 fn eval_snapshot(program: &str, modules: HashMap<String, String>) -> Value64 {
     let parser = ProgramParser::new();
     let prelude_ast = parser.parse(include_str!("../src/prelude.herd")).unwrap();
@@ -860,7 +877,8 @@ fn eval_snapshot(program: &str, modules: HashMap<String, String>) -> Value64 {
         .compile_program_as_function(&program_ast, &src_path)
         .unwrap();
     reset_tracker();
-    let result = unsafe { jit.run_func(main_func, vec![]) };
+    let vmc = VmContext::new(jit);
+    let result = unsafe { vmc.run_func(main_func, vec![]) };
 
     result
 }

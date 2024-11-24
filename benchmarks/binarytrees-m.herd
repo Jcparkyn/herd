@@ -1,0 +1,42 @@
+// https://github.com/hanabi1224/Programming-Language-Benchmarks/blob/main/bench/algorithm/binarytrees/1.py
+
+!{ shiftLeft } = import '@bitwise';
+
+makeTree = \d\ if d > 0 then (
+  [makeTree (d - 1), makeTree (d - 1)]
+) else (
+  [(), ()]
+);
+
+checkTree = \node\ switch node on {
+  [(), ()] => 1,
+  [l, r] => 1 + (checkTree l) + (checkTree r),
+};
+
+makeCheck = \d\ checkTree (makeTree d);
+
+run = \n\ (
+  minDepth = 4;
+  maxDepth = n;
+  stretchDepth = maxDepth + 1;
+  printf ['stretch tree of depth ', stretchDepth, ' check: ', (makeCheck stretchDepth)];
+  longLivedTree = makeTree maxDepth;
+  mmd = maxDepth + minDepth;
+  results = BUILTIN:parallelMap (range minDepth stretchDepth) \(
+    d = _;
+    i = shiftLeft 1 (mmd - d);
+    var cs = 0;
+    for _ in range 0 i do (
+      set cs = cs + (makeCheck d);
+    )
+    [i, d, cs]
+  );
+  for [i, d, cs] in results do (
+    printf [i, ' trees of depth ', d, ' check: ', cs];
+  )
+  printf ['long lived tree of depth ', maxDepth, ' check: ', (checkTree longLivedTree)];
+);
+
+main = \\ run 16;
+
+main ();

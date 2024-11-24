@@ -18,6 +18,12 @@ map = \var arr f\ (
   arr
 );
 
+parallelMap = \arr f\ BUILTIN:parallelMap arr f;
+
+call = \f\ f ();
+
+parallelRun = \arr\ BUILTIN:parallelMap arr call;
+
 filter = \arr f\ (
   var result = [];
   for item in arr do (
@@ -77,6 +83,14 @@ flatten = \l\ (
   result
 );
 
+sum = \l\ (
+  var result = 0;
+  for item in l do (
+    set result = result + item;
+  )
+  result
+);
+
 return {
   push,
   pop,
@@ -89,4 +103,7 @@ return {
   repeat,
   zip,
   flatten,
+  parallelMap,
+  parallelRun,
+  sum,
 };
