@@ -322,7 +322,8 @@ fn analyze_statement_liveness(stmt: &mut Statement, deps: &mut HashSet<String>) 
             analyze_expr_liveness(&mut expr.value, deps);
         }
         Statement::Return(expr) => {
-            deps.clear(); // No variables can be used after a return
+            // TODO: this breaks the REPL
+            // deps.clear(); // No variables can be used after a return
             analyze_expr_liveness(&mut expr.value, deps)
         }
     }
