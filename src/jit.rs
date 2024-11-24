@@ -122,7 +122,7 @@ impl MValue {
     }
 }
 
-trait AsBValue {
+trait AsBValue: Copy {
     fn as_bvalue(&self) -> BValue;
 }
 
@@ -1164,8 +1164,7 @@ impl<'a> FunctionTranslator<'a> {
         else_body: &Option<Box<SpannedExpr>>,
     ) -> MValue {
         let condition_value = self.translate_expr(condition);
-        let condition_u8 =
-            self.call_native(NativeFuncId::ValTruthy, &[condition_value.borrow()])[0];
+        let condition_u8 = self.is_truthy(condition_value);
         self.drop_val64(condition_value);
 
         let then_block = self.builder.create_block();
@@ -1673,7 +1672,32 @@ impl<'a> FunctionTranslator<'a> {
     }
 
     fn is_truthy(&mut self, val: impl AsBValue) -> Value {
-        self.call_native(NativeFuncId::ValTruthy, &[val.as_bvalue()])[0]
+        let not_bool_block = self.builder.create_block();
+        let merge_block = self.builder.create_block();
+        self.builder.append_block_param(merge_block, types::I8);
+
+        let val_bits = self.val_bits(val);
+        let is_t = self
+            .builder
+            .ins()
+            .icmp_imm(IntCC::Equal, val_bits, value64::TRUE_VALUE as i64);
+        let is_f = self
+            .builder
+            .ins()
+            .icmp_imm(IntCC::Equal, val_bits, value64::FALSE_VALUE as i64);
+        let is_bool = self.builder.ins().bor(is_t, is_f);
+        self.builder
+            .ins()
+            .brif(is_bool, merge_block, &[is_t], not_bool_block, &[]);
+
+        self.builder.switch_to_block(not_bool_block);
+        self.builder.seal_block(not_bool_block);
+        let truthy = self.call_native(NativeFuncId::ValTruthy, &[val.as_bvalue()])[0];
+        self.builder.ins().jump(merge_block, &[truthy]);
+
+        self.builder.switch_to_block(merge_block);
+        self.builder.seal_block(merge_block);
+        self.builder.block_params(merge_block)[0]
     }
 
     fn is_nil(&mut self, val: impl AsBValue) -> Value {
