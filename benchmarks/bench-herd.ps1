@@ -7,3 +7,5 @@ hyperfine --min-runs 2 --sort command `
   '.\target\release\herd.exe .\benchmarks\helloworld.herd' `
   '.\target\release\herd.exe .\benchmarks\iterables.herd' `
   '.\target\release\herd.exe .\benchmarks\mandelbrot.herd'
+
+./benchmarks/compare.ps1

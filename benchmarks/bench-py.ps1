@@ -6,3 +6,4 @@ hyperfine --min-runs 2 --sort command `
   'py -3.11 .\benchmarks\iterables.py' `
   'py -3.11 .\benchmarks\mandelbrot.py'
 
+./benchmarks/compare.ps1
