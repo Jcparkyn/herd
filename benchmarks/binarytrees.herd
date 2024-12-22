@@ -33,6 +33,12 @@ run = \n\ (
   printf ['long lived tree of depth ', maxDepth, ' check: ', (checkTree longLivedTree)];
 );
 
-main = \\ run 16;
+main = \\ (
+  n = switch System.args on {
+    [] => 16,
+    [n] => Math.parseFloat n,
+  };
+  run n;
+);
 
 main ();

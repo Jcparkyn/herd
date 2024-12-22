@@ -178,6 +178,7 @@ pub fn get_builtins() -> HashMap<&'static str, NativeFuncDef> {
     map.insert("parallelMap", get_def!(3, parallel_map).with_vm());
     map.insert("epochTime", get_def!(0, epoch_time));
     map.insert("parseFloat", get_def!(1, parse_float));
+    map.insert("programArgs", get_def!(1, program_args).with_vm());
 
     return map;
 }
@@ -738,6 +739,15 @@ pub extern "C" fn parse_float(val: Value64) -> Value64 {
         Ok(f) => Value64::from_f64(f),
         Err(_) => Value64::NIL,
     }
+}
+
+pub extern "C" fn program_args(vm: &VmContext) -> Value64 {
+    let args = vm.program_args.clone();
+    let mut result = Vec::new();
+    for arg in args {
+        result.push(Value64::from_string(rc_new(arg)));
+    }
+    Value64::from_list(rc_new(ListInstance::new(result)))
 }
 
 // TODO: Variadic functions

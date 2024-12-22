@@ -1,6 +1,9 @@
 
 epochTime = \\ BUILTIN:epochTime;
 
+args = BUILTIN:programArgs;
+
 return {
   epochTime,
+  args,
 };

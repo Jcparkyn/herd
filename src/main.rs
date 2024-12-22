@@ -27,14 +27,14 @@ static GLOBAL: MiMalloc = MiMalloc;
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
-    #[arg()]
-    file: Option<String>,
-
     #[arg(long)]
     ast: bool,
 
-    #[arg(long)]
-    jit: bool,
+    #[arg()]
+    file: Option<String>,
+
+    #[arg(allow_hyphen_values = true)]
+    program_args: Vec<String>,
 }
 
 fn main() -> ExitCode {
@@ -83,6 +83,7 @@ fn run_file(path: &Path, args: &Args) -> ExitCode {
     let module_loader = DefaultModuleLoader {
         base_path: path.parent().unwrap().to_path_buf(),
     };
+
     let mut jit = jit::JIT::new(Box::new(module_loader));
     // TODO: Make it impossible to import from the root script, to prevent cycles
     // jit.modules.insert(path.canonicalize().unwrap(), None);
@@ -93,7 +94,7 @@ fn run_file(path: &Path, args: &Args) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let vmc = VmContext::new(jit);
+    let vmc = VmContext::new(jit, args.program_args.clone());
     let result = unsafe { vmc.run_func(main_func, vec![]) };
     if result.is_error() {
         return ExitCode::FAILURE;
@@ -154,7 +155,7 @@ fn run_repl(args: Args) {
         .compile_repl_as_function(&prelude_ast, &current_dir, &[])
         .unwrap();
 
-    let vmc = VmContext::new(jit);
+    let vmc = VmContext::new(jit, args.program_args.clone());
     let prelude_return = unsafe { vmc.run_func(prelude_func, vec![]) };
     let mut globals = get_repl_globals(&prelude_return).globals;
     // Keep track of previous number of lines entered, so new code has unique line counts.

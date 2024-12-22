@@ -877,7 +877,7 @@ fn eval_snapshot(program: &str, modules: HashMap<String, String>) -> Value64 {
         .compile_program_as_function(&program_ast, &src_path)
         .unwrap();
     reset_tracker();
-    let vmc = VmContext::new(jit);
+    let vmc = VmContext::new(jit, vec![]);
     let result = unsafe { vmc.run_func(main_func, vec![]) };
 
     result

@@ -86,12 +86,14 @@ pub struct JIT {
 
 pub struct VmContext {
     pub jit: Mutex<JIT>,
+    pub program_args: Vec<String>,
 }
 
 impl VmContext {
-    pub fn new(jit: JIT) -> Self {
+    pub fn new(jit: JIT, program_args: Vec<String>) -> Self {
         Self {
             jit: Mutex::new(jit),
+            program_args,
         }
     }
 
