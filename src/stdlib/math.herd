@@ -15,7 +15,11 @@ clamp = \x min max\ (
 
 pow = \a b\ BUILTIN:floatPow a b;
 
+sqrt = \val\ BUILTIN:floatPow val 0.5;
+
 parseFloat = \str\ BUILTIN:parseFloat str;
+
+PI = 3.14159265358979323846264338327950288;
 
 return {
   floor,
@@ -24,5 +28,7 @@ return {
   min,
   clamp,
   pow,
+  sqrt,
   parseFloat,
+  PI,
 };
