@@ -177,6 +177,7 @@ pub fn get_builtins() -> HashMap<&'static str, NativeFuncDef> {
     map.insert("regexReplace", get_def!(3, regex_replace));
     map.insert("parallelMap", get_def!(3, parallel_map).with_vm());
     map.insert("epochTime", get_def!(0, epoch_time));
+    map.insert("parseFloat", get_def!(1, parse_float));
 
     return map;
 }
@@ -729,6 +730,14 @@ pub extern "C" fn epoch_time() -> Value64 {
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap();
     Value64::from_f64(duration_since_epoch.as_secs_f64())
+}
+
+pub extern "C" fn parse_float(val: Value64) -> Value64 {
+    let s = guard_string!(val);
+    match s.parse::<f64>() {
+        Ok(f) => Value64::from_f64(f),
+        Err(_) => Value64::NIL,
+    }
 }
 
 // TODO: Variadic functions
