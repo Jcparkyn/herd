@@ -5,6 +5,8 @@
   assert,
 } = import '@basics';
 
+System = import '@system';
+
 IO = import '@io';
 
 !{

@@ -1,5 +1,6 @@
 pub fn load_stdlib_module(name: &str) -> &'static str {
     match name {
+        "@system" => include_str!("system.herd"),
         "@basics" => include_str!("basics.herd"),
         "@bitwise" => include_str!("bitwise.herd"),
         "@dict" => include_str!("dict.herd"),

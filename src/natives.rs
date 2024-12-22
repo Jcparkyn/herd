@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap, mem::ManuallyDrop, ops::Deref, panic::AssertUnwindSafe, path::PathBuf,
-    ptr::null,
+    ptr::null, time::SystemTime,
 };
 
 use cranelift::prelude::{types, AbiParam, Signature, Type};
@@ -176,6 +176,7 @@ pub fn get_builtins() -> HashMap<&'static str, NativeFuncDef> {
     map.insert("regexFind", get_def!(2, regex_find));
     map.insert("regexReplace", get_def!(3, regex_replace));
     map.insert("parallelMap", get_def!(3, parallel_map).with_vm());
+    map.insert("epochTime", get_def!(0, epoch_time));
 
     return map;
 }
@@ -203,7 +204,7 @@ macro_rules! generate_get_def {
     };
 }
 
-// generate_get_def!(get_def0);
+generate_get_def!(get_def0);
 generate_get_def!(get_def1, T1);
 generate_get_def!(get_def2, T1, T2);
 generate_get_def!(get_def3, T1, T2, T3);
@@ -717,6 +718,17 @@ pub extern "C" fn parallel_map(vm: &VmContext, list: Value64, func: Value64) -> 
         .collect();
 
     Value64::from_list(rc_new(ListInstance::new(result)))
+}
+
+pub extern "C" fn epoch_time() -> Value64 {
+    // time::Instant::
+    // let start = std::time::Instant::now();
+    // let elapsed = start.elapsed();
+    // std::time::Instant::
+    let duration_since_epoch = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap();
+    Value64::from_f64(duration_since_epoch.as_secs_f64())
 }
 
 // TODO: Variadic functions
