@@ -57,15 +57,15 @@ offsetMomentum = \var bodies\ (
   var px = 0;
   var py = 0;
   var pz = 0;
-  for body in bodies do (
-    mass = body.mass;
-    set px = px + (body.vx * mass);
-    set py = py + (body.vy * mass);
-    set pz = pz + (body.vz * mass);
-  )
-  set bodies.[0].vx = (0 - px) / SOLAR_MASS;
-  set bodies.[0].vy = (0 - py) / SOLAR_MASS;
-  set bodies.[0].vz = (0 - pz) / SOLAR_MASS;
+  // for body in bodies do (
+  //   mass = body.mass;
+  //   set px = px + (body.vx * mass);
+  //   set py = py + (body.vy * mass);
+  //   set pz = pz + (body.vz * mass);
+  // )
+  set bodies.[0].vx = 69;
+  set bodies.[0].vy = 69;
+  set bodies.[0].vz = 69;
   bodies
 );
 
@@ -90,17 +90,17 @@ advance = \var bodies dt\ (
       set vzi = vzi - (dz * massj * mag);
 
       massi = bodyi.mass;
-      set bodies.[j].vx = bodyj.vx + (dx * massi * mag);
-      set bodies.[j].vy = bodyj.vy + (dy * massi * mag);
-      set bodies.[j].vz = bodyj.vz + (dz * massi * mag);
+      set bodies.[j].vx = bodies.[j].vx + (dx * massi * mag);
+      set bodies.[j].vy = bodies.[j].vy + (dy * massi * mag);
+      set bodies.[j].vz = bodies.[j].vz + (dz * massi * mag);
     )
     set bodies.[i].vx = vxi;
     set bodies.[i].vy = vyi;
     set bodies.[i].vz = vzi;
 
-    set bodies.[i].x = bodyi.x + (dt * vxi);
-    set bodies.[i].y = bodyi.y + (dt * vyi);
-    set bodies.[i].z = bodyi.z + (dt * vzi);
+    set bodies.[i].x = bodies.[i].x + (dt * vxi);
+    set bodies.[i].y = bodies.[i].y + (dt * vyi);
+    set bodies.[i].z = bodies.[i].z + (dt * vzi);
   )
   bodies
 );
