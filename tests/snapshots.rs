@@ -426,11 +426,12 @@ fn nested_assign() {
         a = [{x: 1, y: 2}, 3];
         var b = a;
         set b.[0].x = 4;
+        set b.[0].y = b.[0].y + 1;
         set b.[1] = 5;
         return [a, b];
     "#;
     let result = eval_snapshot_str(program);
-    insta::assert_snapshot!(result, @"[[[x: 1, y: 2], 3], [[x: 4, y: 2], 5]]");
+    insta::assert_snapshot!(result, @"[[[x: 1, y: 2], 3], [[x: 4, y: 3], 5]]");
     assert_rcs_dropped();
 }
 

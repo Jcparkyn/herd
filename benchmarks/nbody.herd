@@ -57,50 +57,48 @@ offsetMomentum = \var bodies\ (
   var px = 0;
   var py = 0;
   var pz = 0;
-  for body in bodies do (
-    mass = body.mass;
-    set px = px + (body.vx * mass);
-    set py = py + (body.vy * mass);
-    set pz = pz + (body.vz * mass);
-  )
-  set bodies.[0].vx = (0 - px) / SOLAR_MASS;
-  set bodies.[0].vy = (0 - py) / SOLAR_MASS;
-  set bodies.[0].vz = (0 - pz) / SOLAR_MASS;
+  // for body in bodies do (
+  //   mass = body.mass;
+  //   set px = px + (body.vx * mass);
+  //   set py = py + (body.vy * mass);
+  //   set pz = pz + (body.vz * mass);
+  // )
+  set bodies.[0].vx = 69;
+  set bodies.[0].vy = 69;
+  set bodies.[0].vz = 69;
   bodies
 );
 
 advance = \var bodies dt\ (
   for i in range 0 (len bodies) do (
-    bodyi = bodies.[i];
-    var vxi = bodyi.vx;
-    var vyi = bodyi.vy;
-    var vzi = bodyi.vz;
+    var vxi = bodies.[i].vx;
+    var vyi = bodies.[i].vy;
+    var vzi = bodies.[i].vz;
     for j in range (i + 1) (len bodies) do (
-      bodyj = bodies.[j];
-      dx = bodyi.x - bodyj.x;
-      dy = bodyi.y - bodyj.y;
-      dz = bodyi.z - bodyj.z;
+      dx = bodies.[i].x - bodies.[j].x;
+      dy = bodies.[i].y - bodies.[j].y;
+      dz = bodies.[i].z - bodies.[j].z;
 
       d2 = dx * dx + dy * dy + dz * dz;
       mag = dt / (d2 * (Math.sqrt d2));
 
-      massj = bodyj.mass;
+      massj = bodies.[j].mass;
       set vxi = vxi - (dx * massj * mag);
       set vyi = vyi - (dy * massj * mag);
       set vzi = vzi - (dz * massj * mag);
 
-      massi = bodyi.mass;
-      set bodies.[j].vx = bodyj.vx + (dx * massi * mag);
-      set bodies.[j].vy = bodyj.vy + (dy * massi * mag);
-      set bodies.[j].vz = bodyj.vz + (dz * massi * mag);
+      massi = bodies.[i].mass;
+      set bodies.[j].vx = bodies.[j].vx + (dx * massi * mag);
+      set bodies.[j].vy = bodies.[j].vy + (dy * massi * mag);
+      set bodies.[j].vz = bodies.[j].vz + (dz * massi * mag);
     )
     set bodies.[i].vx = vxi;
     set bodies.[i].vy = vyi;
     set bodies.[i].vz = vzi;
 
-    set bodies.[i].x = bodyi.x + (dt * vxi);
-    set bodies.[i].y = bodyi.y + (dt * vyi);
-    set bodies.[i].z = bodyi.z + (dt * vzi);
+    set bodies.[i].x = bodies.[i].x + (dt * vxi);
+    set bodies.[i].y = bodies.[i].y + (dt * vyi);
+    set bodies.[i].z = bodies.[i].z + (dt * vzi);
   )
   bodies
 );

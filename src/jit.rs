@@ -805,16 +805,9 @@ impl<'a> FunctionTranslator<'a> {
             .ins()
             .call_indirect(sig_ref, func_ptr, &arg_values);
 
-        let call_result = self.builder.inst_results(call)[0];
-        let is_ok = self.cmp_bits_imm(IntCC::NotEqual, call_result, value64::ERROR_VALUE);
         self.drop_val64(callee_val);
-
-        self.assert(is_ok, |s| {
-            s.print_string_constant(format!(
-                "ERROR (at {}): Function call failed\n",
-                callee.span.start
-            ));
-        });
+        let call_result = self.builder.inst_results(call)[0];
+        self.assert_func_ret_ok(call_result, &callee.span);
 
         return call_result.assert_owned();
     }
@@ -864,8 +857,8 @@ impl<'a> FunctionTranslator<'a> {
             assert!(args.len() == 2);
             let lhs = s.translate_expr(&args[0]);
             let rhs = s.translate_expr(&args[1]);
-            s.guard_f64(lhs);
-            s.guard_f64(rhs);
+            s.guard_f64(lhs, &args[0].span);
+            s.guard_f64(rhs, &args[1].span);
             let lhs2 = s.builder.ins().fcvt_to_sint_sat(types::I64, lhs.borrow());
             let rhs2 = s.builder.ins().fcvt_to_sint_sat(types::I64, rhs.borrow());
             let result = op(s, lhs2, rhs2);
@@ -881,7 +874,7 @@ impl<'a> FunctionTranslator<'a> {
             "floor" => {
                 assert!(args.len() == 1);
                 let val = self.translate_expr(&args[0]);
-                self.guard_f64(val);
+                self.guard_f64(val, &args[0].span);
                 self.builder.ins().floor(val.borrow()).assert_owned()
             }
             _ => {
@@ -1192,9 +1185,17 @@ impl<'a> FunctionTranslator<'a> {
                 return self.call_native(NativeFuncId::ValSetIndex, &[val, index, rhs])[0];
             }
             [next_index, rest @ ..] => {
-                let old_val = self.call_native(NativeFuncId::ValGetIndex, &[val, index])[0];
-                let new_val = self.assign_part(old_val, *next_index, rest, rhs);
-                return self.call_native(NativeFuncId::ValSetIndex, &[val, index, new_val])[0];
+                let old_part_slot = self.create_stack_slot(VAL64, 1);
+                // For some reason if we don't store something in the slot, we occasionally get
+                // STATUS_ACCESS_VIOLATION when writing to this pointer from Rust?
+                self.builder.ins().stack_store(rhs, old_part_slot, 0);
+                let old_part_ptr = self.builder.ins().stack_addr(PTR, old_part_slot, 0);
+                let val =
+                    self.call_native(NativeFuncId::ValReplaceIndex, &[val, index, old_part_ptr])[0];
+                self.assert_func_ret_ok(val, &Span::default());
+                let old_part = self.builder.ins().stack_load(VAL64, old_part_slot, 0);
+                let new_part = self.assign_part(old_part, *next_index, rest, rhs);
+                return self.call_native(NativeFuncId::ValSetIndex, &[val, index, new_part])[0];
             }
         }
     }
@@ -1357,7 +1358,7 @@ impl<'a> FunctionTranslator<'a> {
     fn translate_op(&mut self, op: Opcode, lhs: &SpannedExpr, rhs: &SpannedExpr) -> MValue {
         fn eval_f64(s: &mut FunctionTranslator, expr: &SpannedExpr) -> Value {
             let result = s.translate_expr(expr).borrow();
-            s.guard_f64(result);
+            s.guard_f64(result, &expr.span);
             result
         }
         match op {
@@ -1616,6 +1617,14 @@ impl<'a> FunctionTranslator<'a> {
         self.builder.insert_block_after(ok_block, before_block);
     }
 
+    fn assert_func_ret_ok(&mut self, val: Value, span: &Span) {
+        let is_ok = self.cmp_bits_imm(IntCC::NotEqual, val, value64::ERROR_VALUE);
+
+        self.assert(is_ok, |s| {
+            s.print_string_constant(format!("ERROR (at {}): Function call failed\n", span.start));
+        });
+    }
+
     fn do_if(&mut self, cond: Value, then: impl FnOnce(&mut Self)) {
         let then_block = self.builder.create_block();
         let after_block = self.builder.create_block();
@@ -1790,13 +1799,18 @@ impl<'a> FunctionTranslator<'a> {
             .icmp_imm(IntCC::Equal, and, value64::pointer_mask(tag) as i64)
     }
 
-    fn guard_f64(&mut self, val: impl AsBValue) {
+    fn guard_f64(&mut self, val: impl AsBValue, span: &Span) {
         let val_int = self.val_bits(val);
         let nanish = value64::NANISH as i64;
         let and = self.builder.ins().band_imm(val_int, nanish);
         let is_f64 = self.builder.ins().icmp_imm(IntCC::NotEqual, and, nanish);
         self.assert(is_f64, |s| {
-            s.print_string_constant("Expected an f64\n".to_string());
+            s.print_string_constant(format!(
+                "ERROR (at {}): Expected an f64, found ",
+                span.start
+            ));
+            s.call_native(NativeFuncId::Print, &[val.as_bvalue()]);
+            s.print_string_constant("\n".to_string());
         });
     }
 

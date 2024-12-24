@@ -48,6 +48,7 @@ pub enum NativeFuncId {
     Clone,
     Drop,
     ValGetIndex,
+    ValReplaceIndex,
     ValSetIndex,
     ValEq,
     ValEqU8,
@@ -136,6 +137,7 @@ fn get_native_func_def(func: NativeFuncId) -> NativeFuncDef {
         NativeFuncId::Clone => get_def!(1, clone),
         NativeFuncId::Drop => get_def!(1, val_drop),
         NativeFuncId::ValGetIndex => get_def!(2, val_get_index), // TODO
+        NativeFuncId::ValReplaceIndex => get_def!(3, val_take_index), // TODO
         NativeFuncId::ValSetIndex => get_def!(3, val_set_index), // TODO
         NativeFuncId::ValEq => get_def!(2, val_eq),
         NativeFuncId::ValEqU8 => get_def!(2, val_eq_u8),
@@ -246,13 +248,17 @@ fn rc_new<T: Boxable>(val: T) -> Rc<T> {
     rc
 }
 
-fn rc_mutate<T: Boxable + Clone, F: FnOnce(&mut T)>(rc: &mut Rc<T>, action: F) {
+fn rc_mutate<T: Boxable + Clone, F: FnOnce(&mut T) -> TRet, TRet>(
+    rc: &mut Rc<T>,
+    action: F,
+) -> TRet {
     let mut_val = Rc::make_mut(rc);
-    action(mut_val);
+    let ret = action(mut_val);
     #[cfg(debug_assertions)]
     RC_TRACKER.with(|tracker| {
         tracker.borrow_mut().track(rc);
     });
+    ret
 }
 
 macro_rules! guard_f64 {
@@ -470,6 +476,42 @@ pub extern "C" fn clone(val: Value64Ref) -> Value64 {
 
 pub extern "C" fn val_drop(val: Value64) {
     std::mem::drop(val);
+}
+
+// Replaces the element at an index with NIL, and returns the old element via element_out.
+// The return value is the new list/dict.
+pub extern "C" fn val_take_index(
+    val: Value64,
+    index: Value64Ref,
+    element_out: *mut Value64,
+) -> Value64 {
+    if val.is_list() {
+        let index_int = guard_usize!(index);
+        let mut list = val.try_into_list().unwrap();
+        if index_int >= list.values.len() {
+            println!("ERROR: Out of range");
+            return Value64::ERROR;
+        }
+        let element = rc_mutate(&mut list, |l| {
+            std::mem::replace(&mut l.values[index_int], Value64::from_f64(69.0))
+        });
+        unsafe { *element_out = element };
+        Value64::from_list(list)
+    } else if val.is_dict() {
+        let mut dict = val.try_into_dict().unwrap();
+        let element = rc_mutate(&mut dict, |d| {
+            if let Some(value) = d.values.get_mut(&index) {
+                std::mem::replace(value, Value64::from_f64(70.0))
+            } else {
+                Value64::NIL
+            }
+        });
+        unsafe { *element_out = element };
+        Value64::from_dict(dict)
+    } else {
+        println!("Expected list or dict, was {}", val);
+        Value64::ERROR
+    }
 }
 
 pub extern "C" fn val_get_index(val: Value64Ref, index: Value64Ref) -> Value64 {
