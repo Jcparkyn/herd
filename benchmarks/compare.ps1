@@ -43,7 +43,7 @@ foreach ($file in $benchmarkFiles) {
             $percentDiff = (($timeMs - $baselineTime) / $baselineTime) * 100
             
             # Add color based on performance
-            $color = if ($percentDiff -le -1) { $red } elseif ($percentDiff -ge 1) { $green } else { $reset }
+            $color = if ($percentDiff -le -1) { $green } elseif ($percentDiff -ge 1) { $red } else { $reset }
             $formattedValue = "$color{0:F1}ms ({1:F1}%)$reset" -f $timeMs, $percentDiff
         }
         
