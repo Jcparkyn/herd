@@ -377,7 +377,7 @@ fn dict_literal() {
         return [dict, dict.a, dict.b];
     "#;
     let result = eval_snapshot_str(program);
-    insta::assert_snapshot!(result, @"[[a: 'A', b: 'B'], 'A', 'B']");
+    insta::assert_snapshot!(result, @"[{a: 'A', b: 'B'}, 'A', 'B']");
     assert_rcs_dropped();
 }
 
@@ -389,7 +389,7 @@ fn dict_literal_shorthand() {
         return dict;
     "#;
     let result = eval_snapshot_str(program);
-    insta::assert_snapshot!(result, @"[a: 'A', b: 'B']");
+    insta::assert_snapshot!(result, @"{a: 'A', b: 'B'}");
     assert_rcs_dropped();
 }
 
@@ -416,7 +416,7 @@ fn dict_assign() {
         return [a, b];
     "#;
     let result = eval_snapshot_str(program);
-    insta::assert_snapshot!(result, @"[[x: 1, y: 2], [x: 4, y: 2]]");
+    insta::assert_snapshot!(result, @"[{x: 1, y: 2}, {x: 4, y: 2}]");
     assert_rcs_dropped();
 }
 
@@ -431,7 +431,7 @@ fn nested_assign() {
         return [a, b];
     "#;
     let result = eval_snapshot_str(program);
-    insta::assert_snapshot!(result, @"[[[x: 1, y: 2], 3], [[x: 4, y: 3], 5]]");
+    insta::assert_snapshot!(result, @"[[{x: 1, y: 2}, 3], [{x: 4, y: 3}, 5]]");
     assert_rcs_dropped();
 }
 

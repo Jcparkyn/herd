@@ -610,7 +610,7 @@ impl Clone for DictInstance {
 impl Display for DictInstance {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.values.is_empty() {
-            return write!(f, "[:]");
+            return write!(f, "{{}}");
         }
         let mut entries: Vec<_> = self.values.iter().collect();
         entries.sort_unstable_by(|a, b| a.0.display_cmp(b.0));
@@ -622,7 +622,7 @@ impl Display for DictInstance {
                 values.push(format!("[{}]: {}", key, value));
             }
         }
-        write!(f, "[{}]", values.join(", "))
+        write!(f, "{{{}}}", values.join(", "))
     }
 }
 
