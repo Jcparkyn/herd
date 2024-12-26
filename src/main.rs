@@ -114,12 +114,12 @@ fn get_repl_globals(return_val: &Value64) -> ReplResponseValues {
     let mut globals = vec![];
     let return_dict = return_val.as_dict().unwrap();
     let retval_key = Value64::from_string(Rc::new("<returnval>".to_string()));
-    for (k, v) in return_dict.values.iter() {
+    for (k, v) in return_dict.iter() {
         if k != &retval_key {
             globals.push((k.as_string().unwrap().clone(), v.clone()));
         }
     }
-    let retval = return_dict.values.get(&retval_key).unwrap().clone();
+    let retval = return_dict.get(&retval_key).unwrap().clone();
     ReplResponseValues { retval, globals }
 }
 

@@ -1,10 +1,12 @@
 use std::{
     cmp::Ordering,
-    collections::HashMap,
     fmt::{Debug, Display},
 };
 
-use crate::rc::{Rc, Weak};
+use crate::{
+    dict::DictInstance,
+    rc::{Rc, Weak},
+};
 
 #[cfg(debug_assertions)]
 use std::cell::RefCell;
@@ -592,40 +594,6 @@ impl Display for LambdaFunction {
     }
 }
 
-#[derive(PartialEq, Debug)]
-pub struct DictInstance {
-    pub values: HashMap<Value64, Value64>,
-}
-
-impl Clone for DictInstance {
-    fn clone(&self) -> Self {
-        #[cfg(debug_assertions)]
-        println!("Cloning dict: {}", self);
-        DictInstance {
-            values: self.values.clone(),
-        }
-    }
-}
-
-impl Display for DictInstance {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.values.is_empty() {
-            return write!(f, "{{}}");
-        }
-        let mut entries: Vec<_> = self.values.iter().collect();
-        entries.sort_unstable_by(|a, b| a.0.display_cmp(b.0));
-        let mut values = vec![];
-        for (key, value) in entries {
-            if let Some(s) = key.as_string() {
-                values.push(format!("{}: {}", s, value));
-            } else {
-                values.push(format!("[{}]: {}", key, value));
-            }
-        }
-        write!(f, "{{{}}}", values.join(", "))
-    }
-}
-
 #[derive(PartialEq, Debug, Hash)]
 pub struct ListInstance {
     pub values: Vec<Value64>,
@@ -712,9 +680,7 @@ mod tests {
             Value64::from_string(Rc::new("a".to_string())),
             Value64::from_f64(1.0),
         );
-        let dict = Rc::new(DictInstance {
-            values: dict_values,
-        });
+        let dict = Rc::new(DictInstance::from_hashmap(dict_values));
         let val = Value64::from_dict(dict.clone());
         assert!(val.is_dict());
         assert!(val.is_ptr());
@@ -729,15 +695,9 @@ mod tests {
             Value64::from_string(Rc::new("a".to_string())),
             Value64::from_f64(1.0),
         );
-        let dict1 = Rc::new(DictInstance {
-            values: dict_values.clone(),
-        });
-        let dict2 = Rc::new(DictInstance {
-            values: dict_values,
-        });
-        let dict3 = Rc::new(DictInstance {
-            values: HashMap::new(),
-        });
+        let dict1 = Rc::new(DictInstance::from_hashmap(dict_values.clone()));
+        let dict2 = Rc::new(DictInstance::from_hashmap(dict_values));
+        let dict3 = Rc::new(DictInstance::new());
         assert_eq!(Value64::from_dict(dict1.clone()), Value64::from_dict(dict2));
         assert_ne!(Value64::from_dict(dict1), Value64::from_dict(dict3));
     }

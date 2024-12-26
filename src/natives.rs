@@ -11,11 +11,12 @@ use strum::{EnumIter, IntoEnumIterator};
 
 use crate::{
     analysis::Analyzer,
+    dict::DictInstance,
     jit::VmContext,
     lang::ProgramParser,
     rc::Rc,
     stdlib::load_stdlib_module,
-    value64::{Boxable, DictInstance, LambdaFunction, ListInstance, Value64},
+    value64::{Boxable, LambdaFunction, ListInstance, Value64},
 };
 
 #[cfg(debug_assertions)]
@@ -396,15 +397,13 @@ pub extern "C" fn list_sort(list_val: Value64) -> Value64 {
 }
 
 pub extern "C" fn dict_new(capacity: u64) -> Value64 {
-    Value64::from_dict(rc_new(DictInstance {
-        values: HashMap::with_capacity(capacity as usize),
-    }))
+    Value64::from_dict(rc_new(DictInstance::with_capacity(capacity as usize)))
 }
 
 pub extern "C" fn dict_insert(dict: Value64, key: Value64, val: Value64) -> Value64 {
     let mut dict = dict.try_into_dict().unwrap();
     rc_mutate(&mut dict, |d| {
-        d.values.insert(key, val);
+        d.insert(key, val);
     });
     Value64::from_dict(dict)
 }
@@ -412,7 +411,7 @@ pub extern "C" fn dict_insert(dict: Value64, key: Value64, val: Value64) -> Valu
 pub extern "C" fn dict_lookup(dict: Value64Ref, key: Value64Ref, found: Out<u8>) -> Value64 {
     // TODO: take a string directly for faster lookup
     let dict = dict.as_dict().unwrap();
-    match dict.values.get(&key) {
+    match dict.get(&key) {
         Some(v) => {
             unsafe {
                 *found = 1;
@@ -431,21 +430,20 @@ pub extern "C" fn dict_lookup(dict: Value64Ref, key: Value64Ref, found: Out<u8>)
 pub extern "C" fn dict_remove_key(dict: Value64, key: Value64) -> Value64 {
     let mut dict = guard_into_dict!(dict);
     rc_mutate(&mut dict, |d| {
-        d.values.remove(&key);
+        d.remove(&key);
     });
     Value64::from_dict(dict)
 }
 
 pub extern "C" fn dict_keys(dict: Value64) -> Value64 {
     let dict = guard_into_dict!(dict);
-    let keys: Vec<Value64> = dict.values.keys().cloned().collect();
+    let keys: Vec<Value64> = dict.keys().cloned().collect();
     Value64::from_list(rc_new(ListInstance::new(keys)))
 }
 
 pub extern "C" fn dict_entries(dict: Value64) -> Value64 {
     let dict = guard_into_dict!(dict);
     let entries: Vec<Value64> = dict
-        .values
         .iter()
         .map(|(k, v)| {
             let entry = vec![k.clone(), v.clone()];
@@ -500,7 +498,7 @@ pub extern "C" fn val_take_index(
     } else if val.is_dict() {
         let mut dict = val.try_into_dict().unwrap();
         let element = rc_mutate(&mut dict, |d| {
-            if let Some(value) = d.values.get_mut(&index) {
+            if let Some(value) = d.get_mut(&index) {
                 std::mem::replace(value, Value64::from_f64(70.0))
             } else {
                 Value64::NIL
@@ -522,7 +520,7 @@ pub extern "C" fn val_get_index(val: Value64Ref, index: Value64Ref) -> Value64 {
             .unwrap() // TODO
             .clone()
     } else if let Some(dict) = val.as_dict() {
-        dict.values.get(&index).cloned().unwrap_or(Value64::NIL)
+        dict.get(&index).cloned().unwrap_or(Value64::NIL)
     } else {
         panic!("Expected list or dict, was {}", *val)
     }
@@ -539,7 +537,7 @@ pub extern "C" fn val_set_index(val: Value64, index: Value64, new_val: Value64) 
     } else if val.is_dict() {
         let mut dict = val.try_into_dict().unwrap();
         rc_mutate(&mut dict, |d| {
-            d.values.insert(index, new_val);
+            d.insert(index, new_val);
         });
         Value64::from_dict(dict)
     } else {
