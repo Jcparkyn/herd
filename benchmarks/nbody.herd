@@ -57,23 +57,25 @@ offsetMomentum = \var bodies\ (
   var px = 0;
   var py = 0;
   var pz = 0;
-  // for body in bodies do (
-  //   mass = body.mass;
-  //   set px = px + (body.vx * mass);
-  //   set py = py + (body.vy * mass);
-  //   set pz = pz + (body.vz * mass);
-  // )
-  set bodies.[0].vx = 69;
-  set bodies.[0].vy = 69;
-  set bodies.[0].vz = 69;
+  for body in bodies do (
+    mass = body.mass;
+    set px = px + (body.vx * mass);
+    set py = py + (body.vy * mass);
+    set pz = pz + (body.vz * mass);
+  )
+  set bodies.[0].vx = (0 - px) / SOLAR_MASS;
+  set bodies.[0].vy = (0 - py) / SOLAR_MASS;
+  set bodies.[0].vz = (0 - pz) / SOLAR_MASS;
   bodies
 );
 
 advance = \var bodies dt\ (
   for i in range 0 (len bodies) do (
-    var vxi = bodies.[i].vx;
-    var vyi = bodies.[i].vy;
-    var vzi = bodies.[i].vz;
+    !{
+      vx: var vxi,
+      vy: var vyi,
+      vz: var vzi,
+    } = bodies.[i];
     for j in range (i + 1) (len bodies) do (
       dx = bodies.[i].x - bodies.[j].x;
       dy = bodies.[i].y - bodies.[j].y;
