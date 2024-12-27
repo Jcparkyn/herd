@@ -2,6 +2,8 @@ use std::{collections::HashMap, fmt::Display};
 
 use crate::Value64;
 
+const MAP_THRESHOLD: usize = 16;
+
 #[derive(PartialEq, Debug)]
 pub enum DictInstance {
     Vec(Vec<(Value64, Value64)>),
@@ -26,11 +28,15 @@ impl<'a> Iterator for DictEntries<'a> {
 
 impl DictInstance {
     pub fn new() -> Self {
-        DictInstance::Map(HashMap::new())
+        DictInstance::Vec(Vec::new())
     }
 
     pub fn with_capacity(capacity: usize) -> Self {
-        DictInstance::Map(HashMap::with_capacity(capacity))
+        if capacity < MAP_THRESHOLD {
+            DictInstance::Vec(Vec::with_capacity(capacity))
+        } else {
+            DictInstance::Map(HashMap::with_capacity(capacity))
+        }
     }
 
     pub fn from_hashmap(values: HashMap<Value64, Value64>) -> Self {
@@ -43,7 +49,19 @@ impl DictInstance {
                 map.insert(key, value);
             }
             DictInstance::Vec(vec) => {
-                vec.push((key, value));
+                if vec.len() < MAP_THRESHOLD {
+                    match vec.iter_mut().find(|(k, _)| k == &key) {
+                        Some((_, v)) => *v = value,
+                        None => vec.push((key, value)),
+                    }
+                } else {
+                    let mut new_map = HashMap::with_capacity(vec.len() * 2);
+                    for (k, v) in vec.drain(..) {
+                        new_map.insert(k, v);
+                    }
+                    new_map.insert(key, value);
+                    *self = DictInstance::Map(new_map);
+                }
             }
         }
     }
