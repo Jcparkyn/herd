@@ -4,15 +4,31 @@ use crate::{rc::Rc, Value64};
 
 const MAP_THRESHOLD: usize = 16;
 
+#[derive(PartialEq, Debug, Clone)]
+pub struct DictShape(pub Vec<String>);
+
+#[derive(PartialEq, Debug, Clone)]
+pub struct VecDict {
+    shape: Rc<Vec<String>>,
+    values: Vec<Value64>,
+}
+
+impl VecDict {
+    fn key_index(&self, key: &str) -> Option<usize> {
+        self.shape.iter().position(|k| key == k)
+    }
+}
+
 #[derive(PartialEq, Debug)]
 pub enum DictInstance {
-    Vec(Vec<(Rc<String>, Value64)>),
+    Vec(VecDict),
     Map(HashMap<Value64, Value64>),
 }
 
 pub enum DictEntries<'a> {
     Map(std::collections::hash_map::Iter<'a, Value64, Value64>),
-    Vec(std::slice::Iter<'a, (Rc<String>, Value64)>),
+    Vec(&'a VecDict, usize),
+    // Vec(std::slice::Iter<'a, (Rc<String>, Value64)>),
 }
 
 impl<'a> Iterator for DictEntries<'a> {
@@ -21,9 +37,19 @@ impl<'a> Iterator for DictEntries<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         match self {
             DictEntries::Map(iter) => iter.next().map(|(k, v)| (k.clone(), v)),
-            DictEntries::Vec(iter) => iter
-                .next()
-                .map(|(k, v)| (Value64::from_string((*k).clone()), v)),
+            // DictEntries::Vec(iter) => iter
+            //     .next()
+            //     .map(|(k, v)| (Value64::from_string((*k).clone()), v)),
+            DictEntries::Vec(vec, index) => {
+                if *index >= vec.values.len() {
+                    None
+                } else {
+                    let key = Rc::new(vec.shape[*index].clone());
+                    let value = &vec.values[*index as usize];
+                    *index += 1;
+                    Some((Value64::from_string(key), value))
+                }
+            }
         }
     }
 }
@@ -37,12 +63,19 @@ fn val_eq_str(val: &Value64, s: &str) -> bool {
 
 impl DictInstance {
     pub fn new() -> Self {
-        DictInstance::Vec(Vec::new())
+        DictInstance::Map(HashMap::new())
     }
 
     pub fn with_capacity(capacity: usize) -> Self {
         if capacity < MAP_THRESHOLD {
-            DictInstance::Vec(Vec::with_capacity(capacity))
+            // DictInstance::Vec(
+            //     Rc::new(DictShape(Vec::with_capacity(capacity))),
+            //     Vec::with_capacity(capacity),
+            // )
+            DictInstance::Vec(VecDict {
+                shape: Rc::new(Vec::with_capacity(capacity)),
+                values: Vec::with_capacity(capacity),
+            })
         } else {
             DictInstance::Map(HashMap::with_capacity(capacity))
         }
@@ -57,12 +90,15 @@ impl DictInstance {
             DictInstance::Map(map) => {
                 map.insert(key, value);
             }
-            DictInstance::Vec(vec) => {
-                if vec.len() < MAP_THRESHOLD {
+            DictInstance::Vec(v) => {
+                if v.values.len() < MAP_THRESHOLD {
                     match key.try_into_string() {
-                        Ok(key) => match vec.iter_mut().find(|(k, _)| key == *k) {
-                            Some((_, v)) => *v = value,
-                            None => vec.push((key, value)),
+                        Ok(key) => match v.key_index(&key) {
+                            Some(index) => v.values[index] = value,
+                            None => {
+                                Rc::make_mut(&mut v.shape).push(key.to_string());
+                                v.values.push(value);
+                            }
                         },
                         Err(k) => {
                             self.mapify();
@@ -80,17 +116,20 @@ impl DictInstance {
     pub fn get(&self, key: &Value64) -> Option<&Value64> {
         match self {
             DictInstance::Map(map) => map.get(key),
-            DictInstance::Vec(vec) => vec.iter().find(|(k, _)| val_eq_str(key, k)).map(|(_, v)| v),
+            DictInstance::Vec(vec) => {
+                let index = vec.key_index(key.as_string()?);
+                Some(&vec.values[index?])
+            }
         }
     }
 
     pub fn get_mut(&mut self, key: &Value64) -> Option<&mut Value64> {
         match self {
             DictInstance::Map(map) => map.get_mut(key),
-            DictInstance::Vec(vec) => vec
-                .iter_mut()
-                .find(|(k, _)| val_eq_str(key, k))
-                .map(|(_, v)| v),
+            DictInstance::Vec(vec) => {
+                let index = vec.key_index(key.as_string()?);
+                Some(&mut vec.values[index?])
+            }
         }
     }
 
@@ -98,8 +137,9 @@ impl DictInstance {
         match self {
             DictInstance::Map(map) => map.remove(key),
             DictInstance::Vec(vec) => {
-                if let Some(index) = vec.iter().position(|(k, _)| val_eq_str(key, k)) {
-                    Some(vec.remove(index).1)
+                if let Some(index) = vec.key_index(key.as_string()?) {
+                    Rc::make_mut(&mut vec.shape).remove(index);
+                    Some(vec.values.remove(index))
                 } else {
                     None
                 }
@@ -110,7 +150,16 @@ impl DictInstance {
     pub fn iter(&self) -> DictEntries {
         match self {
             DictInstance::Map(map) => DictEntries::Map(map.iter()),
-            DictInstance::Vec(vec) => DictEntries::Vec(vec.iter()),
+            DictInstance::Vec(vec) => {
+                // let cloned: Vec<_> = vec
+                //     .shape
+                //     .iter()
+                //     .zip(vec.values.iter())
+                //     .map(|(k, v)| (Rc::new(k.clone()), v.clone()))
+                //     .collect();
+                // DictEntries::Vec(cloned.iter())
+                DictEntries::Vec(&vec, 0)
+            }
         }
     }
 
@@ -121,7 +170,13 @@ impl DictInstance {
     fn mapify(&mut self) {
         match self {
             DictInstance::Vec(vec) => {
-                *self = DictInstance::Map(vec_to_map(std::mem::take(vec)));
+                let mut map = HashMap::with_capacity(vec.values.len() * 2); // some spare capacity since we're currently expanding it.
+                for (i, key) in vec.shape.iter().enumerate() {
+                    // TODO: Move key instead of clone()
+                    let value = std::mem::replace(&mut vec.values[i], Value64::NIL);
+                    map.insert(Value64::from_string(Rc::new(key.clone())), value.clone());
+                }
+                *self = DictInstance::Map(map);
             }
             _ => {}
         }
