@@ -115,7 +115,7 @@ fn get_repl_globals(return_val: &Value64) -> ReplResponseValues {
     let return_dict = return_val.as_dict().unwrap();
     let retval_key = Value64::from_string(Rc::new("<returnval>".to_string()));
     for (k, v) in return_dict.iter() {
-        if k != &retval_key {
+        if k != retval_key {
             globals.push((k.as_string().unwrap().clone(), v.clone()));
         }
     }

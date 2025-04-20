@@ -437,7 +437,7 @@ pub extern "C" fn dict_remove_key(dict: Value64, key: Value64) -> Value64 {
 
 pub extern "C" fn dict_keys(dict: Value64) -> Value64 {
     let dict = guard_into_dict!(dict);
-    let keys: Vec<Value64> = dict.keys().cloned().collect();
+    let keys: Vec<Value64> = dict.keys().collect();
     Value64::from_list(rc_new(ListInstance::new(keys)))
 }
 
