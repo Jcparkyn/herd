@@ -8,10 +8,10 @@ lalrpop = "0.20.2"
 
 [dependencies]
 clap = { version = "4.5.15", features = ["derive"] }
-cranelift = "0.115.0"
-cranelift-jit = "0.115.0"
-cranelift-module = "0.115.0"
-cranelift-native = "0.115.0"
+cranelift = "0.118.0"
+cranelift-jit = "0.118.0"
+cranelift-module = "0.118.0"
+cranelift-native = "0.118.0"
 lalrpop-util = { version = "0.20.2", features = ["lexer", "unicode"] }
 mimalloc = "0.1.43"
 rand = "0.8.5"
