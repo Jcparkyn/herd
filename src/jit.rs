@@ -709,11 +709,13 @@ impl<'a> FunctionTranslator<'a> {
             Expr::GetIndex(val, index) => {
                 let index = self.translate_expr(index);
                 let val = self.translate_expr(val);
-                let result =
-                    self.call_native(NativeFuncId::ValGetIndex, &[val.borrow(), index.borrow()])[0];
+                let result = self.call_native(
+                    NativeFuncId::ValBorrowIndex,
+                    &[val.borrow(), index.borrow()],
+                )[0];
                 self.drop_val64(index);
                 self.drop_val64(val);
-                result.assert_owned()
+                result.assert_borrowed()
             }
             Expr::Dict(d) => {
                 let len_value = self.builder.ins().iconst(types::I64, d.len() as i64);

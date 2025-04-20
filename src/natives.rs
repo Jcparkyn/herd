@@ -48,7 +48,7 @@ pub enum NativeFuncId {
     DictLookup,
     Clone,
     Drop,
-    ValGetIndex,
+    ValBorrowIndex,
     ValReplaceIndex,
     ValSetIndex,
     ValEq,
@@ -137,9 +137,9 @@ fn get_native_func_def(func: NativeFuncId) -> NativeFuncDef {
         NativeFuncId::DictLookup => get_def!(3, dict_lookup),
         NativeFuncId::Clone => get_def!(1, clone),
         NativeFuncId::Drop => get_def!(1, val_drop),
-        NativeFuncId::ValGetIndex => get_def!(2, val_get_index), // TODO
-        NativeFuncId::ValReplaceIndex => get_def!(3, val_take_index), // TODO
-        NativeFuncId::ValSetIndex => get_def!(3, val_set_index), // TODO
+        NativeFuncId::ValBorrowIndex => get_def!(2, val_borrow_index), // TODO
+        NativeFuncId::ValReplaceIndex => get_def!(3, val_take_index),  // TODO
+        NativeFuncId::ValSetIndex => get_def!(3, val_set_index),       // TODO
         NativeFuncId::ValEq => get_def!(2, val_eq),
         NativeFuncId::ValEqU8 => get_def!(2, val_eq_u8),
         NativeFuncId::ValTruthy => get_def!(1, val_truthy_u8),
@@ -512,15 +512,24 @@ pub extern "C" fn val_take_index(
     }
 }
 
-pub extern "C" fn val_get_index(val: Value64Ref, index: Value64Ref) -> Value64 {
+pub extern "C" fn val_borrow_index(val: Value64Ref, index: Value64Ref) -> Value64Ref {
     if let Some(list) = val.as_list() {
-        let index_int = guard_usize!(index) as usize;
-        list.values
-            .get(index_int)
-            .unwrap() // TODO
-            .clone()
+        match index.as_f64() {
+            Some(i) => {
+                if i < 0.0 || i >= list.values.len() as f64 {
+                    println!("ERROR: Index out of range");
+                    return Value64Ref::from_ref(&Value64::ERROR);
+                }
+                let index_int = i as usize;
+                return Value64Ref::from_ref(&list.values[index_int]);
+            }
+            _ => {
+                println!("ERROR: Out of range");
+                return Value64Ref::from_ref(&Value64::ERROR);
+            }
+        }
     } else if let Some(dict) = val.as_dict() {
-        dict.get(&index).cloned().unwrap_or(Value64::NIL)
+        Value64Ref::from_ref(dict.get(&index).unwrap_or(&Value64::NIL))
     } else {
         panic!("Expected list or dict, was {}", *val)
     }
