@@ -1,6 +1,12 @@
 use std::{
-    collections::HashMap, mem::ManuallyDrop, ops::Deref, panic::AssertUnwindSafe, path::PathBuf,
-    ptr::null, time::SystemTime,
+    collections::HashMap,
+    io::{self, Write},
+    mem::ManuallyDrop,
+    ops::Deref,
+    panic::AssertUnwindSafe,
+    path::PathBuf,
+    ptr::null,
+    time::SystemTime,
 };
 
 use cranelift::prelude::{types, AbiParam, Signature, Type};
@@ -162,6 +168,7 @@ pub fn get_natives() -> HashMap<NativeFuncId, NativeFuncDef> {
 pub fn get_builtins() -> HashMap<&'static str, NativeFuncDef> {
     let mut map = HashMap::new();
     map.insert("print", get_def!(1, print));
+    map.insert("readline", get_def!(0, readln));
     map.insert("not", get_def!(1, val_not));
     map.insert("shiftLeft", get_def!(2, val_shift_left));
     map.insert("range", get_def!(2, range));
@@ -804,5 +811,17 @@ pub extern "C" fn print(val: Value64) {
     match val.try_into_string() {
         Ok(s) => print!("{s}"),
         Err(v) => print!("{v}"),
+    }
+    io::stdout().flush().unwrap();
+}
+
+pub extern "C" fn readln() -> Value64 {
+    let mut input = String::new();
+    match std::io::stdin().read_line(&mut input) {
+        Ok(_) => Value64::from_string(rc_new(input.trim_end().to_string())),
+        Err(e) => {
+            println!("Error reading line: {}", e);
+            Value64::ERROR
+        }
     }
 }

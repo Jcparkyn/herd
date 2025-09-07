@@ -14,8 +14,13 @@ printf = \arr\ (
   BUILTIN:print '\n';
 );
 
+readline = \\ (
+  BUILTIN:readline
+);
+
 return {
   print,
   println,
   printf,
+  readline,
 };
