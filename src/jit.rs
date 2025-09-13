@@ -713,9 +713,17 @@ impl<'a> FunctionTranslator<'a> {
                     NativeFuncId::ValBorrowIndex,
                     &[val.borrow(), index.borrow()],
                 )[0];
-                self.drop_val64(index);
-                self.drop_val64(val);
-                result.assert_borrowed()
+                if val.owned {
+                    // result is a borrowed reference, so if we drop val first then result becomes invalid.
+                    let result_owned = self.clone_val64_sometimes(result.as_bvalue());
+                    self.drop_val64(index);
+                    self.drop_val64(val);
+                    result_owned.assert_owned()
+                } else {
+                    // if val is borrowed, we can safely return the borrowed result.
+                    self.drop_val64(index);
+                    result.assert_borrowed()
+                }
             }
             Expr::Dict(d) => {
                 let len_value = self.builder.ins().iconst(types::I64, d.len() as i64);

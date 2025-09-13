@@ -186,6 +186,42 @@ fn index_list() {
 }
 
 #[test]
+fn index_dict() {
+    let program = r#"
+        dict = {a: 'A', b: 'B'};
+        return [dict, dict.a, dict.b];
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"[{a: 'A', b: 'B'}, 'A', 'B']");
+    assert_rcs_dropped();
+}
+
+#[test]
+fn index_dict_drop() {
+    let program = r#"
+        dict = {a: [1], b: [2]};
+        return dict.a;
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"[1]");
+    assert_rcs_dropped();
+}
+
+#[test]
+fn index_dict_parameter() {
+    let main_program = r#"
+        update = \x\ { val: x.val };
+        var state = { val: [42] };
+        set state = update state;
+        return state;
+    "#;
+
+    let result = eval_snapshot_str(main_program);
+    insta::assert_snapshot!(result, @"{val: [42]}");
+    assert_rcs_dropped();
+}
+
+#[test]
 fn if_else() {
     let program = r#"
         return [
