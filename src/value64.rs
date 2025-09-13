@@ -615,6 +615,13 @@ impl Clone for ListInstance {
     }
 }
 
+impl Drop for ListInstance {
+    fn drop(&mut self) {
+        #[cfg(debug_assertions)]
+        println!("Dropping list: {}", self);
+    }
+}
+
 impl Display for ListInstance {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let values: Vec<_> = self.values.iter().map(|v| v.to_string()).collect();

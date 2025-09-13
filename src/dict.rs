@@ -113,3 +113,10 @@ impl Display for DictInstance {
         write!(f, "{{{}}}", values.join(", "))
     }
 }
+
+impl Drop for DictInstance {
+    fn drop(&mut self) {
+        #[cfg(debug_assertions)]
+        println!("Dropping dict: {}", self);
+    }
+}
