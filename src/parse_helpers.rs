@@ -9,7 +9,7 @@ use crate::{
 
 pub fn parse_string_literal(s: &str) -> String {
     let mut result = String::new();
-    let mut chars = s[1..s.len() - 1].chars();
+    let mut chars = s[1..s.len() - 1].chars().peekable();
     while let Some(ch) = chars.next() {
         if ch == '\\' {
             match chars.next() {
@@ -18,6 +18,19 @@ pub fn parse_string_literal(s: &str) -> String {
                 Some('t') => result.push('\t'),
                 Some('"') => result.push('"'),
                 Some('\'') => result.push('\''),
+                Some('e') => result.push('\x1B'),
+                Some('x') => {
+                    let mut num_val = 0;
+                    while let Some(next_digit) = chars.peek().and_then(|c| c.to_digit(16)) {
+                        num_val = num_val * 16 + next_digit;
+                        chars.next();
+                    }
+                    if let Some(ch) = std::char::from_u32(num_val) {
+                        result.push(ch);
+                    } else {
+                        panic!("Invalid character code in string escape");
+                    }
+                }
                 _ => panic!("Unexpected string escape"),
             }
         } else {
