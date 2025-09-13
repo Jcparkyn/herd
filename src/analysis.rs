@@ -24,7 +24,11 @@ impl Display for AnalysisError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             VariableAlreadyDefined(name) => {
-                write!(f, "Variable {} is already defined", name)
+                write!(
+                    f,
+                    "Variable {} is already defined, did you mean to write \"set {} = ...\"?",
+                    name, name
+                )
             }
             VariableNotDefined(name) => {
                 write!(f, "Variable {} is not defined", name)
