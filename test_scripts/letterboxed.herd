@@ -71,6 +71,7 @@ validateIndicesOnDifferentSides = \indices\ (
 
 handleSubmit = \var state newWord\ (
   newWordIndices = newWord
+    | String.toUpper
     | String.toChars
     | map \(List.indexOf state.edgeLetters _);
 

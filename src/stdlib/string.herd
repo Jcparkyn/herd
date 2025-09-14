@@ -1,21 +1,37 @@
 
 !{ range } = import '@basics';
 
-toChars = \text\ BUILTIN:stringToChars text;
-
 join = \arr sep\ (
   var result = '';
-  l = BUILTIN:len arr;
-  for i in range 0 l do (
-    set result = result ++ arr.[i];
-    if i < l - 1 then (
-      set result = result ++ sep;
+  if sep then (
+    l = BUILTIN:len arr;
+    for i in range 0 l do (
+      set result = result ++ arr.[i];
+      if i < l - 1 then (
+        set result = result ++ sep;
+      )
+    )
+  ) else (
+    // Fast path when no separator
+    for str in arr do (
+      set result = result ++ str;
     )
   )
   result
 );
 
+toChars = \text\ BUILTIN:stringToChars text;
+
+fromChars = \chars\ join chars '';
+
+toUpper = \text\ BUILTIN:stringToUpper text;
+
+toLower = \text\ BUILTIN:stringToLower text;
+
 return {
   toChars,
+  fromChars,
+  toUpper,
+  toLower,
   join,
 };
