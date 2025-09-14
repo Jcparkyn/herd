@@ -1412,6 +1412,8 @@ impl<'a> FunctionTranslator<'a> {
                 let rhs = self.translate_expr(rhs);
                 let lhs_truthy = self.is_truthy(lhs);
                 let rhs_truthy = self.is_truthy(rhs);
+                self.drop_val64(lhs);
+                self.drop_val64(rhs);
                 let bool_val = self.builder.ins().band(lhs_truthy, rhs_truthy);
                 self.bool_to_val64(bool_val).assert_owned()
             }
@@ -1421,6 +1423,8 @@ impl<'a> FunctionTranslator<'a> {
                 let rhs = self.translate_expr(rhs);
                 let lhs_truthy = self.is_truthy(lhs);
                 let rhs_truthy = self.is_truthy(rhs);
+                self.drop_val64(lhs);
+                self.drop_val64(rhs);
                 let bool_val = self.builder.ins().bor(lhs_truthy, rhs_truthy);
                 self.bool_to_val64(bool_val).assert_owned()
             }

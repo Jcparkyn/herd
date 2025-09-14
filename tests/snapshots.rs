@@ -267,6 +267,32 @@ fn logic_and() {
 }
 
 #[test]
+fn logic_and_reference() {
+    let program = r#"
+        return [
+            [1] and 'abc',
+            '' and 'false',
+        ];
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"[true, false]");
+    assert_rcs_dropped();
+}
+
+#[test]
+fn logic_or_reference() {
+    let program = r#"
+        return [
+            [1] or 'abc',
+            '' or [],
+        ];
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"[true, false]");
+    assert_rcs_dropped();
+}
+
+#[test]
 fn logic_or() {
     let program = r#"
         return [
