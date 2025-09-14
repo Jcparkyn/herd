@@ -91,6 +91,18 @@ sum = \l\ (
   result
 );
 
+indexOf = \arr val\ (
+  l = len arr;
+  for i in range 0 l do (
+    if arr.[i] == val then (
+      return i;
+    )
+  )
+  -1
+);
+
+contains = \arr val\ (indexOf arr val != -1);
+
 return {
   push,
   pop,
@@ -106,4 +118,6 @@ return {
   parallelMap,
   parallelRun,
   sum,
+  indexOf,
+  contains,
 };
