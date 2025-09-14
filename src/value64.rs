@@ -192,7 +192,7 @@ impl Value64 {
             return false;
         }
         match try_get_ptr_tag(bits) {
-            Some(PointerTag::String) => !self.as_string().unwrap().is_empty(),
+            Some(PointerTag::String) => !self.as_str().unwrap().is_empty(),
             Some(PointerTag::Dict) => true,
             Some(PointerTag::List) => !self.as_list().unwrap().values.is_empty(),
             Some(PointerTag::Lambda) => true,
@@ -250,8 +250,8 @@ impl Value64 {
         }
         match da {
             0 => {
-                let a = self.as_string().unwrap();
-                let b = other.as_string().unwrap();
+                let a = self.as_str().unwrap();
+                let b = other.as_str().unwrap();
                 return a.cmp(b);
             }
             1 => Ordering::Equal, // TODO
@@ -341,6 +341,10 @@ impl Value64 {
         self.as_ref()
     }
 
+    pub fn as_str(&self) -> Option<&str> {
+        self.as_string().map(|s| s.as_str())
+    }
+
     // DICTS
 
     pub fn from_dict(value: Rc<DictInstance>) -> Self {
@@ -405,8 +409,8 @@ impl Value64 {
 impl PartialEq for Value64 {
     fn eq(&self, other: &Self) -> bool {
         match try_get_ptr_tag(self.bits()) {
-            Some(PointerTag::String) => match other.as_string() {
-                Some(b) => self.as_string().unwrap() == b,
+            Some(PointerTag::String) => match other.as_str() {
+                Some(b) => self.as_str().unwrap() == b,
                 None => false,
             },
             Some(PointerTag::List) => match other.as_list() {
@@ -445,7 +449,7 @@ impl Debug for Value64 {
 impl std::hash::Hash for Value64 {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         match try_get_ptr_tag(self.bits()) {
-            Some(PointerTag::String) => self.as_string().unwrap().hash(state),
+            Some(PointerTag::String) => self.as_str().unwrap().hash(state),
             Some(PointerTag::List) => self.as_list().unwrap().hash(state),
             Some(PointerTag::Dict) => panic!("Dicts cannot be used as keys inside dicts"),
             Some(PointerTag::Lambda) => {
@@ -552,7 +556,7 @@ impl Display for Value64 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let bits = self.bits();
         match try_get_ptr_tag(bits) {
-            Some(PointerTag::String) => write!(f, "'{}'", self.as_string().unwrap()),
+            Some(PointerTag::String) => write!(f, "'{}'", self.as_str().unwrap()),
             Some(PointerTag::List) => write!(f, "{}", self.as_list().unwrap()),
             Some(PointerTag::Dict) => write!(f, "{}", self.as_dict().unwrap()),
             Some(PointerTag::Lambda) => write!(f, "{}", self.as_lambda().unwrap()),

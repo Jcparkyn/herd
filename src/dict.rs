@@ -104,7 +104,7 @@ impl Display for DictInstance {
         entries.sort_unstable_by(|a, b| a.0.display_cmp(b.0));
         let mut values = vec![];
         for (key, value) in entries {
-            if let Some(s) = key.as_string() {
+            if let Some(s) = key.as_str() {
                 values.push(format!("{}: {}", s, value));
             } else {
                 values.push(format!("[{}]: {}", key, value));

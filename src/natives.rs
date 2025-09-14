@@ -372,7 +372,7 @@ macro_rules! guard_into_dict {
 
 macro_rules! guard_string {
     ($val:expr) => {
-        match $val.as_string() {
+        match $val.as_str() {
             Some(l) => l,
             None => {
                 println!("ERROR: Expected a string, got {}", $val);
@@ -622,7 +622,7 @@ pub extern "C" fn val_concat(val1: Value64, val2: Value64) -> Value64 {
             panic!("Expected string, was {}", val2)
         }
         let mut str1 = val1.try_into_string().unwrap();
-        let str2 = val2.as_string().unwrap();
+        let str2 = val2.as_str().unwrap();
         rc_mutate(&mut str1, |s| s.push_str(&str2));
         Value64::from_string(str1)
     } else if val1.is_list() {
@@ -710,8 +710,7 @@ pub extern "C" fn import_module(vm: &VmContext, name: Value64) -> Value64 {
 }
 
 fn import_module_panic(vmc: &VmContext, name: &Value64) -> Result<Value64, String> {
-    let name = name.as_string().unwrap();
-    let path = name.as_str();
+    let path = name.as_str().unwrap();
 
     let mut vm = vmc.jit.try_lock().unwrap();
     if let Some(maybe_module) = vm.modules.get(path) {
