@@ -229,6 +229,8 @@ generate_get_def!(get_def4, T1, T2, T3, T4);
 pub struct Value64Ref(ManuallyDrop<Value64>);
 
 impl Value64Ref {
+    const ERROR: Self = Self(ManuallyDrop::new(Value64::ERROR));
+
     pub fn from_ref(val: &Value64) -> Self {
         Self(ManuallyDrop::new(unsafe { std::ptr::read(val) }))
     }
@@ -286,6 +288,42 @@ macro_rules! guard_usize {
     ($val:expr) => {
         // TODO assert int
         guard_f64!($val) as usize
+    };
+}
+
+fn parse_list_index_f64(val: f64, len: usize) -> Option<usize> {
+    let i = val.abs() as usize;
+    if val < 0.0 {
+        if i > len {
+            None
+        } else {
+            Some(len - i)
+        }
+    } else {
+        if i >= len {
+            None
+        } else {
+            Some(i)
+        }
+    }
+}
+
+macro_rules! guard_list_index {
+    ($val:expr, $len:expr) => {
+        if let Some(f) = $val.as_f64() {
+            if let Some(i) = parse_list_index_f64(f, $len) {
+                i
+            } else {
+                println!(
+                    "ERROR: List index out of range, got {} but length is {}",
+                    f, $len
+                );
+                return Value64::ERROR;
+            }
+        } else {
+            println!("ERROR: List index should be an integer, got {}", $val);
+            return Value64::ERROR;
+        }
     };
 }
 
@@ -492,8 +530,8 @@ pub extern "C" fn val_take_index(
     element_out: *mut Value64,
 ) -> Value64 {
     if val.is_list() {
-        let index_int = guard_usize!(index);
         let mut list = val.try_into_list().unwrap();
+        let index_int = guard_list_index!(index, list.values.len());
         if index_int >= list.values.len() {
             println!("ERROR: Out of range");
             return Value64::ERROR;
@@ -523,13 +561,17 @@ pub extern "C" fn val_take_index(
 pub extern "C" fn val_borrow_index(val: Value64Ref, index: Value64Ref) -> Value64Ref {
     if let Some(list) = val.as_list() {
         match index.as_f64() {
-            Some(i) => {
-                if i < 0.0 || i >= list.values.len() as f64 {
-                    println!("ERROR: Index out of range");
-                    return Value64Ref::from_ref(&Value64::ERROR);
+            Some(f) => {
+                if let Some(index_int) = parse_list_index_f64(f, list.len()) {
+                    return Value64Ref::from_ref(&list.values[index_int]);
+                } else {
+                    println!(
+                        "ERROR: List index out of range, got {} but length is {}",
+                        f,
+                        list.len()
+                    );
+                    return Value64Ref::ERROR;
                 }
-                let index_int = i as usize;
-                return Value64Ref::from_ref(&list.values[index_int]);
             }
             _ => {
                 println!("ERROR: Out of range");
@@ -545,8 +587,8 @@ pub extern "C" fn val_borrow_index(val: Value64Ref, index: Value64Ref) -> Value6
 
 pub extern "C" fn val_set_index(val: Value64, index: Value64, new_val: Value64) -> Value64 {
     if val.is_list() {
-        let index_int = guard_usize!(index);
         let mut list = val.try_into_list().unwrap();
+        let index_int = guard_list_index!(index, list.len());
         rc_mutate(&mut list, |l| {
             l.values[index_int] = new_val;
         });

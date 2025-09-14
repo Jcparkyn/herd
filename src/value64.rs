@@ -603,6 +603,10 @@ impl ListInstance {
     pub fn new(values: Vec<Value64>) -> Self {
         ListInstance { values }
     }
+
+    pub fn len(&self) -> usize {
+        self.values.len()
+    }
 }
 
 impl Clone for ListInstance {
