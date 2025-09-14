@@ -1,0 +1,21 @@
+
+!{ range } = import '@basics';
+
+toChars = \text\ BUILTIN:stringToChars text;
+
+join = \arr sep\ (
+  var result = '';
+  l = BUILTIN:len arr;
+  for i in range 0 l do (
+    set result = result ++ arr.[i];
+    if i < l - 1 then (
+      set result = result ++ sep;
+    )
+  )
+  result
+);
+
+return {
+  toChars,
+  join,
+};

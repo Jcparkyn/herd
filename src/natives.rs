@@ -185,6 +185,7 @@ pub fn get_builtins() -> HashMap<&'static str, NativeFuncDef> {
     map.insert("assertTruthy", get_def!(1, assert_truthy));
     map.insert("regexFind", get_def!(2, regex_find));
     map.insert("regexReplace", get_def!(3, regex_replace));
+    map.insert("stringToChars", get_def!(1, string_to_chars));
     map.insert("parallelMap", get_def!(3, parallel_map).with_vm());
     map.insert("epochTime", get_def!(0, epoch_time));
     map.insert("parseFloat", get_def!(1, parse_float));
@@ -795,6 +796,15 @@ pub extern "C" fn parse_float(val: Value64) -> Value64 {
         Ok(f) => Value64::from_f64(f),
         Err(_) => Value64::NIL,
     }
+}
+
+pub extern "C" fn string_to_chars(val: Value64) -> Value64 {
+    let s = guard_string!(val);
+    let chars: Vec<Value64> = s
+        .chars()
+        .map(|c| Value64::from_string(rc_new(c.to_string())))
+        .collect();
+    Value64::from_list(rc_new(ListInstance::new(chars)))
 }
 
 pub extern "C" fn program_args(vm: &VmContext) -> Value64 {

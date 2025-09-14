@@ -32,3 +32,5 @@ Math = import '@math';
 Bitwise = import '@bitwise';
 
 Random = import '@random';
+
+String = import '@string';
