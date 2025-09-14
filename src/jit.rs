@@ -1407,26 +1407,41 @@ impl<'a> FunctionTranslator<'a> {
             Opcode::Gt => self.translate_cmp(FloatCC::GreaterThan, lhs, rhs),
             Opcode::Gte => self.translate_cmp(FloatCC::GreaterThanOrEqual, lhs, rhs),
             Opcode::And => {
-                // TODO: conditional evaluation
-                let lhs = self.translate_expr(lhs);
-                let rhs = self.translate_expr(rhs);
-                let lhs_truthy = self.is_truthy(lhs);
-                let rhs_truthy = self.is_truthy(rhs);
-                self.drop_val64(lhs);
-                self.drop_val64(rhs);
-                let bool_val = self.builder.ins().band(lhs_truthy, rhs_truthy);
-                self.bool_to_val64(bool_val).assert_owned()
+                let lhs_val = self.translate_expr(lhs);
+                let lhs_truthy = self.is_truthy(lhs_val);
+                self.drop_val64(lhs_val);
+                let false_u8 = self.builder.ins().iconst(types::I8, 0);
+                let bool_result = self.eval_if(
+                    lhs_truthy,
+                    // If LHS truthy, evaluate RHS
+                    |s| {
+                        let rhs_val = s.translate_expr(rhs);
+                        let rhs_truthy = s.is_truthy(rhs_val);
+                        s.drop_val64(rhs_val);
+                        rhs_truthy
+                    },
+                    false_u8,
+                );
+                self.bool_to_val64(bool_result).assert_owned()
             }
             Opcode::Or => {
-                // TODO: conditional evaluation
-                let lhs = self.translate_expr(lhs);
-                let rhs = self.translate_expr(rhs);
-                let lhs_truthy = self.is_truthy(lhs);
-                let rhs_truthy = self.is_truthy(rhs);
-                self.drop_val64(lhs);
-                self.drop_val64(rhs);
-                let bool_val = self.builder.ins().bor(lhs_truthy, rhs_truthy);
-                self.bool_to_val64(bool_val).assert_owned()
+                let lhs_val = self.translate_expr(lhs);
+                let lhs_truthy = self.is_truthy(lhs_val);
+                let lhs_not_truthy = self.builder.ins().bxor_imm(lhs_truthy, 1);
+                self.drop_val64(lhs_val);
+                let true_u8 = self.builder.ins().iconst(types::I8, 1);
+                let bool_result = self.eval_if(
+                    lhs_not_truthy,
+                    // If LHS falsy, evaluate RHS
+                    |s| {
+                        let rhs_val = s.translate_expr(rhs);
+                        let rhs_truthy = s.is_truthy(rhs_val);
+                        s.drop_val64(rhs_val);
+                        rhs_truthy
+                    },
+                    true_u8,
+                );
+                self.bool_to_val64(bool_result).assert_owned()
             }
             Opcode::Concat => {
                 let lhs = self.translate_expr(lhs).into_owned(self);
@@ -1653,6 +1668,30 @@ impl<'a> FunctionTranslator<'a> {
 
         self.builder.switch_to_block(after_block);
         self.builder.seal_block(after_block);
+    }
+
+    fn eval_if(
+        &mut self,
+        cond: Value,
+        then: impl FnOnce(&mut Self) -> Value,
+        fallback: Value,
+    ) -> Value {
+        let then_block = self.builder.create_block();
+        let after_block = self.builder.create_block();
+        self.builder.append_block_param(after_block, types::I8); // TODO: Can we make this generic?
+        self.builder
+            .ins()
+            .brif(cond, then_block, &[], after_block, &[fallback]);
+
+        self.builder.switch_to_block(then_block);
+        self.builder.seal_block(then_block);
+        let then_val = then(self);
+        self.builder.ins().jump(after_block, &[then_val]);
+
+        self.builder.switch_to_block(after_block);
+        self.builder.seal_block(after_block);
+        let phi = self.builder.block_params(after_block)[0];
+        phi
     }
 
     fn use_var(&mut self, var_ref: &VarRef) -> MValue {

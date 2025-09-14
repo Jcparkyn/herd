@@ -280,6 +280,54 @@ fn logic_and_reference() {
 }
 
 #[test]
+fn logic_and_short_circuit_truthy() {
+    let program = r#"
+        var marker = 0;
+        result = 42 and (set marker = 1; true);
+        return [result, marker];
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"[true, 1]");
+    assert_rcs_dropped();
+}
+
+#[test]
+fn logic_and_short_circuit_falsy() {
+    let program = r#"
+        var marker = 0;
+        result = '' and (set marker = 1; true);
+        return [result, marker];
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"[false, 0]");
+    assert_rcs_dropped();
+}
+
+#[test]
+fn logic_or_short_circuit_truthy() {
+    let program = r#"
+        var marker = 0;
+        result = 42 or (set marker = 1; false);
+        return [result, marker];
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"[true, 0]");
+    assert_rcs_dropped();
+}
+
+#[test]
+fn logic_or_short_circuit_falsy() {
+    let program = r#"
+        var marker = 0;
+        result = '' or (set marker = 1; true);
+        return [result, marker];
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"[true, 1]");
+    assert_rcs_dropped();
+}
+
+#[test]
 fn logic_or_reference() {
     let program = r#"
         return [
