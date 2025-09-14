@@ -1,0 +1,135 @@
+
+formatLetter = \c isUsed isLast\ (
+  if isLast then (
+    '\e[93;4m' ++ c ++ '\e[0m'
+  ) else if isUsed then (
+    '\e[90;1m' ++ c ++ '\e[0m'
+  ) else (
+    '\e[92;4m' ++ c ++ '\e[0m'
+  )
+);
+
+render = \state\ (
+  !{ edgeLetters, entered } = state;
+
+  println '\x1B[2J\x1B[H'; // clear screen
+
+  var renderLetters = edgeLetters;
+  enteredAll = List.flatten entered;
+  for i in range 0 (len edgeLetters) do (
+    isUsed = enteredAll | List.contains i;
+    isLast = (len entered) > 0 and i == entered.[-1].[-1];
+    set renderLetters.[i] |= formatLetter isUsed isLast;
+  )
+
+  if state.errorMessage then (
+    println ('\n\e[31mError: ' ++ state.errorMessage ++ '\e[0m\n');
+  ) else (
+    println '\n\n\n';
+  )
+  printf [' ', renderLetters.[0], ' ', renderLetters.[1], ' ', renderLetters.[2], ' '];
+  printf [renderLetters.[11], ' ', ' ', ' ', ' ', ' ', renderLetters.[3]];
+  printf [renderLetters.[10], ' ', ' ', ' ', ' ', ' ', renderLetters.[4]];
+  printf [renderLetters.[9], ' ', ' ', ' ', ' ', ' ', renderLetters.[5]];
+  printf [' ', renderLetters.[8], ' ', renderLetters.[7], ' ', renderLetters.[6], ' '];
+
+  getWord = \indices\ (
+    var word = '';
+    for i in indices do (
+      set word = word ++ edgeLetters.[i];
+    )
+    word
+  );
+
+  enteredWords = entered
+    | map getWord;
+
+  println '';
+  println (enteredWords | String.join ', ');
+);
+
+indexToSide = \i\ (
+  if i < 3 then 'top'
+  else if i < 6 then 'right'
+  else if i < 9 then 'bottom'
+  else 'left'
+);
+
+validateIndicesOnDifferentSides = \indices\ (
+  sides = indices
+    | map indexToSide;
+
+  var previousSide = '';
+  for side in sides do (
+    if side == previousSide then (
+      return false;
+    )
+    set previousSide = side;
+  )
+  true
+);
+
+handleSubmit = \var state newWord\ (
+  newWordIndices = newWord
+    | String.toChars
+    | map \(List.indexOf state.edgeLetters _);
+
+  if (newWordIndices | List.len) < 2 then (
+    set state.errorMessage = 'Word must be at least 2 letters';
+    return state;
+  )
+
+  if newWordIndices | List.contains (-1) then (
+    set state.errorMessage = 'Invalid letters used';
+    return state;
+  )
+
+  if (len state.entered) > 0 and newWordIndices.[0] != state.entered.[-1].[-1] then (
+    set state.errorMessage = 'Word must start with the last letter of the previous word';
+    return state;
+  )
+
+  if not (validateIndicesOnDifferentSides newWordIndices) then (
+    set state.errorMessage = 'Can\'t use letters from the same side twice in a row';
+    return state;
+  )
+
+  set state.entered |= push newWordIndices;
+  state
+);
+
+handleUndo = \var state\ (
+  if (len state.entered) == 0 then (
+    return state;
+  )
+  set state.entered |= pop;
+  state
+);
+
+main = \\ (
+  edgeLetters = 'OUTSREDABHCG' | String.toChars;
+
+  var state = {
+    edgeLetters,
+    entered: [],
+    errorMessage: (),
+  };
+
+  render state;
+
+  for i in range 0 100 do (
+    line = IO.readline ();
+    if line == 'exit' then (
+      return;
+    )
+    set state.errorMessage = ();
+    if line == 'undo' then (
+      set state = handleUndo state;
+    ) else (
+      set state = handleSubmit state line;
+    )
+    render state;
+  )
+);
+
+main ();
