@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
-    io::{self, Write},
+    fs,
+    io::{self, BufRead, Write},
     mem::ManuallyDrop,
     ops::Deref,
     panic::AssertUnwindSafe,
@@ -192,6 +193,8 @@ pub fn get_builtins() -> HashMap<&'static str, NativeFuncDef> {
     map.insert("epochTime", get_def!(0, epoch_time));
     map.insert("parseFloat", get_def!(1, parse_float));
     map.insert("programArgs", get_def!(1, program_args).with_vm());
+    map.insert("fileToString", get_def!(1, file_to_string));
+    map.insert("fileLines", get_def!(1, file_lines));
 
     return map;
 }
@@ -867,6 +870,37 @@ pub extern "C" fn program_args(vm: &VmContext) -> Value64 {
         result.push(Value64::from_string(rc_new(arg)));
     }
     Value64::from_list(rc_new(ListInstance::new(result)))
+}
+
+pub extern "C" fn file_to_string(path: Value64) -> Value64 {
+    let path_str = guard_string!(path);
+    fs::read_to_string(path_str)
+        .map(|s| Value64::from_string(rc_new(s)))
+        .unwrap_or_else(|e| {
+            println!("Error reading file {}: {}", path_str, e);
+            Value64::ERROR
+        })
+}
+
+pub extern "C" fn file_lines(path: Value64) -> Value64 {
+    let path_str = guard_string!(path);
+    let file = std::fs::File::open(path_str);
+    if let Err(e) = file {
+        println!("Error opening file {}: {}", path_str, e);
+        return Value64::ERROR;
+    }
+    let reader = std::io::BufReader::new(file.unwrap());
+    let mut lines = Vec::new();
+    for line in reader.lines() {
+        match line {
+            Ok(l) => lines.push(Value64::from_string(rc_new(l))),
+            Err(e) => {
+                println!("Error reading line from file {}: {}", path_str, e);
+                return Value64::ERROR;
+            }
+        }
+    }
+    Value64::from_list(rc_new(ListInstance::new(lines)))
 }
 
 // TODO: Variadic functions

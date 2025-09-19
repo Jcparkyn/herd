@@ -34,3 +34,5 @@ Bitwise = import '@bitwise';
 Random = import '@random';
 
 String = import '@string';
+
+File = import '@file';
