@@ -2,7 +2,16 @@
 randomInt = \min max\ BUILTIN:randomInt min max;
 randomFloat = \min max\ BUILTIN:randomFloat min max;
 
+choice = \arr\ (
+  switch arr on {
+    [] => (),
+    [x] => x,
+    _ => arr.[randomInt 0 (BUILTIN:len arr)],
+  }
+);
+
 return {
   randomInt,
   randomFloat,
+  choice,
 };
