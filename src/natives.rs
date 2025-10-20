@@ -186,6 +186,7 @@ pub fn get_builtins() -> HashMap<&'static str, NativeFuncDef> {
     map.insert("assertTruthy", get_def!(1, assert_truthy));
     map.insert("regexFind", get_def!(2, regex_find));
     map.insert("regexReplace", get_def!(3, regex_replace));
+    map.insert("toString", get_def!(1, val_to_string));
     map.insert("stringToChars", get_def!(1, string_to_chars));
     map.insert("stringToUpper", get_def!(1, string_upper));
     map.insert("stringToLower", get_def!(1, string_lower));
@@ -842,6 +843,13 @@ pub extern "C" fn parse_float(val: Value64) -> Value64 {
         Ok(f) => Value64::from_f64(f),
         Err(_) => Value64::NIL,
     }
+}
+
+pub extern "C" fn val_to_string(val: Value64) -> Value64 {
+    if val.is_string() {
+        return val;
+    }
+    Value64::from_string(rc_new(format!("{}", val)))
 }
 
 pub extern "C" fn string_to_chars(val: Value64) -> Value64 {

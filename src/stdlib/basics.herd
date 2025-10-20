@@ -5,8 +5,11 @@ range = \start stop\ BUILTIN:range start stop;
 
 assert = \val\ BUILTIN:assertTruthy val;
 
+toString = \val\ BUILTIN:toString val;
+
 return {
   not,
   range,
   assert,
+  toString,
 };

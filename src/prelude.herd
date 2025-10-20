@@ -3,6 +3,7 @@
   not,
   range,
   assert,
+  toString,
 } = import '@basics';
 
 System = import '@system';
@@ -23,7 +24,7 @@ List = import '@list';
   len,
   map,
   filter,
-} = import '@list';
+} = List;
 
 Dict = import '@dict';
 
