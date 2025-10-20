@@ -1,12 +1,30 @@
 
+get = \dict key\ dict.[key];
+
+getOr = \dict key defaultValue\ (
+  val = dict.[key];
+  if val then val else defaultValue
+);
+
 removeKey = \val key\ BUILTIN:removeKey val key;
 
 keys = \dict\ BUILTIN:dictKeys dict;
 
 entries = \dict\ BUILTIN:dictEntries dict;
 
+fromEntries = \entries\ (
+  var dict = {};
+  for [k, v] in entries do (
+    set dict.[k] = v;
+  )
+  dict
+);
+
 return {
+  get,
+  getOr,
   keys,
   removeKey,
   entries,
+  fromEntries,
 };
