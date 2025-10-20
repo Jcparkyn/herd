@@ -789,13 +789,21 @@ pub extern "C" fn val_not(val: Value64) -> Value64 {
 pub extern "C" fn random_int(min: Value64, max: Value64) -> Value64 {
     let min_int = guard_i64!(min);
     let max_int = guard_i64!(max);
-    let result = rand::thread_rng().gen_range(min_int..=max_int);
+    if min_int >= max_int {
+        println!("ERROR: min should be < max in randomInt");
+        return Value64::ERROR;
+    }
+    let result = rand::thread_rng().gen_range(min_int..max_int);
     Value64::from_f64(result as f64)
 }
 
 pub extern "C" fn random_float(min: Value64, max: Value64) -> Value64 {
     let min_float = guard_f64!(min);
     let max_float = guard_f64!(max);
+    if min_float >= max_float {
+        println!("ERROR: min should be < max in randomFloat");
+        return Value64::ERROR;
+    }
     let result = rand::thread_rng().gen_range(min_float..=max_float);
     Value64::from_f64(result)
 }
