@@ -1401,7 +1401,16 @@ impl<'a> FunctionTranslator<'a> {
                 self.drop_val64(rhs_val);
                 result.assert_owned()
             }
-            Opcode::Neq => self.translate_cmp(FloatCC::NotEqual, lhs, rhs),
+            Opcode::Neq => {
+                let lhs_val = self.translate_expr(lhs);
+                let rhs_val = self.translate_expr(rhs);
+                let eq_result = self
+                    .call_native(NativeFuncId::ValEqU8, &[lhs_val.borrow(), rhs_val.borrow()])[0];
+                self.drop_val64(lhs_val);
+                self.drop_val64(rhs_val);
+                let neq_result = self.builder.ins().bxor_imm(eq_result, 1);
+                self.bool_to_val64(neq_result).assert_owned()
+            }
             Opcode::Lt => self.translate_cmp(FloatCC::LessThan, lhs, rhs),
             Opcode::Lte => self.translate_cmp(FloatCC::LessThanOrEqual, lhs, rhs),
             Opcode::Gt => self.translate_cmp(FloatCC::GreaterThan, lhs, rhs),
