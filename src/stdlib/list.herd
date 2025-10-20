@@ -103,6 +103,73 @@ indexOf = \arr val\ (
 
 contains = \arr val\ (indexOf arr val != -1);
 
+all = \arr f\ (
+  for item in arr do (
+    if BUILTIN:not (f item) then (
+      return false;
+    )
+  )
+  true
+);
+
+any = \arr f\ (
+  for item in arr do (
+    if f item then (
+      return true;
+    )
+  )
+  false
+);
+
+groupBy = \arr f\ (
+  var groups = {};
+  for item in arr do (
+    key = f item;
+    existing = groups.[key];
+    if existing then (
+      set groups.[key] = (); // workaround for unnecessary list clone
+      set groups.[key] = existing | push item;
+    ) else (
+      set groups.[key] = [item];
+    )
+  )
+  groups
+);
+
+distinct = \arr\ (
+  var seen = {};
+  var result = [];
+  for item in arr do (
+    if BUILTIN:not seen.[item] then (
+      set seen.[item] = true;
+      set result |= push item;
+    )
+  )
+  result
+);
+
+window = \arr n\ (
+  var result = [];
+  l = len arr;
+  if n > l then (
+    return [];
+  )
+  for i in range 0 (l - n + 1) do (
+    w = slice arr i (i + n);
+    set result |= push w;
+  )
+  result
+);
+
+enumerate = \list\ (
+  var result = [];
+  l = len list;
+  for i in range 0 l do (
+    set result |= push [i, list.[i]];
+  )
+  result
+);
+
 return {
   push,
   pop,
@@ -120,4 +187,9 @@ return {
   sum,
   indexOf,
   contains,
+  all,
+  any,
+  groupBy,
+  distinct,
+  window,
 };
