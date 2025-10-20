@@ -85,6 +85,13 @@ impl DictInstance {
     pub fn keys(&self) -> impl Iterator<Item = &Value64> {
         self.iter().map(|(k, _)| k)
     }
+
+    pub fn len(&self) -> usize {
+        match self {
+            DictInstance::Map(map) => map.len(),
+            DictInstance::Vec(vec) => vec.len(),
+        }
+    }
 }
 
 impl Clone for DictInstance {

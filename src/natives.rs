@@ -515,9 +515,20 @@ pub extern "C" fn range(start: Value64, stop: Value64) -> Value64 {
     return Value64::from_list(rc_new(ListInstance::new(values)));
 }
 
-pub extern "C" fn len(list: Value64) -> Value64 {
-    let list2 = guard_list!(list);
-    Value64::from_f64(list2.values.len() as f64)
+pub extern "C" fn len(val: Value64) -> Value64 {
+    if val.is_list() {
+        let list = val.try_into_list().unwrap();
+        Value64::from_f64(list.len() as f64)
+    } else if val.is_dict() {
+        let dict = val.try_into_dict().unwrap();
+        Value64::from_f64(dict.len() as f64)
+    } else if val.is_string() {
+        let s = guard_string!(val);
+        Value64::from_f64(s.chars().count() as f64)
+    } else {
+        println!("ERROR: Expected list, dict, or string, got {}", val);
+        Value64::ERROR
+    }
 }
 
 pub extern "C" fn clone(val: Value64Ref) -> Value64 {
