@@ -1,0 +1,9 @@
+
+readLines = \path\ BUILTIN:fileLines path;
+
+toString = \path\ BUILTIN:fileToString path;
+
+return {
+  readLines,
+  toString,
+};
