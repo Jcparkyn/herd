@@ -38,12 +38,24 @@ var y = 2; // define a mutable variable
 set y = 3; // modify a mutable variable
 ```
 
+### Types
+
+Values in herd have the following types:
+
+- `()` the unit type, representing no value.
+- `bool` boolean values: `true` and `false`.
+- `number` 64-bit floating point number, e.g. `42`, `-7`, `2.6`.
+- `string` a text string, e.g. `'hello'`.
+- `list` an ordered collection of values, e.g. `[1, 2, 3]`.
+- `dict` a collection of key-value pairs, e.g. `{ x: 1, y: 2 }`.
+- `function` a function value, e.g. `\x y\ x + y`.
+
 ### Lists and dicts
 
 ```dart
-var arr = ['a', 'b', 'c'];
-set arr.[1] = 'z';
-println arr; // prints ['a', 'z', 'c']
+var list = ['a', 'b', 'c'];
+set list.[1] = 'z';
+println list; // prints ['a', 'z', 'c']
 ```
 
 ```dart
@@ -105,6 +117,12 @@ And there's an even shorter syntax for single-parameter functions:
 increment = \(_ + 1);
 ```
 
+Functions with no parameters can be defined using `\\`, and called by passing a unit value `()`:
+
+```dart
+getRandomNumber = \\ Math.randomInt 0 100;
+println (getRandomNumber ()); // prints a random number
+```
 
 ### Values and mutability
 
@@ -214,10 +232,111 @@ Import code from other files using the `import` function:
 println (double x); // prints 84
 ```
 
-Standard library modules can be imported using the `@` prefix:
+You can also import all code from a file:
 
 ```dart
-List = import '@list';
+// in file2.herd
+File1 = import 'file1.herd';
+println (File1.double File1.x); // prints 84
 ```
 
-Many standard library modules are already imported for you, e.g. `System`, `IO`, `List`, `Dict`, `Math`, `String`.
+### Standard library
+
+Standard library modules are already imported for you, and can be accessed from the imported modules:
+
+- `System` - system functions for getting current time, program args, etc.
+- `IO` - file input/output functions.
+- `List` - list utility functions.
+- `Dict` - dict utility functions.
+- `Math` - mathematical functions and constants.
+- `Bitwise` - bitwise operations on integers.
+- `Random` - random number generation.
+- `String` - string utility functions.
+- `File` - file system utility functions.
+- `Parallel` - multithreading utilities.
+
+Some very commonly used functions are also available globally:
+- `not`
+- `range`
+- `assert`
+- `toString`
+- `print`
+- `println`
+- `printf`
+- `len`
+
+### Multithreading
+
+Herd has built-in support for multithreading using the `Parallel` standard library module.
+
+Use `Parallel.parallelMap` to map a function over a list in parallel:
+```dart
+list = [1, 2, 3];
+// square each item in parallel
+squared = Parallel.parallelMap list \(_ * _);
+println squared; // prints [1, 4, 9]
+```
+
+Use `Parallel.parallelRun` to run multiple functions in parallel and wait for all of them to complete:
+```dart
+getOrder = \id\ (...); // TODO
+getCatalog = \\ (...); // TODO
+orderId = 123;
+// Run both functions in parallel
+![order, catalog] = Parallel.parallelRun [
+  \\ getOrder orderId,
+  \\ getCatalog (),
+];
+```
+
+In herd, it is _impossible_ to create a data race, because any mutations only affect the current thread.
+You can safely pass complex data structures between threads without worrying about synchronization.
+However (as with the rest of herd), each function will have its own copy of the data, so the only way to communicate between threads is via the return value.
+
+## Design choices
+
+**Dynamic typing**
+I'm not generally a fan of dynamic typing, but:
+- I wanted to learn how to build an interpreter.
+- I wanted the language to be as simple as possible.
+- I don't think this concept has ever been explored in a dynamic language before (excluding Matlab and R, which have large caveats). Swift is the closest equivalent, but it's statically typed and much more complex.
+
+**User-defined types**
+Herd currently has a very simple type system, with no user-defined types.
+If I wanted to turn this into a production-ready language, I'd probably add Julia-esque structs and multiple dispatch (following the same immutability guarantees as the rest of the language).
+
+**Semicolons**
+This is mostly just because I'm too lazy to write a whitespace-sensitive parser.
+
+**Function syntax**
+Just trying out something different which is a bit more concise than most other languages.
+This is sort of a hybrid between Rust's closure syntax (but with `\` instead of `|`) and ML-style function calls (`f x y`) which require a bit less punctuation.
+
+**Currying (or lack thereof)**
+Currying has a lot of nice properties for language implementation and reasoning, but personally I don't think it's a good fit for herd and would make the language less approachable.
+- With currying, we can't produce a good error message when the user calls a function with the wrong number of arguments.
+- Currying is incompatible with varargs functions (which I admittedly haven't implemented yet).
+- It's still possible to explicitly partially apply a function using the `\(func x _)` syntax.
+
+
+## Performance
+
+Herd uses a very naive single-pass JIT compiler to convert code to machine code at runtime, with cranelift for generating the final optimized machine code. This results in surprisingly good performance - not in the same league as modern JS runtimes, but competitive or faster than many interpreted languages (e.g. CPython).
+
+Values in Herd are represented using NaN-boxing, so primitive types (number, bool, unit) can be stored without any heap allocation. I chose this over tagged pointers, because it makes it much easier to get good numerical performance (at least for 64-bit floats) without complex inlining logic.
+
+The current biggest performance gaps in herd are:
+1. Atomic reference counting overhead, particurly for array/list mutations in hot loops. A lot of this could be removed by lifting the atomic operations out of loops, so the hot code can safely mutate its owned copy.
+2. The single-pass JIT compiler adds some startup overhead by compiling all imported code, especially as the standard library and user codebase get larger. Cranelift is still pretty fast though, so this isn't a major problem.
+3. The single-pass JIT also limits the optimizations that we can do, particularly around type specialization. A more advanced tracing JIT could get a bit of extra performance, but with a big complexity cost.
+
+Here are some benchmark numbers on an i5-13600KF, comparing herd to CPython 3.11 and JavaScript (Node.js 18.6) on a selection of scripts (see `./benchmarks` for the full code):
+
+| Benchmark     | herd          | js               | python            |
+|---------------|---------------|------------------|-------------------|
+| binarytrees   | 1285.1ms      | 789.1ms (-38.6%) | 1992.4ms (55.0%)  |
+| binarytrees-m | 211.1ms       |                  |                   |
+| helloworld    | 25.9ms        | 53.4ms (106.1%)  | 26.8ms (3.6%)     |
+| iterables     | 630.6ms       |                  | 1360.9ms (115.8%) |
+| mandelbrot    | 485.6ms       | 146.1ms (-69.9%) | 3109.8ms (540.3%) |
+| nbody         | 2998.1ms      | 86.0ms (-97.1%)  | 1898.2ms (-36.7%) |
