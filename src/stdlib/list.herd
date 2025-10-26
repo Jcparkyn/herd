@@ -18,12 +18,6 @@ map = \var arr f\ (
   arr
 );
 
-parallelMap = \arr f\ BUILTIN:parallelMap arr f;
-
-call = \f\ f ();
-
-parallelRun = \arr\ BUILTIN:parallelMap arr call;
-
 filter = \arr f\ (
   var result = [];
   for item in arr do (
@@ -182,8 +176,6 @@ return {
   repeat,
   zip,
   flatten,
-  parallelMap,
-  parallelRun,
   sum,
   indexOf,
   contains,

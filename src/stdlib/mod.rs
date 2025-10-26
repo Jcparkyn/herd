@@ -11,6 +11,7 @@ pub fn load_stdlib_module(name: &str) -> &'static str {
         "@regex" => include_str!("regex.herd"),
         "@string" => include_str!("string.herd"),
         "@file" => include_str!("file.herd"),
+        "@parallel" => include_str!("parallel.herd"),
         _ => panic!("No such stdlib module: {}", name),
     }
 }

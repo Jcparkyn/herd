@@ -1,0 +1,9 @@
+parallelMap = \arr f\ BUILTIN:parallelMap arr f;
+
+call = \f\ f ();
+parallelRun = \arr\ BUILTIN:parallelMap arr call;
+
+return {
+  parallelMap,
+  parallelRun,
+};
