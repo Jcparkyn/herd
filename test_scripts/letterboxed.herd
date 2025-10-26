@@ -69,13 +69,13 @@ validateIndicesOnDifferentSides = \indices\ (
   true
 );
 
-handleSubmit = \var state newWord\ (
+handleSubmit = \var state wordSet newWord\ (
   newWordIndices = newWord
     | String.toUpper
     | String.toChars
     | map \(List.indexOf state.edgeLetters _);
 
-  if (newWordIndices | List.len) < 2 then (
+  if (newWordIndices | len) < 2 then (
     set state.errorMessage = 'Word must be at least 2 letters';
     return state;
   )
@@ -95,6 +95,11 @@ handleSubmit = \var state newWord\ (
     return state;
   )
 
+  if not wordSet.[newWord] then (
+    set state.errorMessage = 'Word not found in dictionary';
+    return state;
+  )
+
   set state.entered |= push newWordIndices;
   state
 );
@@ -107,13 +112,120 @@ handleUndo = \var state\ (
   state
 );
 
+// A rather silly function to generate a valid board from two random words, so the game always has a two-word solution.
+generateBoard = \wordList\ (
+
+  // Check if a word is eligible to be used in the solution.
+  wordEligible = \word\ (
+    l = len word;
+    if l < 5 or l > 8 then (
+      return false;
+    )
+    hasDuplicates = word
+      | String.toChars
+      | List.window 2
+      | List.any (\[a, b]\ a == b);
+    not hasDuplicates
+  );
+
+  arrangeBoard = \w1 w2\ (
+    chars1 = String.toChars w1;
+    chars2 = String.toChars w2;
+    chars = chars1 ++ (chars2 | List.slice 1 (len chars2));
+    var result = List.repeat () 12;
+    var currentSide = ();
+    for char in chars do (
+      existingIndex = result | List.indexOf char;
+      if existingIndex != (-1) then (
+        nextSide = indexToSide existingIndex;
+        if nextSide == currentSide then (
+          // Conflict - can't place letter on same side as previous letter
+          printf ['Conflict placing ', char, ' at index ', existingIndex, ' on side ', nextSide];
+          return ();
+        )
+        set currentSide = nextSide;
+      ) else (
+        var availableIndices = range 0 12
+          // Must be on different side to previous letter
+          | List.filter (\i\ indexToSide i != currentSide)
+          // Must not have been used yet
+          | List.filter (\i\ result.[i] == ());
+        if availableIndices == [] then (
+          printf ['Aborting arrangement at ', result];
+          return ();
+        )
+        nextIndex = Random.choice availableIndices;
+        set currentSide = indexToSide nextIndex;
+        set result.[nextIndex] = char;
+      )
+    )
+    result
+  );
+
+  eligibleWords = wordList | List.filter wordEligible;
+
+  groupedByFirstChar = eligibleWords
+    | List.groupBy (\word\ (String.toChars word).[0]);
+
+  attempt = \\ (
+    word1 = Random.choice eligibleWords;
+    l1 = len word1;
+    overlapChar = (String.toChars word1).[-1];
+    desiredLength = 12 - l1 + 3;
+    word2 = groupedByFirstChar.[overlapChar]
+      | List.filter (\word\ len word == desiredLength)
+      | Random.choice;
+    if word2 == () then (
+      return ();
+    )
+    
+    printf ['Trying ', word1, ' and ', word2];
+    l2 = len word2;
+
+    uniqueChars = (String.toChars (word1 ++ word2))
+      | List.distinct;
+
+    if len uniqueChars != 12 then (
+      println ' - wrong number of unique letters';
+      return ();
+    )
+
+    printf ['Selected ', word1, ' and ', word2, '\n'];
+    edgeLetters = arrangeBoard word1 word2;
+    if edgeLetters == () then (
+      println ' - couldn\'t arrange letters';
+      return ();
+    )
+    return { edgeLetters, solution: [word1, word2] };
+  );
+
+  MAX_ATTEMPTS = 1000;
+  for idx in range 1 MAX_ATTEMPTS do (
+    switch attempt () on {
+      () => (),
+      result => (
+        printf ['Board generated successfully (', idx, ' attempts): ', result];
+        return result;
+      ),
+    }
+  )
+  printf ['Failed to generate board after ', MAX_ATTEMPTS, ' attempts'];
+);
+
 main = \\ (
-  edgeLetters = 'OUTSREDABHCG' | String.toChars;
+  wordList = File.readLines 'test_scripts/dictionary.txt';
+
+  !{ edgeLetters, solution } = generateBoard wordList;
+
+  wordSet = wordList
+    | map \([_, true])
+    | Dict.fromEntries;
 
   var state = {
     edgeLetters,
     entered: [],
     errorMessage: (),
+    solution,
   };
 
   render state;
@@ -124,11 +236,21 @@ main = \\ (
       return;
     )
     set state.errorMessage = ();
-    if line == 'undo' then (
-      set state = handleUndo state;
-    ) else (
-      set state = handleSubmit state line;
-    )
+    switch line on {
+      '/undo' => (
+        set state = handleUndo state;
+      ),
+      '/cheat' => (
+        set state.errorMessage = solution | String.join ', ';
+      ),
+      '/reset' => (
+        set state.entered = [];
+      ),
+      _ => (
+        newWord = line | String.toUpper;
+        set state = handleSubmit state wordSet newWord;
+      ),
+    }
     render state;
   )
 );
