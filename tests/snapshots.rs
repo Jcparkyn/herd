@@ -960,7 +960,7 @@ fn stdlib_sort() {
 fn parallel_map() {
     let main_program = r#"
         inputs = range 0 10002;
-        results = List.parallelMap inputs (\x\ x - 5000);
+        results = Parallel.parallelMap inputs (\x\ x - 5000);
         var sum = 0;
         for x in results do (
             set sum = sum + x;
