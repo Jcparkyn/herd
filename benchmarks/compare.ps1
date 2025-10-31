@@ -59,7 +59,12 @@ foreach ($file in $benchmarkFiles) {
 # Sort by benchmark name and ensure baseline column comes first
 $columns = @('Benchmark')
 $columns += 'herd-baseline'
-$columns += ($results[0].PSObject.Properties.Name | Where-Object { $_ -ne 'Benchmark' -and $_ -ne 'herd-baseline' } | Sort-Object)
+$columns += ($results
+    | ForEach-Object { $_.PSObject.Properties.Name }
+    | Where-Object { $_ -ne 'Benchmark' -and $_ -ne 'herd-baseline' }
+    | Select-Object -Unique
+    | Sort-Object
+)
 
 # Display results
 $results | Sort-Object Benchmark | Format-Table -Property $columns -AutoSize
