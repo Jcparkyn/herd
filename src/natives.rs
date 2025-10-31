@@ -499,7 +499,7 @@ pub extern "C" fn len(val: Value64) -> Value64 {
         Value64::from_f64(dict.len() as f64)
     } else if val.is_string() {
         let s = guard_string!(val);
-        Value64::from_f64(s.chars().count() as f64)
+        Value64::from_f64(s.len() as f64)
     } else {
         println!("ERROR: Expected list, dict, or string, got {}", val);
         Value64::ERROR
