@@ -24,7 +24,7 @@ List = import '@list';
   len,
   map,
   filter,
-} = List;
+} = import '@list'; // TODO re-using List here breaks in REPL
 
 Dict = import '@dict';
 
