@@ -1,0 +1,74 @@
+csvString = 'city_name,population,area_sq_km,average_income,median_home_price,number_of_schools
+Koźle,96608,254,79307,510540,46
+Tours,14778,12,77566,125399,21
+Gandra,84734,611,45726,475808,1
+Amirdzhan,14241,341,51891,998345,43
+Rendeng,32899,381,21197,542669,30
+Banjar Pangkungkarung Kangin,76443,431,35037,437919,12
+Muromtsevo,67914,212,58991,114745,19
+Gorzyczki,78162,411,67952,774166,44
+Al Maşlūb,76675,769,78293,493470,11
+Kimovsk,31284,443,24320,120548,43
+Paagahan,72367,917,57725,479950,15
+Luleå,98373,818,42985,182131,27
+Gongji,16302,678,39890,648079,46
+Stockholm,68553,574,25065,722519,6
+Jifeng,57316,87,28182,135169,41
+Joliette,19703,257,36172,379912,34
+Queluz,76764,518,79440,864252,8
+Colomi,32967,464,20847,705047,20
+Mancagahar,38455,353,80096,233041,23
+Vanves,49400,821,99782,861884,41
+Xiaruyue,85177,460,78228,550301,31
+Tangyu,46814,830,96219,690083,9
+Chatuchak,60091,431,34063,887312,26
+Ozamiz City,41162,898,53549,834765,50
+Regente Feijó,13690,19,81094,965420,7
+Magaria,57540,787,90460,68015,5
+Vitória do Mearim,81120,443,84474,190233,47
+Caujul,26412,394,68045,613405,43
+Washington,33943,902,60149,945361,17
+Mirów,26246,628,56106,534794,10
+Järfälla,54560,867,92547,100424,10
+Mitsukaidō,66055,381,99225,877487,25
+Sawin,24643,637,39283,578435,8
+Tilik,42393,726,99779,150627,7
+Tungdor,51711,94,78910,672034,2
+Plátanos,45609,664,81102,529003,11
+San Marcos,18079,468,99791,841577,42
+Mlonggo,86547,547,59949,340904,3';
+
+parseLine = \line header\ (
+  fields = String.split line ',';
+  assert (len fields == len header);
+  var record = {};
+  for j in range 0 (len fields) do (
+    key = header.[j];
+    value = fields.[j];
+    set record.[key] = value;
+  )
+  record
+);
+
+parseCsv = \data\ (
+  lines = String.split data '\n';
+  header = String.split (lines.[0]) ',';
+  columnCount = BUILTIN:len header;
+  var records = [];
+  for i in range 1 (BUILTIN:len lines) do (
+    record = parseLine lines.[i] header;
+    set records |= List.push record;
+  )
+  records
+);
+
+RUN_COUNT = 20000;
+var totalPopulation = 0;
+for run in range 0 RUN_COUNT do (
+  parsed = parseCsv csvString;
+  for record in parsed do (
+    set totalPopulation = totalPopulation + (Math.parseFloat record.['population']);
+  )
+)
+
+printf ['Total population over ', RUN_COUNT, ' runs: ', totalPopulation];

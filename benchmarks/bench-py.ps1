@@ -5,6 +5,7 @@ hyperfine --min-runs 2 --sort command `
   'py -3.11 .\benchmarks\binarytrees.py' `
   'py -3.11 .\benchmarks\helloworld.py' `
   'py -3.11 .\benchmarks\iterables.py' `
+  'py -3.11 .\benchmarks\csv.py' `
   'py -3.11 .\benchmarks\mandelbrot.py'
 
 ./benchmarks/compare.ps1
