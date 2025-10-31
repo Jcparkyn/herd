@@ -308,6 +308,13 @@ If I wanted to turn this into a production-ready language, I'd probably add Juli
 **Semicolons**
 This is mostly just because I'm too lazy to write a whitespace-sensitive parser.
 
+**var, set, and =**
+I took a different approach with the syntax here than most other languages I've seen, in particular that the default for `=` is to define immutable variables, and mutating them requires a dedicated `set` keyword.
+1. In most programs, the majority of variables can be immutable.
+2. Programs define immutable variables more often than they mutate variables.
+
+So I made immutable variable definition the "default", and gave keywords to the other two operations.
+
 **Function syntax**
 Just trying out something different which is a bit more concise than most other languages.
 This is sort of a hybrid between Rust's closure syntax (but with `\` instead of `|`) and ML-style function calls (`f x y`) which require a bit less punctuation.
