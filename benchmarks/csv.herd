@@ -55,8 +55,8 @@ parseCsv = \data\ (
   header = String.split (lines.[0]) ',';
   columnCount = BUILTIN:len header;
   var records = [];
-  for i in range 1 (BUILTIN:len lines) do (
-    record = parseLine lines.[i] header;
+  for line in lines | List.slice 1 () do (
+    record = parseLine line header;
     set records |= List.push record;
   )
   records

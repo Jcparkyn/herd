@@ -40,15 +40,7 @@ reverse = \var arr\ (
   arr
 );
 
-slice = \arr start end\ (
-  var result = [];
-  actualEnd = end | clamp 0 (len arr);
-  actualStart = start | clamp 0 (len arr);
-  for i in range actualStart actualEnd do (
-    set result |= push arr.[i];
-  )
-  result
-);
+slice = \arr start end\ BUILTIN:listSlice arr start end;
 
 repeat = \val n\ (
   var result = [];

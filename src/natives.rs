@@ -21,7 +21,7 @@ use crate::{
     dict::DictInstance,
     jit::VmContext,
     lang::ProgramParser,
-        stdlib::load_stdlib_module,
+    stdlib::load_stdlib_module,
     value64::{rc_mutate, rc_new, LambdaFunction, ListInstance, Value64},
 };
 
@@ -173,6 +173,7 @@ pub fn get_builtins() -> HashMap<&'static str, NativeFuncDef> {
     map.insert("pop", get_def!(1, list_pop));
     map.insert("len", get_def!(1, len));
     map.insert("sort", get_def!(1, list_sort));
+    map.insert("listSlice", get_def!(3, list_slice));
     map.insert("removeKey", get_def!(2, dict_remove_key));
     map.insert("dictKeys", get_def!(1, dict_keys));
     map.insert("dictEntries", get_def!(1, dict_entries));
@@ -421,6 +422,31 @@ pub extern "C" fn list_sort(list_val: Value64) -> Value64 {
         l.values.sort_by(|a, b| a.display_cmp(b));
     });
     Value64::from_list(list)
+}
+
+pub extern "C" fn list_slice(
+    list_val: Value64,
+    start_index: Value64,
+    stop_index: Value64,
+) -> Value64 {
+    let list = guard_into_list!(list_val);
+    let len = list.len();
+    let start = if start_index.is_nil() {
+        0
+    } else {
+        guard_list_index!(start_index, len)
+    };
+    let stop = if stop_index.is_nil() {
+        len
+    } else {
+        guard_list_index!(stop_index, len)
+    };
+    if start >= stop {
+        println!("ERROR: Start index must be less than stop index");
+        return Value64::ERROR;
+    }
+    let sliced_values = list.values[start..stop].to_vec();
+    Value64::from_list(rc_new(ListInstance::new(sliced_values)))
 }
 
 pub extern "C" fn dict_new(capacity: u64) -> Value64 {
