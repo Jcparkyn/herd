@@ -1880,7 +1880,7 @@ impl<'a> FunctionTranslator<'a> {
         let string_val64 = self
             .string_constants
             .entry(string)
-            .or_insert_with_key(|key| Value64::from_string(Rc::new(key.clone())));
+            .or_insert_with_key(|key| Value64::from_string(Rc::new(key.to_string())));
         let bits = string_val64.bits();
         self.const_value64_bits(bits)
     }

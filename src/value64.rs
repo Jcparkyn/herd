@@ -329,6 +329,10 @@ impl Value64 {
         Self::from_rc(value)
     }
 
+    pub fn from_str(value: &str) -> Self {
+        Self::from_string(rc_new(value.to_string()))
+    }
+
     pub const fn is_string(&self) -> bool {
         self.is_ptr_type(PointerTag::String)
     }
@@ -499,6 +503,28 @@ thread_local! {
     pub static RC_TRACKER: RefCell<RcTracker> = RefCell::new(
         RcTracker::new()
     );
+}
+
+pub fn rc_new<T: Boxable>(val: T) -> Rc<T> {
+    let rc = Rc::new(val);
+    #[cfg(debug_assertions)]
+    RC_TRACKER.with(|tracker| {
+        tracker.borrow_mut().track(&rc);
+    });
+    rc
+}
+
+pub fn rc_mutate<T: Boxable + Clone, F: FnOnce(&mut T) -> TRet, TRet>(
+    rc: &mut Rc<T>,
+    action: F,
+) -> TRet {
+    let mut_val = Rc::make_mut(rc);
+    let ret = action(mut_val);
+    #[cfg(debug_assertions)]
+    RC_TRACKER.with(|tracker| {
+        tracker.borrow_mut().track(rc);
+    });
+    ret
 }
 
 impl Clone for Value64 {

@@ -21,13 +21,9 @@ use crate::{
     dict::DictInstance,
     jit::VmContext,
     lang::ProgramParser,
-    rc::Rc,
-    stdlib::load_stdlib_module,
-    value64::{Boxable, LambdaFunction, ListInstance, Value64},
+        stdlib::load_stdlib_module,
+    value64::{rc_mutate, rc_new, LambdaFunction, ListInstance, Value64},
 };
-
-#[cfg(debug_assertions)]
-use crate::value64::RC_TRACKER;
 
 #[derive(Clone, Copy, Debug)]
 pub struct NativeFuncDef {
@@ -255,28 +251,6 @@ impl std::fmt::Display for Value64Ref {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Display::fmt(&*self.0, f)
     }
-}
-
-fn rc_new<T: Boxable>(val: T) -> Rc<T> {
-    let rc = Rc::new(val);
-    #[cfg(debug_assertions)]
-    RC_TRACKER.with(|tracker| {
-        tracker.borrow_mut().track(&rc);
-    });
-    rc
-}
-
-fn rc_mutate<T: Boxable + Clone, F: FnOnce(&mut T) -> TRet, TRet>(
-    rc: &mut Rc<T>,
-    action: F,
-) -> TRet {
-    let mut_val = Rc::make_mut(rc);
-    let ret = action(mut_val);
-    #[cfg(debug_assertions)]
-    RC_TRACKER.with(|tracker| {
-        tracker.borrow_mut().track(rc);
-    });
-    ret
 }
 
 macro_rules! guard_f64 {
