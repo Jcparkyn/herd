@@ -190,6 +190,7 @@ pub fn get_builtins() -> HashMap<&'static str, NativeFuncDef> {
     map.insert("stringToChars", get_def!(1, string_to_chars));
     map.insert("stringToUpper", get_def!(1, string_upper));
     map.insert("stringToLower", get_def!(1, string_lower));
+    map.insert("stringSplit", get_def!(2, string_split));
     map.insert("parallelMap", get_def!(3, parallel_map).with_vm());
     map.insert("epochTime", get_def!(0, epoch_time));
     map.insert("parseFloat", get_def!(1, parse_float));
@@ -888,6 +889,16 @@ pub extern "C" fn string_lower(val: Value64) -> Value64 {
 pub extern "C" fn string_upper(val: Value64) -> Value64 {
     let s = guard_string!(val);
     Value64::from_string(rc_new(s.to_uppercase()))
+}
+
+pub extern "C" fn string_split(val: Value64, delimiter: Value64) -> Value64 {
+    let s = guard_string!(val);
+    let delim_str = guard_string!(delimiter);
+    let parts: Vec<Value64> = s
+        .split(delim_str)
+        .map(|part| Value64::from_string(rc_new(part.to_string())))
+        .collect();
+    Value64::from_list(rc_new(ListInstance::new(parts)))
 }
 
 pub extern "C" fn program_args(vm: &VmContext) -> Value64 {

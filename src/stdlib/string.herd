@@ -28,10 +28,13 @@ toUpper = \text\ BUILTIN:stringToUpper text;
 
 toLower = \text\ BUILTIN:stringToLower text;
 
+split = \text delimiter\ BUILTIN:stringSplit text delimiter;
+
 return {
   toChars,
   fromChars,
   toUpper,
   toLower,
   join,
+  split,
 };
