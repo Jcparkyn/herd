@@ -58,7 +58,16 @@ repeat = \val n\ (
   result
 );
 
-zip = \a b f\ (
+zip = \a b\ (
+  var result = [];
+  l = min (len a) (len b);
+  for i in range 0 l do (
+    set result |= push [a.[i], b.[i]];
+  )
+  result
+);
+
+zipWith = \a b f\ (
   var result = [];
   l = min (len a) (len b);
   for i in range 0 l do (
@@ -175,6 +184,7 @@ return {
   slice,
   repeat,
   zip,
+  zipWith,
   flatten,
   sum,
   indexOf,
