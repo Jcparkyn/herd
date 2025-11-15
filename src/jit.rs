@@ -15,6 +15,7 @@ use strum::Display;
 use types::I64;
 
 use crate::{
+    Value64,
     ast::{
         self, Expr, LambdaExpr, MatchConstant, MatchExpr, MatchPattern, Opcode, SpannedExpr,
         SpannedStatement, Statement, VarRef,
@@ -23,7 +24,6 @@ use crate::{
     pos::{Span, Spanned},
     rc::Rc,
     value64::{self, PointerTag},
-    Value64,
 };
 
 type FuncExpr = LambdaExpr;
@@ -107,8 +107,9 @@ impl VmContext {
         // Cast the raw pointer to a typed function pointer. This is unsafe, because
         // this is the critical point where you have to trust that the generated code
         // is safe to be called.
-        let code_fn =
-            mem::transmute::<_, extern "C" fn(&Self, *const Value64) -> Value64>(func_ptr);
+        let code_fn = unsafe {
+            mem::transmute::<_, extern "C" fn(&Self, *const Value64) -> Value64>(func_ptr)
+        };
         let inputs_ptr = inputs.as_ptr();
         // Make code_fn "consume" the inputs
         forget(inputs);
@@ -518,7 +519,7 @@ impl<'a, 'b> VariableBuilder<'a, 'b> {
             } => {
                 self.declare_variables_in_expr(condition);
                 self.declare_variables_in_expr(then_branch);
-                if let Some(ref else_branch) = else_branch {
+                if let Some(else_branch) = else_branch {
                     self.declare_variables_in_expr(else_branch);
                 }
             }
@@ -669,7 +670,7 @@ impl<'a> FunctionTranslator<'a> {
     fn translate_expr(&mut self, expr: &SpannedExpr) -> MValue {
         self.set_src_span(&expr.span);
         match &expr.value {
-            Expr::Variable(ref var) => self.use_var(var),
+            Expr::Variable(var) => self.use_var(var),
             Expr::Block(b) => {
                 for stmt in &b.statements {
                     self.translate_stmt(stmt);
