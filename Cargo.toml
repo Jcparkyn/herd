@@ -3,8 +3,8 @@ name = "herd"
 version = "0.1.0"
 edition = "2021"
 
-[build-dependencies] # <-- We added this and everything after!
-lalrpop = "0.20.2"
+[build-dependencies]
+lalrpop = "0.22.2"
 
 [features]
 debug-alloc = []
@@ -15,17 +15,17 @@ cranelift = "0.118.0"
 cranelift-jit = "0.118.0"
 cranelift-module = "0.118.0"
 cranelift-native = "0.118.0"
-lalrpop-util = { version = "0.20.2", features = ["lexer", "unicode"] }
+lalrpop-util = { version = "0.22.2", features = ["lexer", "unicode"] }
 mimalloc = "0.1.43"
-rand = "0.8.5"
+rand = "0.9.2"
 rayon = "1.10.0"
 regex = "1.11.1"
-rustyline = { version = "14.0.0", features = ["derive"] }
-strum = { version = "0.26.3", features = ["derive"] }
+rustyline = { version = "17.0.2", features = ["derive"] }
+strum = { version = "0.27.2", features = ["derive"] }
 
 [dev-dependencies]
 insta = "1.40.0"
-rstest = "0.6.4"
+rstest = "0.26.1"
 
 [profile.release]
 debug = true
