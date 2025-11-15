@@ -902,13 +902,18 @@ fn stdlib_slice() {
     let main_program = r#"
         list = [1, 2, 3];
         return [
+            List.slice list 0 1,
+            List.slice list () 1,
+            List.slice list 1 (),
             List.slice list 1 2,
-            List.slice list -2 8,
+            List.slice list 2 5,
+            List.slice list -2 -1,
+            List.slice list -2 (),
         ];
     "#;
 
     let result = eval_snapshot_str(main_program);
-    insta::assert_snapshot!(result, @"[[2], [1, 2, 3]]");
+    insta::assert_snapshot!(result, @"[[1], [1], [2, 3], [2], [3], [2], [2, 3]]");
     assert_rcs_dropped();
 }
 

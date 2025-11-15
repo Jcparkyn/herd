@@ -427,6 +427,24 @@ pub extern "C" fn list_sort(list_val: Value64) -> Value64 {
     Value64::from_list(list)
 }
 
+fn get_slice_index(index: i64, len: usize) -> usize {
+    if index < 0 {
+        let abs_index = (-index) as usize;
+        if abs_index > len {
+            0
+        } else {
+            len - abs_index
+        }
+    } else {
+        let index_usize = index as usize;
+        if index_usize > len {
+            len
+        } else {
+            index_usize
+        }
+    }
+}
+
 pub extern "C" fn list_slice(
     list_val: Value64,
     start_index: Value64,
@@ -437,12 +455,12 @@ pub extern "C" fn list_slice(
     let start = if start_index.is_nil() {
         0
     } else {
-        guard_list_index!(start_index, len)
+        get_slice_index(guard_i64!(start_index), len)
     };
     let stop = if stop_index.is_nil() {
         len
     } else {
-        guard_list_index!(stop_index, len)
+        get_slice_index(guard_i64!(stop_index), len)
     };
     if start >= stop {
         println!("ERROR: Start index must be less than stop index");
