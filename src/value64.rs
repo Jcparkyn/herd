@@ -640,7 +640,7 @@ impl ListInstance {
 
 impl Clone for ListInstance {
     fn clone(&self) -> Self {
-        #[cfg(debug_assertions)]
+        #[cfg(feature = "debug-alloc")]
         println!("Cloning list: {}", self);
         ListInstance {
             values: self.values.clone(),
@@ -650,7 +650,7 @@ impl Clone for ListInstance {
 
 impl Drop for ListInstance {
     fn drop(&mut self) {
-        #[cfg(debug_assertions)]
+        #[cfg(feature = "debug-alloc")]
         println!("Dropping list: {}", self);
     }
 }

@@ -96,7 +96,7 @@ impl DictInstance {
 
 impl Clone for DictInstance {
     fn clone(&self) -> Self {
-        #[cfg(debug_assertions)]
+        #[cfg(feature = "debug-alloc")]
         println!("Cloning dict: {}", self);
         match self {
             DictInstance::Map(map) => DictInstance::Map(map.clone()),
@@ -123,7 +123,7 @@ impl Display for DictInstance {
 
 impl Drop for DictInstance {
     fn drop(&mut self) {
-        #[cfg(debug_assertions)]
+        #[cfg(feature = "debug-alloc")]
         println!("Dropping dict: {}", self);
     }
 }
