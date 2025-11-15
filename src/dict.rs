@@ -75,7 +75,7 @@ impl DictInstance {
         }
     }
 
-    pub fn iter(&self) -> DictEntries {
+    pub fn iter(&self) -> DictEntries<'_> {
         match self {
             DictInstance::Map(map) => DictEntries::Map(map.iter()),
             DictInstance::Vec(vec) => DictEntries::Vec(vec.iter()),

@@ -124,12 +124,12 @@ impl Value64 {
 
     const fn from_bits(bits: u64) -> Self {
         Value64 {
-            val: unsafe { std::mem::transmute::<u64, f64>(bits) },
+            val: f64::from_bits(bits),
         }
     }
 
     pub const fn bits(&self) -> u64 {
-        unsafe { std::mem::transmute::<f64, u64>(self.val) }
+        f64::to_bits(self.val)
     }
 
     pub const fn bits_f64(&self) -> f64 {

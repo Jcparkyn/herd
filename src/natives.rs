@@ -815,7 +815,7 @@ pub extern "C" fn random_int(min: Value64, max: Value64) -> Value64 {
         println!("ERROR: min should be < max in randomInt");
         return Value64::ERROR;
     }
-    let result = rand::thread_rng().gen_range(min_int..max_int);
+    let result = rand::rng().random_range(min_int..max_int);
     Value64::from_f64(result as f64)
 }
 
@@ -826,7 +826,7 @@ pub extern "C" fn random_float(min: Value64, max: Value64) -> Value64 {
         println!("ERROR: min should be < max in randomFloat");
         return Value64::ERROR;
     }
-    let result = rand::thread_rng().gen_range(min_float..=max_float);
+    let result = rand::rng().random_range(min_float..=max_float);
     Value64::from_f64(result)
 }
 
