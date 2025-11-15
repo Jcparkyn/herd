@@ -610,7 +610,6 @@ pub struct LambdaFunction {
     pub param_count: usize,
     pub closure: Vec<Value64>,
     pub self_name: Option<String>,
-    pub recursive: bool,
     pub func_ptr: Option<*const u8>,
 }
 

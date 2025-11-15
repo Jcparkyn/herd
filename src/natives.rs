@@ -710,7 +710,6 @@ pub extern "C" fn construct_lambda(
         param_count: param_count as usize,
         closure: closure_slice.to_vec(),
         self_name: Some("TEMP lambda".to_string()),
-        recursive: false, // TODO
         func_ptr: Some(func_ptr),
     };
     Value64::from_lambda(rc_new(lambda))
