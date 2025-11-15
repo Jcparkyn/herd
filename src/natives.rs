@@ -127,6 +127,9 @@ macro_rules! get_def {
     (4, $func:expr) => {
         get_def4(func_name!($func), $func)
     };
+    (5, $func:expr) => {
+        get_def5(func_name!($func), $func)
+    };
 }
 
 fn get_native_func_def(func: NativeFuncId) -> NativeFuncDef {
@@ -148,7 +151,7 @@ fn get_native_func_def(func: NativeFuncId) -> NativeFuncDef {
         NativeFuncId::ValTruthy => get_def!(1, val_truthy_u8),
         NativeFuncId::ValConcat => get_def!(2, val_concat), // TODO
         NativeFuncId::ValGetLambdaDetails => get_def!(3, get_lambda_details), // check result in JIT
-        NativeFuncId::ConstructLambda => get_def!(4, construct_lambda),
+        NativeFuncId::ConstructLambda => get_def!(5, construct_lambda),
         NativeFuncId::ImportModule => get_def!(2, import_module), // check result in JIT
         NativeFuncId::Print => get_def!(1, print),
     }
@@ -225,7 +228,7 @@ generate_get_def!(get_def0);
 generate_get_def!(get_def1, T1);
 generate_get_def!(get_def2, T1, T2);
 generate_get_def!(get_def3, T1, T2, T3);
-generate_get_def!(get_def4, T1, T2, T3, T4);
+generate_get_def!(get_def5, T1, T2, T3, T4, T5);
 
 // Not using &Value64, so that the ABI for these functions still takes
 // regular f64 values.
@@ -701,6 +704,7 @@ pub extern "C" fn get_lambda_details(
 
 pub extern "C" fn construct_lambda(
     param_count: u64,
+    name: Value64Ref, // string or ()
     func_ptr: *const u8,
     capture_count: u64,
     captures: *const Value64,
@@ -709,7 +713,7 @@ pub extern "C" fn construct_lambda(
     let lambda = LambdaFunction {
         param_count: param_count as usize,
         closure: closure_slice.to_vec(),
-        self_name: Some("TEMP lambda".to_string()),
+        self_name: name.as_str().map(|x| x.to_string()),
         func_ptr: Some(func_ptr),
     };
     Value64::from_lambda(rc_new(lambda))

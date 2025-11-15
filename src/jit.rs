@@ -1537,10 +1537,17 @@ impl<'a> FunctionTranslator<'a> {
                 .stack_store(var_val, closure_slot, (i * 8) as i32);
         }
         let closure_ptr = self.builder.ins().stack_addr(PTR, closure_slot, 0);
+        let name_val = if let Some(name) = &lambda.name {
+            self.string_literal_borrow(name.clone())
+        } else {
+            self.const_nil()
+        };
+        // let name_val = self.const_nil();
         let lambda_val = self.call_native(
             NativeFuncId::ConstructLambda,
             &[
                 param_count_val,
+                name_val,
                 func_ptr_val,
                 capture_count_val,
                 closure_ptr,
