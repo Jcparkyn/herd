@@ -6,7 +6,7 @@ use herd::analysis::Analyzer;
 use herd::jit::{self, ModuleLoader, VmContext};
 use herd::lang::ProgramParser;
 use herd::rc::Weak;
-use herd::value64::{Boxable, RcTrackList, Value64, RC_TRACKER};
+use herd::value64::{Boxable, RC_TRACKER, RcTrackList, Value64};
 
 fn reset_tracker() {
     fn reset_list<T: Boxable>(list: &mut RcTrackList<T>) {
@@ -453,6 +453,17 @@ fn early_return_if() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"[['A'], 'B']");
+    assert_rcs_dropped();
+}
+
+#[test]
+#[ignore = "Currently fails to drop allocated value when returning inside expression"]
+fn early_return_cleanup() {
+    let program = r#"
+        return 'A' ++ 'B' ++ (return 42;);
+    "#;
+    let result = eval_snapshot_str(program);
+    insta::assert_snapshot!(result, @"42");
     assert_rcs_dropped();
 }
 
