@@ -1,6 +1,6 @@
 use codegen::ir::{self, StackSlot};
 use core::panic;
-use cranelift::prelude::*;
+use cranelift::{codegen::ir::BlockArg, prelude::*};
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{DataDescription, FuncId, FuncOrDataId, Linkage, Module, ModuleError};
 use std::{
@@ -428,10 +428,10 @@ impl JIT {
         let return_value = trans.translate_expr(body);
 
         // Jump to the return block.
-        trans
-            .builder
-            .ins()
-            .jump(trans.return_block, &[return_value.borrow()]);
+        trans.builder.ins().jump(
+            trans.return_block,
+            &[BlockArg::Value(return_value.borrow())],
+        );
 
         trans.translate_return_block(repl_mode);
         // Tell the builder we're done with this function.
@@ -449,7 +449,6 @@ struct FuncVar {
 struct VariableBuilder<'a, 'b> {
     builder: &'a mut FunctionBuilder<'b>,
     variables: HashMap<String, FuncVar>,
-    index: usize,
 }
 
 impl<'a, 'b> VariableBuilder<'a, 'b> {
@@ -457,7 +456,6 @@ impl<'a, 'b> VariableBuilder<'a, 'b> {
         Self {
             builder,
             variables: HashMap::new(),
-            index: 0,
         }
     }
 
@@ -625,10 +623,9 @@ impl<'a, 'b> VariableBuilder<'a, 'b> {
 
     fn create_variable(&mut self, name: &str, default_value: Value, owned: bool) {
         if !self.variables.contains_key(name) {
-            let var = Variable::new(self.index);
+            let var = self.builder.declare_var(VAL64);
+            // let var = Variable::new(self.index);
             self.variables.insert(name.into(), FuncVar { var, owned });
-            self.builder.declare_var(var, VAL64);
-            self.index += 1;
             self.define_variable(var, default_value, name);
         }
     }
@@ -935,7 +932,9 @@ impl<'a> FunctionTranslator<'a> {
             }
             Statement::Return(e) => {
                 let return_value = self.translate_expr(e).into_owned(self);
-                self.builder.ins().jump(self.return_block, &[return_value]);
+                self.builder
+                    .ins()
+                    .jump(self.return_block, &[BlockArg::Value(return_value)]);
 
                 // Create a new block for after the return instruction, so that other instructions
                 // can still be added after it. Normally, Cranelift rejects instructions after
@@ -1047,9 +1046,13 @@ impl<'a> FunctionTranslator<'a> {
 
                 // Return false if not a list
                 let is_list = self.is_ptr_type(value, PointerTag::List);
-                self.builder
-                    .ins()
-                    .brif(is_list, block0, &[], merge_block, &[false_val]);
+                self.builder.ins().brif(
+                    is_list,
+                    block0,
+                    &[],
+                    merge_block,
+                    &[BlockArg::Value(false_val)],
+                );
                 self.builder.switch_to_block(block0);
                 self.builder.seal_block(block0);
 
@@ -1060,9 +1063,13 @@ impl<'a> FunctionTranslator<'a> {
                         .ins()
                         .icmp_imm(IntCC::Equal, value_len, parts.len() as i64);
 
-                self.builder
-                    .ins()
-                    .brif(len_eq, block1, &[], merge_block, &[false_val]);
+                self.builder.ins().brif(
+                    len_eq,
+                    block1,
+                    &[],
+                    merge_block,
+                    &[BlockArg::Value(false_val)],
+                );
                 self.builder.switch_to_block(block1);
                 self.builder.seal_block(block1);
                 let mut matches_all = self.builder.ins().iconst(types::I8, 1);
@@ -1077,7 +1084,9 @@ impl<'a> FunctionTranslator<'a> {
                     // TODO short-circuit
                     matches_all = self.builder.ins().band(matches_all, matches);
                 }
-                self.builder.ins().jump(merge_block, &[matches_all]);
+                self.builder
+                    .ins()
+                    .jump(merge_block, &[BlockArg::Value(matches_all)]);
 
                 self.builder.switch_to_block(merge_block);
                 self.builder.seal_block(merge_block);
@@ -1095,9 +1104,13 @@ impl<'a> FunctionTranslator<'a> {
 
                 // Return false if not a dict
                 let is_dict = self.is_ptr_type(value, PointerTag::Dict);
-                self.builder
-                    .ins()
-                    .brif(is_dict, block0, &[], merge_block, &[false_val]);
+                self.builder.ins().brif(
+                    is_dict,
+                    block0,
+                    &[],
+                    merge_block,
+                    &[BlockArg::Value(false_val)],
+                );
                 self.builder.switch_to_block(block0);
                 self.builder.seal_block(block0);
 
@@ -1116,7 +1129,9 @@ impl<'a> FunctionTranslator<'a> {
                     matches_all = self.builder.ins().band(matches_all, found);
                     matches_all = self.builder.ins().band(matches_all, matches);
                 }
-                self.builder.ins().jump(merge_block, &[matches_all]);
+                self.builder
+                    .ins()
+                    .jump(merge_block, &[BlockArg::Value(matches_all)]);
 
                 self.builder.switch_to_block(merge_block);
                 self.builder.seal_block(merge_block);
@@ -1249,7 +1264,9 @@ impl<'a> FunctionTranslator<'a> {
         let then_return = self.translate_expr(then_body).into_owned(self);
 
         // Jump to the merge block, passing it the block return value.
-        self.builder.ins().jump(merge_block, &[then_return]);
+        self.builder
+            .ins()
+            .jump(merge_block, &[BlockArg::Value(then_return)]);
 
         self.builder.switch_to_block(else_block);
         self.builder.seal_block(else_block);
@@ -1259,7 +1276,9 @@ impl<'a> FunctionTranslator<'a> {
         }
 
         // Jump to the merge block, passing it the block return value.
-        self.builder.ins().jump(merge_block, &[else_return]);
+        self.builder
+            .ins()
+            .jump(merge_block, &[BlockArg::Value(else_return)]);
 
         // Switch to the merge block for subsequent statements.
         self.builder.switch_to_block(merge_block);
@@ -1287,7 +1306,9 @@ impl<'a> FunctionTranslator<'a> {
         let iter_value = self.translate_expr(iter);
         let len_value = self.call_native(NativeFuncId::ListLenU64, &[iter_value.borrow()])[0];
         let initial_index = self.builder.ins().iconst(I64, 0);
-        self.builder.ins().jump(header_block, &[initial_index]);
+        self.builder
+            .ins()
+            .jump(header_block, &[BlockArg::Value(initial_index)]);
 
         // HEADER BLOCK
         self.set_src_span(&iter.span);
@@ -1302,7 +1323,7 @@ impl<'a> FunctionTranslator<'a> {
         self.builder.ins().brif(
             should_continue,
             body_block,
-            &[current_index],
+            &[BlockArg::Value(current_index)],
             exit_block,
             &[],
         );
@@ -1322,7 +1343,9 @@ impl<'a> FunctionTranslator<'a> {
         self.translate_match_pattern(&var.value, current_item);
         self.translate_expr(body);
         let next_index = self.builder.ins().iadd_imm(current_index, 1);
-        self.builder.ins().jump(header_block, &[next_index]);
+        self.builder
+            .ins()
+            .jump(header_block, &[BlockArg::Value(next_index)]);
 
         // EXIT BLOCK
         self.builder.switch_to_block(exit_block);
@@ -1500,7 +1523,7 @@ impl<'a> FunctionTranslator<'a> {
         trans
             .builder
             .ins()
-            .jump(trans.return_block, &[return_value]);
+            .jump(trans.return_block, &[BlockArg::Value(return_value)]);
 
         trans.translate_return_block(false);
         trans.builder.finalize();
@@ -1597,7 +1620,9 @@ impl<'a> FunctionTranslator<'a> {
             self.builder.switch_to_block(branch_body_blocks[i]);
             self.translate_match_pattern(&pattern.value, subject);
             let body_value = self.translate_expr(body).into_owned(self);
-            self.builder.ins().jump(merge_block, &[body_value]);
+            self.builder
+                .ins()
+                .jump(merge_block, &[BlockArg::Value(body_value)]);
         }
 
         // Seal all branch blocks
@@ -1696,14 +1721,20 @@ impl<'a> FunctionTranslator<'a> {
         let then_block = self.builder.create_block();
         let after_block = self.builder.create_block();
         self.builder.append_block_param(after_block, types::I8); // TODO: Can we make this generic?
-        self.builder
-            .ins()
-            .brif(cond, then_block, &[], after_block, &[fallback]);
+        self.builder.ins().brif(
+            cond,
+            then_block,
+            &[],
+            after_block,
+            &[BlockArg::Value(fallback)],
+        );
 
         self.builder.switch_to_block(then_block);
         self.builder.seal_block(then_block);
         let then_val = then(self);
-        self.builder.ins().jump(after_block, &[then_val]);
+        self.builder
+            .ins()
+            .jump(after_block, &[BlockArg::Value(then_val)]);
 
         self.builder.switch_to_block(after_block);
         self.builder.seal_block(after_block);
@@ -1814,14 +1845,20 @@ impl<'a> FunctionTranslator<'a> {
             .ins()
             .icmp_imm(IntCC::Equal, val_bits, value64::FALSE_VALUE as i64);
         let is_bool = self.builder.ins().bor(is_t, is_f);
-        self.builder
-            .ins()
-            .brif(is_bool, merge_block, &[is_t], not_bool_block, &[]);
+        self.builder.ins().brif(
+            is_bool,
+            merge_block,
+            &[BlockArg::Value(is_t)],
+            not_bool_block,
+            &[],
+        );
 
         self.builder.switch_to_block(not_bool_block);
         self.builder.seal_block(not_bool_block);
         let truthy = self.call_native(NativeFuncId::ValTruthy, &[val.as_bvalue()])[0];
-        self.builder.ins().jump(merge_block, &[truthy]);
+        self.builder
+            .ins()
+            .jump(merge_block, &[BlockArg::Value(truthy)]);
 
         self.builder.switch_to_block(merge_block);
         self.builder.seal_block(merge_block);
