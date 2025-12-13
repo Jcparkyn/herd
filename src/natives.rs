@@ -10,7 +10,7 @@ use std::{
     time::SystemTime,
 };
 
-use cranelift::prelude::{types, AbiParam, Signature, Type};
+use cranelift::prelude::{AbiParam, Signature, Type, types};
 use rand::Rng;
 use rayon::prelude::*;
 use regex::Regex;
@@ -19,10 +19,12 @@ use strum::{EnumIter, IntoEnumIterator};
 use crate::{
     analysis::Analyzer,
     dict::DictInstance,
+    error::HerdError,
     jit::VmContext,
     lang::ProgramParser,
+    rc::Rc,
     stdlib::load_stdlib_module,
-    value64::{rc_mutate, rc_new, LambdaFunction, ListInstance, Value64},
+    value64::{LambdaFunction, ListInstance, Value64, rc_mutate, rc_new},
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -31,11 +33,17 @@ pub struct NativeFuncDef {
     pub func_ptr: *const u8,
     pub make_sig: fn(&mut Signature) -> (),
     pub needs_vm: bool,
+    pub fallible: bool,
 }
 
 impl NativeFuncDef {
     pub fn with_vm(mut self) -> Self {
         self.needs_vm = true;
+        self
+    }
+
+    pub fn fallible(mut self) -> Self {
+        self.fallible = true;
         self
     }
 }
@@ -62,6 +70,8 @@ pub enum NativeFuncId {
     ConstructLambda,
     ImportModule,
     Print,
+    AllocError,
+    StringTemplate,
 }
 
 trait AbiType {
@@ -75,6 +85,12 @@ impl AbiType for () {
 
 impl AbiType for Value64 {
     const TYPE: Type = types::F64;
+}
+
+impl Default for Value64 {
+    fn default() -> Self {
+        Value64::NIL
+    }
 }
 
 impl AbiType for Value64Ref {
@@ -154,6 +170,8 @@ fn get_native_func_def(func: NativeFuncId) -> NativeFuncDef {
         NativeFuncId::ConstructLambda => get_def!(5, construct_lambda),
         NativeFuncId::ImportModule => get_def!(2, import_module), // check result in JIT
         NativeFuncId::Print => get_def!(1, print),
+        NativeFuncId::AllocError => get_def!(3, alloc_herd_error),
+        NativeFuncId::StringTemplate => get_def!(3, string_template),
     }
 }
 
@@ -168,41 +186,45 @@ pub fn get_natives() -> HashMap<NativeFuncId, NativeFuncDef> {
 pub fn get_builtins() -> HashMap<&'static str, NativeFuncDef> {
     let mut map = HashMap::new();
     map.insert("print", get_def!(1, print));
-    map.insert("readline", get_def!(0, readln));
+    map.insert("readline", get_def!(1, readln).fallible());
     map.insert("not", get_def!(1, val_not));
-    map.insert("shiftLeft", get_def!(2, val_shift_left));
-    map.insert("range", get_def!(2, range));
-    map.insert("push", get_def!(2, list_push));
-    map.insert("pop", get_def!(1, list_pop));
-    map.insert("len", get_def!(1, len));
-    map.insert("sort", get_def!(1, list_sort));
-    map.insert("listSlice", get_def!(3, list_slice));
-    map.insert("removeKey", get_def!(2, dict_remove_key));
-    map.insert("dictKeys", get_def!(1, dict_keys));
-    map.insert("dictEntries", get_def!(1, dict_entries));
-    map.insert("randomInt", get_def!(2, random_int));
-    map.insert("randomFloat", get_def!(2, random_float));
-    map.insert("floatPow", get_def!(2, float_pow));
-    map.insert("assertTruthy", get_def!(1, assert_truthy));
-    map.insert("regexFind", get_def!(2, regex_find));
-    map.insert("regexReplace", get_def!(3, regex_replace));
+    map.insert("shiftLeft", get_def!(3, val_shift_left).fallible());
+    map.insert("range", get_def!(3, range).fallible());
+    map.insert("push", get_def!(3, list_push).fallible());
+    map.insert("pop", get_def!(2, list_pop).fallible());
+    map.insert("len", get_def!(2, len).fallible());
+    map.insert("sort", get_def!(2, list_sort).fallible());
+    map.insert("listSlice", get_def!(4, list_slice).fallible());
+    map.insert("removeKey", get_def!(3, dict_remove_key).fallible());
+    map.insert("dictKeys", get_def!(2, dict_keys).fallible());
+    map.insert("dictEntries", get_def!(2, dict_entries).fallible());
+    map.insert("randomInt", get_def!(3, random_int).fallible());
+    map.insert("randomFloat", get_def!(3, random_float).fallible());
+    map.insert("floatPow", get_def!(3, float_pow).fallible());
+    map.insert("assertTruthy", get_def!(2, assert_truthy).fallible());
+    map.insert("regexFind", get_def!(3, regex_find).fallible());
+    map.insert("regexReplace", get_def!(4, regex_replace).fallible());
     map.insert("toString", get_def!(1, val_to_string));
-    map.insert("stringToChars", get_def!(1, string_to_chars));
-    map.insert("stringToUpper", get_def!(1, string_upper));
-    map.insert("stringToLower", get_def!(1, string_lower));
-    map.insert("stringSplit", get_def!(2, string_split));
-    map.insert("parallelMap", get_def!(3, parallel_map).with_vm());
-    map.insert("epochTime", get_def!(0, epoch_time));
-    map.insert("parseFloat", get_def!(1, parse_float));
+    map.insert("stringToChars", get_def!(2, string_to_chars).fallible());
+    map.insert("stringToUpper", get_def!(2, string_upper).fallible());
+    map.insert("stringToLower", get_def!(2, string_lower).fallible());
+    map.insert("stringSplit", get_def!(3, string_split).fallible());
+    map.insert(
+        "parallelMap",
+        get_def!(4, parallel_map).fallible().with_vm(),
+    );
+    map.insert("epochTime", get_def!(1, epoch_time).fallible());
+    map.insert("parseFloat", get_def!(2, parse_float).fallible());
     map.insert("programArgs", get_def!(1, program_args).with_vm());
-    map.insert("fileToString", get_def!(1, file_to_string));
-    map.insert("fileLines", get_def!(1, file_lines));
+    map.insert("fileToString", get_def!(2, file_to_string).fallible());
+    map.insert("fileLines", get_def!(2, file_lines).fallible());
 
     return map;
 }
 
 macro_rules! generate_get_def {
     ($fname:ident $(, $param:ident)*) => {
+        #[allow(dead_code)]
         fn $fname<$($param: AbiType,)* TRet: AbiType>(
             name: &'static str,
             func: extern "C" fn($($param),*) -> TRet,
@@ -219,6 +241,7 @@ macro_rules! generate_get_def {
                     }
                 },
                 needs_vm: false,
+                fallible: false,
             }
         }
     };
@@ -228,7 +251,55 @@ generate_get_def!(get_def0);
 generate_get_def!(get_def1, T1);
 generate_get_def!(get_def2, T1, T2);
 generate_get_def!(get_def3, T1, T2, T3);
+generate_get_def!(get_def4, T1, T2, T3, T4);
 generate_get_def!(get_def5, T1, T2, T3, T4, T5);
+
+fn handle_c_result<F>(error_out: *mut *const HerdError, f: F) -> Value64
+where
+    F: FnOnce() -> Result<Value64, HerdError>,
+{
+    unsafe {
+        *error_out = std::ptr::null();
+    }
+    f().unwrap_or_else(|err| {
+        if !error_out.is_null() {
+            println!("Returning error from native function: {:?}", err);
+            unsafe {
+                *error_out = Box::into_raw(Box::new(err));
+            }
+        }
+        Value64::NIL
+    })
+}
+
+fn guard_f64_new(val: &Value64) -> Result<f64, HerdError> {
+    val.as_f64()
+        .ok_or_else(|| HerdError::new(format!("Expected a number, got {}", val)))
+}
+
+fn guard_i64(val: &Value64) -> Result<i64, HerdError> {
+    guard_f64_new(val).map(|f| f as i64)
+}
+
+fn guard_into_list(val: Value64) -> Result<Rc<ListInstance>, HerdError> {
+    val.try_into_list()
+        .map_err(|v| HerdError::new(format!("Expected a list, got {}", v)))
+}
+
+fn guard_into_dict(val: Value64) -> Result<Rc<DictInstance>, HerdError> {
+    val.try_into_dict()
+        .map_err(|v| HerdError::new(format!("Expected a dict, got {}", v)))
+}
+
+fn guard_str(val: &Value64) -> Result<&str, HerdError> {
+    val.as_str()
+        .ok_or_else(|| HerdError::new(format!("Expected a string, got {}", val)))
+}
+
+fn guard_lambda(val: &Value64) -> Result<&LambdaFunction, HerdError> {
+    val.as_lambda()
+        .ok_or_else(|| HerdError::new(format!("Expected a lambda, got {}", val)))
+}
 
 // Not using &Value64, so that the ABI for these functions still takes
 // regular f64 values.
@@ -279,17 +350,9 @@ macro_rules! guard_usize {
 fn parse_list_index_f64(val: f64, len: usize) -> Option<usize> {
     let i = val.abs() as usize;
     if val < 0.0 {
-        if i > len {
-            None
-        } else {
-            Some(len - i)
-        }
+        if i > len { None } else { Some(len - i) }
     } else {
-        if i >= len {
-            None
-        } else {
-            Some(i)
-        }
+        if i >= len { None } else { Some(i) }
     }
 }
 
@@ -312,73 +375,6 @@ macro_rules! guard_list_index {
     };
 }
 
-macro_rules! guard_i64 {
-    ($val:expr) => {
-        // TODO assert int
-        guard_f64!($val) as i64
-    };
-}
-
-macro_rules! guard_list {
-    ($val:expr) => {
-        match $val.as_list() {
-            Some(l) => l,
-            None => {
-                println!("ERROR: Expected a list, got {}", $val);
-                return Value64::ERROR;
-            }
-        }
-    };
-}
-
-macro_rules! guard_into_list {
-    ($val:expr) => {
-        match $val.try_into_list() {
-            Ok(l) => l,
-            Err(v) => {
-                println!("ERROR: Expected a list, got {}", v);
-                return Value64::ERROR;
-            }
-        }
-    };
-}
-
-macro_rules! guard_into_dict {
-    ($val:expr) => {
-        match $val.try_into_dict() {
-            Ok(d) => d,
-            Err(v) => {
-                println!("ERROR: Expected a dict, got {}", v);
-                return Value64::ERROR;
-            }
-        }
-    };
-}
-
-macro_rules! guard_string {
-    ($val:expr) => {
-        match $val.as_str() {
-            Some(l) => l,
-            None => {
-                println!("ERROR: Expected a string, got {}", $val);
-                return Value64::ERROR;
-            }
-        }
-    };
-}
-
-macro_rules! guard_lambda {
-    ($val:expr) => {
-        match $val.as_lambda() {
-            Some(l) => l,
-            None => {
-                println!("ERROR: Expected a lambda, got {}", $val);
-                return Value64::ERROR;
-            }
-        }
-    };
-}
-
 type Out<T> = *mut T;
 
 pub extern "C" fn list_new(len: u64, items: *const Value64) -> Value64 {
@@ -391,18 +387,26 @@ pub extern "C" fn list_new(len: u64, items: *const Value64) -> Value64 {
     Value64::from_list(rc_new(ListInstance::new(items)))
 }
 
-pub extern "C" fn list_push(list: Value64, val: Value64) -> Value64 {
-    let mut list = guard_into_list!(list);
-    rc_mutate(&mut list, |l| l.values.push(val));
-    Value64::from_list(list)
+pub extern "C" fn list_push(
+    error_out: *mut *const HerdError,
+    list: Value64,
+    val: Value64,
+) -> Value64 {
+    handle_c_result(error_out, || {
+        let mut list = guard_into_list(list)?;
+        rc_mutate(&mut list, |l| l.values.push(val));
+        Ok(Value64::from_list(list))
+    })
 }
 
-pub extern "C" fn list_pop(list: Value64) -> Value64 {
-    let mut list = guard_into_list!(list);
-    rc_mutate(&mut list, |l| {
-        l.values.pop();
-    });
-    Value64::from_list(list)
+pub extern "C" fn list_pop(error_out: *mut *const HerdError, list: Value64) -> Value64 {
+    handle_c_result(error_out, || {
+        let mut list = guard_into_list(list)?;
+        rc_mutate(&mut list, |l| {
+            l.values.pop();
+        });
+        Ok(Value64::from_list(list))
+    })
 }
 
 pub extern "C" fn list_len_u64(list: Value64Ref) -> u64 {
@@ -419,55 +423,53 @@ pub extern "C" fn list_borrow_u64(list: Value64Ref, index: u64) -> Value64Ref {
     Value64Ref::from_ref(&list2.values[index as usize])
 }
 
-pub extern "C" fn list_sort(list_val: Value64) -> Value64 {
-    let mut list = guard_into_list!(list_val);
-    rc_mutate(&mut list, |l| {
-        l.values.sort_by(|a, b| a.display_cmp(b));
-    });
-    Value64::from_list(list)
+pub extern "C" fn list_sort(error_out: *mut *const HerdError, list_val: Value64) -> Value64 {
+    handle_c_result(error_out, || {
+        let mut list = guard_into_list(list_val)?;
+        rc_mutate(&mut list, |l| {
+            l.values.sort_by(|a, b| a.display_cmp(b));
+        });
+        Ok(Value64::from_list(list))
+    })
 }
 
 fn get_slice_index(index: i64, len: usize) -> usize {
     if index < 0 {
         let abs_index = (-index) as usize;
-        if abs_index > len {
-            0
-        } else {
-            len - abs_index
-        }
+        if abs_index > len { 0 } else { len - abs_index }
     } else {
         let index_usize = index as usize;
-        if index_usize > len {
-            len
-        } else {
-            index_usize
-        }
+        if index_usize > len { len } else { index_usize }
     }
 }
 
 pub extern "C" fn list_slice(
+    error_out: *mut *const HerdError,
     list_val: Value64,
     start_index: Value64,
     stop_index: Value64,
 ) -> Value64 {
-    let list = guard_into_list!(list_val);
-    let len = list.len();
-    let start = if start_index.is_nil() {
-        0
-    } else {
-        get_slice_index(guard_i64!(start_index), len)
-    };
-    let stop = if stop_index.is_nil() {
-        len
-    } else {
-        get_slice_index(guard_i64!(stop_index), len)
-    };
-    if start >= stop {
-        println!("ERROR: Start index must be less than stop index");
-        return Value64::ERROR;
-    }
-    let sliced_values = list.values[start..stop].to_vec();
-    Value64::from_list(rc_new(ListInstance::new(sliced_values)))
+    handle_c_result(error_out, || {
+        let list = guard_into_list(list_val)?;
+        let len = list.len();
+        let start = if start_index.is_nil() {
+            0
+        } else {
+            get_slice_index(guard_i64(&start_index)?, len)
+        };
+        let stop = if stop_index.is_nil() {
+            len
+        } else {
+            get_slice_index(guard_i64(&stop_index)?, len)
+        };
+        if start >= stop {
+            return Err(HerdError::new(
+                "Start index must be less than stop index".to_string(),
+            ));
+        }
+        let sliced_values = list.values[start..stop].to_vec();
+        Ok(Value64::from_list(rc_new(ListInstance::new(sliced_values))))
+    })
 }
 
 pub extern "C" fn dict_new(capacity: u64) -> Value64 {
@@ -501,56 +503,76 @@ pub extern "C" fn dict_lookup(dict: Value64Ref, key: Value64Ref, found: Out<u8>)
     }
 }
 
-pub extern "C" fn dict_remove_key(dict: Value64, key: Value64) -> Value64 {
-    let mut dict = guard_into_dict!(dict);
-    rc_mutate(&mut dict, |d| {
-        d.remove(&key);
-    });
-    Value64::from_dict(dict)
+pub extern "C" fn dict_remove_key(
+    error_out: *mut *const HerdError,
+    dict: Value64,
+    key: Value64,
+) -> Value64 {
+    handle_c_result(error_out, || {
+        let mut dict = guard_into_dict(dict)?;
+        rc_mutate(&mut dict, |d| {
+            d.remove(&key);
+        });
+        Ok(Value64::from_dict(dict))
+    })
 }
 
-pub extern "C" fn dict_keys(dict: Value64) -> Value64 {
-    let dict = guard_into_dict!(dict);
-    let keys: Vec<Value64> = dict.keys().cloned().collect();
-    Value64::from_list(rc_new(ListInstance::new(keys)))
+pub extern "C" fn dict_keys(error_out: *mut *const HerdError, dict: Value64) -> Value64 {
+    handle_c_result(error_out, || {
+        let dict = guard_into_dict(dict)?;
+        let keys: Vec<Value64> = dict.keys().cloned().collect();
+        Ok(Value64::from_list(rc_new(ListInstance::new(keys))))
+    })
 }
 
-pub extern "C" fn dict_entries(dict: Value64) -> Value64 {
-    let dict = guard_into_dict!(dict);
-    let entries: Vec<Value64> = dict
-        .iter()
-        .map(|(k, v)| {
-            let entry = vec![k.clone(), v.clone()];
-            Value64::from_list(rc_new(ListInstance::new(entry)))
-        })
-        .collect();
-    Value64::from_list(rc_new(ListInstance::new(entries)))
+pub extern "C" fn dict_entries(error_out: *mut *const HerdError, dict: Value64) -> Value64 {
+    handle_c_result(error_out, || {
+        let dict = guard_into_dict(dict)?;
+        let entries: Vec<Value64> = dict
+            .iter()
+            .map(|(k, v)| {
+                let entry = vec![k.clone(), v.clone()];
+                Value64::from_list(rc_new(ListInstance::new(entry)))
+            })
+            .collect();
+        Ok(Value64::from_list(rc_new(ListInstance::new(entries))))
+    })
 }
 
-pub extern "C" fn range(start: Value64, stop: Value64) -> Value64 {
-    let start_int = guard_i64!(start);
-    let stop_int = guard_i64!(stop);
-    let mut values = Vec::new();
-    for i in start_int..stop_int {
-        values.push(Value64::from_f64(i as f64));
-    }
-    return Value64::from_list(rc_new(ListInstance::new(values)));
+pub extern "C" fn range(
+    error_out: *mut *const HerdError,
+    start: Value64,
+    stop: Value64,
+) -> Value64 {
+    handle_c_result(error_out, || {
+        let start_int = guard_i64(&start)?;
+        let stop_int = guard_i64(&stop)?;
+        let mut values = Vec::new();
+        for i in start_int..stop_int {
+            values.push(Value64::from_f64(i as f64));
+        }
+        Ok(Value64::from_list(rc_new(ListInstance::new(values))))
+    })
 }
 
-pub extern "C" fn len(val: Value64) -> Value64 {
-    if val.is_list() {
-        let list = val.try_into_list().unwrap();
-        Value64::from_f64(list.len() as f64)
-    } else if val.is_dict() {
-        let dict = val.try_into_dict().unwrap();
-        Value64::from_f64(dict.len() as f64)
-    } else if val.is_string() {
-        let s = guard_string!(val);
-        Value64::from_f64(s.len() as f64)
-    } else {
-        println!("ERROR: Expected list, dict, or string, got {}", val);
-        Value64::ERROR
-    }
+pub extern "C" fn len(error_out: *mut *const HerdError, val: Value64) -> Value64 {
+    handle_c_result(error_out, || {
+        if val.is_list() {
+            let list = val.try_into_list().unwrap();
+            Ok(Value64::from_f64(list.len() as f64))
+        } else if val.is_dict() {
+            let dict = val.try_into_dict().unwrap();
+            Ok(Value64::from_f64(dict.len() as f64))
+        } else if val.is_string() {
+            let s = guard_str(&val)?;
+            Ok(Value64::from_f64(s.len() as f64))
+        } else {
+            Err(HerdError::new(format!(
+                "Expected list, dict, or string, got {}",
+                val
+            )))
+        }
+    })
 }
 
 pub extern "C" fn clone(val: Value64Ref) -> Value64 {
@@ -679,21 +701,29 @@ pub extern "C" fn val_concat(val1: Value64, val2: Value64) -> Value64 {
     }
 }
 
-pub extern "C" fn float_pow(base: Value64, exponent: Value64) -> Value64 {
-    let base_float = guard_f64!(base);
-    let exp_float = guard_f64!(exponent);
-    Value64::from_f64(base_float.powf(exp_float))
+pub extern "C" fn float_pow(
+    error_out: *mut *const HerdError,
+    base: Value64,
+    exponent: Value64,
+) -> Value64 {
+    handle_c_result(error_out, || {
+        let base_float = guard_f64_new(&base)?;
+        let exp_float = guard_f64_new(&exponent)?;
+        Ok(Value64::from_f64(base_float.powf(exp_float)))
+    })
 }
 
-pub extern "C" fn assert_truthy(val: Value64) -> Value64 {
-    if !val.truthy() {
-        println!(
-            "ERROR: Assertion failed. Expected truthy value, was {}",
-            val
-        );
-        return Value64::ERROR;
-    }
-    return Value64::NIL;
+pub extern "C" fn assert_truthy(error_out: *mut *const HerdError, val: Value64) -> Value64 {
+    handle_c_result(error_out, || {
+        if !val.truthy() {
+            Err(HerdError::new(format!(
+                "Assertion failed. Expected truthy value, was {}",
+                val
+            )))
+        } else {
+            Ok(Value64::NIL)
+        }
+    })
 }
 
 pub extern "C" fn get_lambda_details(
@@ -785,17 +815,23 @@ fn import_module_panic(vmc: &VmContext, name: &Value64) -> Result<Value64, Strin
         .map_err(|e| e.to_string())?;
     drop(vm);
 
-    let result = unsafe { vmc.run_func(main_func, vec![]) };
+    let result = unsafe { vmc.run_func(main_func, vec![]) }.unwrap(); // TODO handle error
     let mut vm = vmc.jit.try_lock().unwrap();
     vm.modules.insert(path.to_string(), Some(result.clone()));
     return Ok(result);
 }
 
-pub extern "C" fn val_shift_left(val: Value64, by: Value64) -> Value64 {
-    let a = guard_i64!(val);
-    let b = guard_i64!(by);
-    let result = Value64::from_f64((a << b) as f64);
-    result
+pub extern "C" fn val_shift_left(
+    error_out: *mut *const HerdError,
+    val: Value64,
+    by: Value64,
+) -> Value64 {
+    handle_c_result(error_out, || {
+        let a = guard_i64(&val)?;
+        let b = guard_i64(&by)?;
+        let result = Value64::from_f64((a << b) as f64);
+        Ok(result)
+    })
 }
 
 pub extern "C" fn val_xor(val1: Value64, val2: Value64) -> Value64 {
@@ -808,82 +844,127 @@ pub extern "C" fn val_not(val: Value64) -> Value64 {
     Value64::from_bool(!val.truthy())
 }
 
-pub extern "C" fn random_int(min: Value64, max: Value64) -> Value64 {
-    let min_int = guard_i64!(min);
-    let max_int = guard_i64!(max);
-    if min_int >= max_int {
-        println!("ERROR: min should be < max in randomInt");
-        return Value64::ERROR;
-    }
-    let result = rand::rng().random_range(min_int..max_int);
-    Value64::from_f64(result as f64)
-}
-
-pub extern "C" fn random_float(min: Value64, max: Value64) -> Value64 {
-    let min_float = guard_f64!(min);
-    let max_float = guard_f64!(max);
-    if min_float >= max_float {
-        println!("ERROR: min should be < max in randomFloat");
-        return Value64::ERROR;
-    }
-    let result = rand::rng().random_range(min_float..=max_float);
-    Value64::from_f64(result)
-}
-
-pub extern "C" fn regex_find(text: Value64, regex: Value64) -> Value64 {
-    let regex_str = guard_string!(regex);
-    let text_str = guard_string!(text);
-    let regex = Regex::new(regex_str).unwrap();
-    let result = regex.find(text_str);
-    match result {
-        Some(m) => {
-            let start = Value64::from_usize(m.start());
-            let end = Value64::from_usize(m.end());
-            Value64::from_list(rc_new(ListInstance::new(vec![start, end])))
+pub extern "C" fn random_int(
+    error_out: *mut *const HerdError,
+    min: Value64,
+    max: Value64,
+) -> Value64 {
+    handle_c_result(error_out, || {
+        let min_int = guard_i64(&min)?;
+        let max_int = guard_i64(&max)?;
+        if min_int >= max_int {
+            return Err(HerdError::new(
+                "min should be < max in randomInt".to_string(),
+            ));
         }
-        None => Value64::NIL,
-    }
+        let result = rand::rng().random_range(min_int..max_int);
+        Ok(Value64::from_f64(result as f64))
+    })
 }
 
-pub extern "C" fn regex_replace(text: Value64, regex: Value64, replacement: Value64) -> Value64 {
-    let regex_str = guard_string!(regex);
-    let text_str = guard_string!(text);
-    let replacement_str = guard_string!(replacement);
-    let regex = Regex::new(regex_str).unwrap();
-    let result = regex.replace_all(text_str, replacement_str);
-    Value64::from_string(rc_new(result.to_string()))
+pub extern "C" fn random_float(
+    error_out: *mut *const HerdError,
+    min: Value64,
+    max: Value64,
+) -> Value64 {
+    handle_c_result(error_out, || {
+        let min_float = guard_f64_new(&min)?;
+        let max_float = guard_f64_new(&max)?;
+        if min_float >= max_float {
+            return Err(HerdError::new(
+                "min should be < max in randomFloat".to_string(),
+            ));
+        }
+        let result = rand::rng().random_range(min_float..=max_float);
+        Ok(Value64::from_f64(result))
+    })
 }
 
-pub extern "C" fn parallel_map(vm: &VmContext, list: Value64, func: Value64) -> Value64 {
-    let list = guard_list!(list);
-    let _ = guard_lambda!(func);
-
-    let result: Vec<_> = list
-        .values
-        .par_iter()
-        .map(|v| vm.run_lambda(&func, &[v.clone()]))
-        .collect();
-
-    Value64::from_list(rc_new(ListInstance::new(result)))
+pub extern "C" fn regex_find(
+    error_out: *mut *const HerdError,
+    text: Value64,
+    regex: Value64,
+) -> Value64 {
+    handle_c_result(error_out, || {
+        let regex_str = guard_str(&regex)?;
+        let text_str = guard_str(&text)?;
+        let regex = Regex::new(regex_str).map_err(|e| HerdError::new(e.to_string()))?;
+        let result = regex.find(text_str);
+        match result {
+            Some(m) => {
+                let start = Value64::from_usize(m.start());
+                let end = Value64::from_usize(m.end());
+                Ok(Value64::from_list(rc_new(ListInstance::new(vec![
+                    start, end,
+                ]))))
+            }
+            None => Ok(Value64::NIL),
+        }
+    })
 }
 
-pub extern "C" fn epoch_time() -> Value64 {
-    // time::Instant::
-    // let start = std::time::Instant::now();
-    // let elapsed = start.elapsed();
-    // std::time::Instant::
-    let duration_since_epoch = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap();
-    Value64::from_f64(duration_since_epoch.as_secs_f64())
+pub extern "C" fn regex_replace(
+    error_out: *mut *const HerdError,
+    text: Value64,
+    regex: Value64,
+    replacement: Value64,
+) -> Value64 {
+    handle_c_result(error_out, || {
+        let regex_str = guard_str(&regex)?;
+        let text_str = guard_str(&text)?;
+        let replacement_str = guard_str(&replacement)?;
+        let regex = Regex::new(regex_str).map_err(|e| HerdError::new(e.to_string()))?;
+        let result = regex.replace_all(text_str, replacement_str);
+        Ok(Value64::from_string(rc_new(result.to_string())))
+    })
 }
 
-pub extern "C" fn parse_float(val: Value64) -> Value64 {
-    let s = guard_string!(val);
-    match s.parse::<f64>() {
-        Ok(f) => Value64::from_f64(f),
-        Err(_) => Value64::NIL,
-    }
+#[unsafe(no_mangle)]
+pub extern "C" fn parallel_map(
+    error_out: *mut *const HerdError,
+    vm: &VmContext,
+    list: Value64,
+    func: Value64,
+) -> Value64 {
+    handle_c_result(error_out, || {
+        let list = guard_into_list(list)?;
+        let _ = guard_lambda(&func)?;
+
+        let result = list
+            .values
+            .par_iter()
+            .map(|v| vm.run_lambda(&func, &[v.clone()]))
+            .collect::<Result<Vec<_>, HerdError>>();
+
+        let result_mapped = result.map_err(|e| HerdError {
+            message: "Error in parallel map".to_string(),
+            pos: None,
+            inner: Some(Box::new(e)),
+        });
+
+        Ok(Value64::from_list(rc_new(ListInstance::new(
+            result_mapped?,
+        ))))
+    })
+}
+
+pub extern "C" fn epoch_time(error_out: *mut *const HerdError) -> Value64 {
+    handle_c_result(error_out, || {
+        let duration_since_epoch = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .map_err(|e| HerdError::new(e.to_string()))?;
+        Ok(Value64::from_f64(duration_since_epoch.as_secs_f64()))
+    })
+}
+
+pub extern "C" fn parse_float(error_out: *mut *const HerdError, val: Value64) -> Value64 {
+    handle_c_result(error_out, || {
+        let s = guard_str(&val)?;
+        match s.parse::<f64>() {
+            Ok(f) => Ok(Value64::from_f64(f)),
+            Err(_) => Ok(Value64::NIL),
+        }
+    })
 }
 
 pub extern "C" fn val_to_string(val: Value64) -> Value64 {
@@ -893,33 +974,45 @@ pub extern "C" fn val_to_string(val: Value64) -> Value64 {
     Value64::from_string(rc_new(format!("{}", val)))
 }
 
-pub extern "C" fn string_to_chars(val: Value64) -> Value64 {
-    let s = guard_string!(val);
-    let chars: Vec<Value64> = s
-        .chars()
-        .map(|c| Value64::from_string(rc_new(c.to_string())))
-        .collect();
-    Value64::from_list(rc_new(ListInstance::new(chars)))
+pub extern "C" fn string_to_chars(error_out: *mut *const HerdError, val: Value64) -> Value64 {
+    handle_c_result(error_out, || {
+        let s = guard_str(&val)?;
+        let chars: Vec<Value64> = s
+            .chars()
+            .map(|c| Value64::from_string(rc_new(c.to_string())))
+            .collect();
+        Ok(Value64::from_list(rc_new(ListInstance::new(chars))))
+    })
 }
 
-pub extern "C" fn string_lower(val: Value64) -> Value64 {
-    let s = guard_string!(val);
-    Value64::from_string(rc_new(s.to_lowercase()))
+pub extern "C" fn string_lower(error_out: *mut *const HerdError, val: Value64) -> Value64 {
+    handle_c_result(error_out, || {
+        let s = guard_str(&val)?;
+        Ok(Value64::from_string(rc_new(s.to_lowercase())))
+    })
 }
 
-pub extern "C" fn string_upper(val: Value64) -> Value64 {
-    let s = guard_string!(val);
-    Value64::from_string(rc_new(s.to_uppercase()))
+pub extern "C" fn string_upper(error_out: *mut *const HerdError, val: Value64) -> Value64 {
+    handle_c_result(error_out, || {
+        let s = guard_str(&val)?;
+        Ok(Value64::from_string(rc_new(s.to_uppercase())))
+    })
 }
 
-pub extern "C" fn string_split(val: Value64, delimiter: Value64) -> Value64 {
-    let s = guard_string!(val);
-    let delim_str = guard_string!(delimiter);
-    let parts: Vec<Value64> = s
-        .split(delim_str)
-        .map(|part| Value64::from_string(rc_new(part.to_string())))
-        .collect();
-    Value64::from_list(rc_new(ListInstance::new(parts)))
+pub extern "C" fn string_split(
+    error_out: *mut *const HerdError,
+    val: Value64,
+    delimiter: Value64,
+) -> Value64 {
+    handle_c_result(error_out, || {
+        let s = guard_str(&val)?;
+        let delim_str = guard_str(&delimiter)?;
+        let parts: Vec<Value64> = s
+            .split(delim_str)
+            .map(|part| Value64::from_string(rc_new(part.to_string())))
+            .collect();
+        Ok(Value64::from_list(rc_new(ListInstance::new(parts))))
+    })
 }
 
 pub extern "C" fn program_args(vm: &VmContext) -> Value64 {
@@ -931,35 +1024,35 @@ pub extern "C" fn program_args(vm: &VmContext) -> Value64 {
     Value64::from_list(rc_new(ListInstance::new(result)))
 }
 
-pub extern "C" fn file_to_string(path: Value64) -> Value64 {
-    let path_str = guard_string!(path);
-    fs::read_to_string(path_str)
-        .map(|s| Value64::from_string(rc_new(s)))
-        .unwrap_or_else(|e| {
-            println!("Error reading file {}: {}", path_str, e);
-            Value64::ERROR
-        })
+pub extern "C" fn file_to_string(error_out: *mut *const HerdError, path: Value64) -> Value64 {
+    handle_c_result(error_out, || {
+        let path_str = path.as_str().ok_or_else(|| {
+            HerdError::new(format!("Expected path to be a string, found {}", path))
+        })?;
+        let content = fs::read_to_string(path_str).map_err(|e| HerdError::new(e.to_string()))?;
+        Ok(Value64::from_string(rc_new(content)))
+    })
 }
 
-pub extern "C" fn file_lines(path: Value64) -> Value64 {
-    let path_str = guard_string!(path);
-    let file = std::fs::File::open(path_str);
-    if let Err(e) = file {
-        println!("Error opening file {}: {}", path_str, e);
-        return Value64::ERROR;
-    }
-    let reader = std::io::BufReader::new(file.unwrap());
-    let mut lines = Vec::new();
-    for line in reader.lines() {
-        match line {
-            Ok(l) => lines.push(Value64::from_string(rc_new(l))),
-            Err(e) => {
-                println!("Error reading line from file {}: {}", path_str, e);
-                return Value64::ERROR;
+pub extern "C" fn file_lines(error_out: *mut *const HerdError, path: Value64) -> Value64 {
+    handle_c_result(error_out, || {
+        let path_str = guard_str(&path)?;
+        let file = std::fs::File::open(path_str).map_err(|e| HerdError::new(e.to_string()))?;
+        let reader = std::io::BufReader::new(file);
+        let mut lines = Vec::new();
+        for line in reader.lines() {
+            match line {
+                Ok(l) => lines.push(Value64::from_string(rc_new(l))),
+                Err(e) => {
+                    return Err(HerdError::new(format!(
+                        "Error reading line from file {}: {}",
+                        path_str, e
+                    )));
+                }
             }
         }
-    }
-    Value64::from_list(rc_new(ListInstance::new(lines)))
+        Ok(Value64::from_list(rc_new(ListInstance::new(lines))))
+    })
 }
 
 // TODO: Variadic functions
@@ -971,13 +1064,65 @@ pub extern "C" fn print(val: Value64) {
     io::stdout().flush().unwrap();
 }
 
-pub extern "C" fn readln() -> Value64 {
-    let mut input = String::new();
-    match std::io::stdin().read_line(&mut input) {
-        Ok(_) => Value64::from_string(rc_new(input.trim_end().to_string())),
-        Err(e) => {
-            println!("Error reading line: {}", e);
-            Value64::ERROR
+pub extern "C" fn readln(error_out: *mut *const HerdError) -> Value64 {
+    handle_c_result(error_out, || {
+        let mut input = String::new();
+        match std::io::stdin().read_line(&mut input) {
+            Ok(_) => Ok(Value64::from_string(rc_new(input.trim_end().to_string()))),
+            Err(e) => Err(HerdError::new(format!("Error reading line: {}", e))),
+        }
+    })
+}
+
+pub extern "C" fn alloc_herd_error(
+    msg: Value64,
+    inner: *mut HerdError,
+    pos: u64,
+) -> *mut HerdError {
+    let inner_box = if inner.is_null() {
+        None
+    } else {
+        unsafe { Some(Box::from_raw(inner)) }
+    };
+    let error = HerdError {
+        message: msg.as_str().unwrap_or("Unknown error").to_string(),
+        pos: Some(pos as usize),
+        inner: inner_box,
+    };
+    Box::into_raw(Box::new(error))
+}
+
+pub extern "C" fn string_template(
+    template: Value64,
+    parts_len: u64,
+    parts: *const Value64,
+) -> Value64 {
+    let template = template.as_str().unwrap();
+    let parts_slice = unsafe { std::slice::from_raw_parts(parts, parts_len as usize) };
+    let mut result = String::new();
+    let mut part_index = 0;
+    let mut chars = template.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '{' && chars.peek() == Some(&'}') {
+            chars.next(); // consume '}'
+            if part_index < parts_slice.len() {
+                let part = &parts_slice[part_index];
+                match part.as_str() {
+                    Some(s) => {
+                        result.push_str("'");
+                        result.push_str(s);
+                        result.push_str("'");
+                    }
+                    None => result.push_str(&part.to_string()),
+                }
+                part_index += 1;
+            } else {
+                println!("ERROR: Not enough parts provided for string template");
+                return Value64::ERROR;
+            }
+        } else {
+            result.push(c);
         }
     }
+    Value64::from_string(rc_new(result))
 }

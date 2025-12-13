@@ -1,0 +1,8 @@
+---
+source: tests/snapshots.rs
+expression: result
+---
+At 84: Expected an f64, found '1'
+At [internal method]: Error in parallel map
+At 0: 
+At 47:

@@ -20,6 +20,7 @@ use crate::{
         self, Expr, LambdaExpr, MatchConstant, MatchExpr, MatchPattern, Opcode, SpannedExpr,
         SpannedStatement, Statement, VarRef,
     },
+    error::HerdError,
     natives::{self, NativeFuncDef, NativeFuncId},
     pos::{Span, Spanned},
     rc::Rc,
@@ -97,7 +98,11 @@ impl VmContext {
         }
     }
 
-    pub unsafe fn run_func(&self, func_id: FuncId, inputs: Vec<Value64>) -> Value64 {
+    pub unsafe fn run_func(
+        &self,
+        func_id: FuncId,
+        inputs: Vec<Value64>,
+    ) -> Result<Value64, HerdError> {
         let func_ptr = self
             .jit
             .lock()
@@ -108,26 +113,44 @@ impl VmContext {
         // this is the critical point where you have to trust that the generated code
         // is safe to be called.
         let code_fn = unsafe {
-            mem::transmute::<_, extern "C" fn(&Self, *const Value64) -> Value64>(func_ptr)
+            mem::transmute::<
+                _,
+                extern "C" fn(&Self, *const Value64, *mut *const HerdError) -> Value64,
+            >(func_ptr)
         };
         let inputs_ptr = inputs.as_ptr();
         // Make code_fn "consume" the inputs
         forget(inputs);
+
+        let mut error_ptr: *const HerdError = std::ptr::null();
         // And now we can call it!
-        code_fn(self, inputs_ptr)
+        let result = code_fn(self, inputs_ptr, &mut error_ptr);
+
+        if !error_ptr.is_null() {
+            let error_box = unsafe { Box::from_raw(error_ptr as *mut HerdError) };
+            return Err(*error_box);
+        }
+        Ok(result)
     }
 
-    pub fn run_lambda(&self, lambda_val: &Value64, params: &[Value64]) -> Value64 {
+    pub fn run_lambda(
+        &self,
+        lambda_val: &Value64,
+        params: &[Value64],
+    ) -> Result<Value64, HerdError> {
         let lambda = lambda_val.as_lambda().unwrap();
         assert!(lambda.param_count == params.len());
         let func_ptr = lambda.func_ptr.unwrap();
-        match params {
+
+        let mut error_ptr: *const HerdError = std::ptr::null();
+        let result = match params {
             [x1] => unsafe {
                 let code_fn = mem::transmute::<
                     _,
                     extern "C" fn(
                         &Self,
                         closure: *const Value64,
+                        error_out: *mut *const HerdError,
                         x1: Value64,
                         recursion: Value64,
                     ) -> Value64,
@@ -135,6 +158,7 @@ impl VmContext {
                 code_fn(
                     self,
                     lambda.closure.as_ptr(),
+                    &mut error_ptr,
                     x1.clone(),
                     lambda_val.cheeky_copy(),
                 )
@@ -142,7 +166,12 @@ impl VmContext {
             _ => {
                 panic!("Argument count not supported: {}", params.len())
             }
+        };
+        if !error_ptr.is_null() {
+            let error_box = unsafe { Box::from_raw(error_ptr as *mut HerdError) };
+            return Err(*error_box);
         }
+        Ok(result)
     }
 }
 
@@ -219,6 +248,13 @@ struct NativeFunc {
     func: FuncId,
     sig: Signature,
     needs_vm: bool,
+    fallible: bool,
+}
+
+impl NativeFunc {
+    fn expected_arg_count(&self) -> usize {
+        self.sig.params.len() - (self.needs_vm as usize) - (self.fallible as usize)
+    }
 }
 
 fn build_native_funcs<TKey>(
@@ -241,6 +277,7 @@ where
                 func,
                 sig,
                 needs_vm: def.needs_vm,
+                fallible: def.fallible,
             },
         );
     }
@@ -378,6 +415,7 @@ impl JIT {
         self.ctx.func.collect_debug_info();
         self.ctx.func.signature.params.push(AbiParam::new(PTR)); // VmContext ptr
         self.ctx.func.signature.params.push(AbiParam::new(PTR)); // args (array of VAL64)
+        self.ctx.func.signature.params.push(AbiParam::new(PTR)); // error return pointer
 
         self.ctx.func.signature.returns.push(AbiParam::new(VAL64));
 
@@ -428,10 +466,7 @@ impl JIT {
         let return_value = trans.translate_expr(body);
 
         // Jump to the return block.
-        trans.builder.ins().jump(
-            trans.return_block,
-            &[BlockArg::Value(return_value.borrow())],
-        );
+        trans.translate_return_ok(return_value.borrow());
 
         trans.translate_return_block(repl_mode);
         // Tell the builder we're done with this function.
@@ -657,7 +692,7 @@ struct FunctionTranslator<'a> {
 impl<'a> FunctionTranslator<'a> {
     fn translate_function_entry(&mut self, lambda: &LambdaExpr, entry_block: Block) {
         for (i, pattern) in lambda.params.iter().enumerate() {
-            let value = self.builder.block_params(entry_block)[i + 2];
+            let value = self.builder.block_params(entry_block)[i + 3];
             self.translate_match_pattern(&pattern.value, value.assert_owned());
         }
     }
@@ -739,12 +774,35 @@ impl<'a> FunctionTranslator<'a> {
         }
     }
 
+    fn translate_return_ok(&mut self, val: Value) {
+        let null_ptr = self.builder.ins().iconst(PTR, 0);
+        self.builder.ins().jump(
+            self.return_block,
+            &[BlockArg::Value(val), BlockArg::Value(null_ptr)],
+        );
+    }
+
+    fn translate_return_err(&mut self, err_ptr: Value) {
+        let nil = self.const_nil();
+        self.builder.ins().jump(
+            self.return_block,
+            &[BlockArg::Value(nil), BlockArg::Value(err_ptr)],
+        );
+    }
+
     fn translate_return_block(&mut self, repl_mode: bool) {
         self.builder.switch_to_block(self.return_block);
         self.builder.seal_block(self.return_block);
         self.builder.append_block_param(self.return_block, VAL64);
+        self.builder.append_block_param(self.return_block, PTR); // error pointer
 
         let return_value = self.builder.block_params(self.return_block)[0];
+        // TODO: Separate block for error return
+        let error_ptr = self.builder.block_params(self.return_block)[1]; // pointer to error or null
+        let error_return_ptr = self.get_error_return_ptr(); // return area pointer to store error pointer
+        self.builder
+            .ins()
+            .store(MemFlags::new(), error_ptr, error_return_ptr, 0);
 
         if repl_mode {
             let variables = self
@@ -803,6 +861,9 @@ impl<'a> FunctionTranslator<'a> {
         let mut arg_values = Vec::new();
         arg_values.push(self.get_vm_ptr());
         arg_values.push(closure_ptr);
+        let err_slot = self.create_stack_slot(I64, 1);
+        let err_ptr = self.builder.ins().stack_addr(I64, err_slot, 0);
+        arg_values.push(err_ptr);
         for arg in args {
             arg_values.push(self.translate_expr(arg).into_owned(self))
         }
@@ -815,7 +876,8 @@ impl<'a> FunctionTranslator<'a> {
 
         self.drop_val64(callee_val);
         let call_result = self.builder.inst_results(call)[0];
-        self.assert_func_ret_ok(call_result, &callee.span);
+        let err_val = self.builder.ins().stack_load(I64, err_slot, 0);
+        self.assert_func_ret_ok(err_val, &callee.span);
 
         return call_result.assert_owned();
     }
@@ -824,19 +886,25 @@ impl<'a> FunctionTranslator<'a> {
         self.builder.block_params(self.entry_block)[0]
     }
 
+    fn get_error_return_ptr(&mut self) -> Value {
+        self.builder.block_params(self.entry_block)[2]
+    }
+
     fn build_function_signature(sig: &mut Signature, param_count: usize) {
         // VM context
         sig.params
             .push(AbiParam::special(PTR, ir::ArgumentPurpose::VMContext));
         // Closure pointer
         sig.params.push(AbiParam::new(I64));
+        // Error return pointer
+        sig.params.push(AbiParam::new(PTR));
         // User params
         for _ in 0..param_count {
             sig.params.push(AbiParam::new(VAL64));
         }
         // Self for recursion
         sig.params.push(AbiParam::new(VAL64));
-        // Return value or error
+        // Return value
         sig.returns.push(AbiParam::new(VAL64));
     }
 
@@ -896,31 +964,14 @@ impl<'a> FunctionTranslator<'a> {
 
     /// Wraps [Self::call_native] and evaluates arguments
     fn call_native_eval(&mut self, func: &NativeFunc, args: &Vec<SpannedExpr>) -> Value {
-        if func.needs_vm {
-            assert_eq!(func.sig.params.len(), args.len() + 1);
-        } else {
-            assert_eq!(func.sig.params.len(), args.len());
-        }
-
         let mut arg_values = Vec::new();
-        if func.needs_vm {
-            arg_values.push(self.get_vm_ptr());
-        }
         for arg in args {
             arg_values.push(self.translate_expr(arg).into_owned(self))
         }
-        match self.call_native_func(func, &arg_values) {
-            [val] => {
-                let val = *val;
-                let is_ok = self.cmp_bits_imm(IntCC::NotEqual, val, value64::ERROR_VALUE);
-                self.assert(is_ok, |s| {
-                    s.print_string_constant(format!("ERROR: Native function call failed\n"));
-                });
-                return val;
-            }
-            [] => {
-                return self.const_nil();
-            }
+
+        match &self.call_native_func_fallible(func, &arg_values)[..] {
+            [val] => *val,
+            [] => self.const_nil(),
             _ => panic!("Built-in functions should only return zero or one value"),
         }
     }
@@ -932,9 +983,7 @@ impl<'a> FunctionTranslator<'a> {
             }
             Statement::Return(e) => {
                 let return_value = self.translate_expr(e).into_owned(self);
-                self.builder
-                    .ins()
-                    .jump(self.return_block, &[BlockArg::Value(return_value)]);
+                self.translate_return_ok(return_value);
 
                 // Create a new block for after the return instruction, so that other instructions
                 // can still be added after it. Normally, Cranelift rejects instructions after
@@ -1216,9 +1265,10 @@ impl<'a> FunctionTranslator<'a> {
                 // STATUS_ACCESS_VIOLATION when writing to this pointer from Rust?
                 self.builder.ins().stack_store(rhs, old_part_slot, 0);
                 let old_part_ptr = self.builder.ins().stack_addr(PTR, old_part_slot, 0);
-                let val =
-                    self.call_native(NativeFuncId::ValReplaceIndex, &[val, index, old_part_ptr])[0];
-                self.assert_func_ret_ok(val, &Span::default());
+                let val = self.call_native_fallible(
+                    NativeFuncId::ValReplaceIndex,
+                    &[val, index, old_part_ptr],
+                )[0];
                 let old_part = self.builder.ins().stack_load(VAL64, old_part_slot, 0);
                 let new_part = self.assign_part(old_part, *next_index, rest, rhs);
                 return self.call_native(NativeFuncId::ValSetIndex, &[val, index, new_part])[0];
@@ -1520,12 +1570,15 @@ impl<'a> FunctionTranslator<'a> {
 
         let return_value = trans.translate_expr(&lambda.body).into_owned(&mut trans);
 
-        trans
-            .builder
-            .ins()
-            .jump(trans.return_block, &[BlockArg::Value(return_value)]);
+        // let null_ptr = self.builder.ins().iconst(PTR, 8);
+        // trans.builder.ins().jump(
+        //     trans.return_block,
+        //     &[BlockArg::Value(return_value), BlockArg::Value(null_ptr)],
+        // );
+        trans.translate_return_ok(return_value);
 
         trans.translate_return_block(false);
+        // println!("func {:?}: {:?}", &lambda.name, &trans.builder.func);
         trans.builder.finalize();
 
         // Using a name here (instead of declare_anonymous_function) for profiling info on Linux.
@@ -1538,9 +1591,11 @@ impl<'a> FunctionTranslator<'a> {
         let func_id = self
             .module
             .declare_function(&func_name, Linkage::Export, &ctx.func.signature)
-            .unwrap();
+            .expect("Error declaring function");
 
-        self.module.define_function(func_id, &mut ctx).unwrap();
+        self.module
+            .define_function(func_id, &mut ctx)
+            .expect("Error defining function");
         self.module.clear_context(&mut ctx);
 
         self.module.finalize_definitions().unwrap();
@@ -1602,8 +1657,11 @@ impl<'a> FunctionTranslator<'a> {
             self.set_src_span(&pattern.span);
             let matches = self.translate_matches_pattern(&pattern.value, subject.borrow());
             if is_last_branch {
-                self.assert(matches, |s| {
-                    s.print_string_constant("ERROR: No branches matched\n".to_string());
+                self.assert2(matches, &match_expr.condition.span, |s| {
+                    s.string_template(
+                        "No branches matched in match expression. Value: {}",
+                        &[subject.borrow()],
+                    )
                 });
                 self.builder.ins().jump(branch_body_blocks[i], &[]);
             } else {
@@ -1650,11 +1708,38 @@ impl<'a> FunctionTranslator<'a> {
 
     fn call_native(&mut self, func: NativeFuncId, args: &[Value]) -> &[Value] {
         let func_def = self.natives_map.get(&func).unwrap();
-        let local_callee = self
-            .module
-            .declare_func_in_func(func_def.func, self.builder.func);
-        let call = self.builder.ins().call(local_callee, args);
-        self.builder.inst_results(call)
+        self.call_native_func(func_def, args)
+    }
+
+    fn call_native_func_fallible(&mut self, func: &NativeFunc, user_args: &[Value]) -> Vec<Value> {
+        let expected_arg_count = func.expected_arg_count();
+        assert_eq!(
+            expected_arg_count,
+            user_args.len(),
+            "ERROR: Native function called with wrong number of arguments\n"
+        );
+
+        let mut arg_values = Vec::new();
+        let err_slot = self.create_stack_slot(I64, 1);
+        if func.fallible {
+            let err_ptr = self.builder.ins().stack_addr(I64, err_slot, 0);
+            arg_values.push(err_ptr);
+        }
+        if func.needs_vm {
+            arg_values.push(self.get_vm_ptr());
+        }
+        arg_values.extend_from_slice(user_args);
+        let result: Vec<_> = self.call_native_func(func, &arg_values).to_vec();
+        if func.fallible {
+            let err_val = self.builder.ins().stack_load(I64, err_slot, 0);
+            self.assert_func_ret_ok(err_val, &Span::default()); // TODO span
+        }
+        return result;
+    }
+
+    fn call_native_fallible(&mut self, func: NativeFuncId, args: &[Value]) -> Vec<Value> {
+        let func_def = self.natives_map.get(&func).unwrap();
+        self.call_native_func_fallible(func_def, args)
     }
 
     fn create_stack_slot(&mut self, ty: Type, count: usize) -> StackSlot {
@@ -1680,20 +1765,90 @@ impl<'a> FunctionTranslator<'a> {
         self.builder.switch_to_block(fail_block);
         self.builder.seal_block(fail_block);
         on_fail(self);
-        let err_val = self.const_value64_bits(value64::ERROR_VALUE);
-        self.builder.ins().return_(&[err_val]);
+
+        let null_ptr = self.builder.ins().iconst(PTR, 0);
+        let msg = self.string_literal_owned("TEMP assertion failed".to_string());
+        let pos = self.builder.ins().iconst(I64, 69); // TODO
+        let err_ptr = self.call_native(NativeFuncId::AllocError, &[msg, null_ptr, pos])[0];
+        self.translate_return_err(err_ptr);
 
         self.builder.switch_to_block(ok_block);
         self.builder.seal_block(ok_block);
         self.builder.insert_block_after(ok_block, before_block);
     }
 
-    fn assert_func_ret_ok(&mut self, val: Value, span: &Span) {
-        let is_ok = self.cmp_bits_imm(IntCC::NotEqual, val, value64::ERROR_VALUE);
+    fn assert2(
+        &mut self,
+        assertion: Value,
+        span: &Span,
+        build_msg: impl FnOnce(&mut Self) -> Value,
+    ) {
+        let before_block = self.builder.current_block().unwrap();
+        let fail_block = self.builder.create_block();
+        let ok_block = self.builder.create_block();
+        self.builder.set_cold_block(fail_block);
+        self.builder
+            .ins()
+            .brif(assertion, ok_block, &[], fail_block, &[]);
 
-        self.assert(is_ok, |s| {
-            s.print_string_constant(format!("ERROR (at {}): Function call failed\n", span.start));
-        });
+        self.builder.switch_to_block(fail_block);
+        self.builder.seal_block(fail_block);
+        let msg = build_msg(self);
+        let null_ptr = self.builder.ins().iconst(PTR, 0);
+        let err_ptr = self.alloc_error(msg, null_ptr, span);
+        self.translate_return_err(err_ptr);
+
+        self.builder.switch_to_block(ok_block);
+        self.builder.seal_block(ok_block);
+        self.builder.insert_block_after(ok_block, before_block);
+    }
+
+    fn string_template(&mut self, template: impl Into<String>, parts: &[Value]) -> Value {
+        let template_val = self.string_literal_borrow(template.into());
+        let parts_count = self.builder.ins().iconst(I64, parts.len() as i64);
+        let parts_slot = self.create_stack_slot(VAL64, parts.len());
+        for (i, part) in parts.iter().enumerate() {
+            self.builder
+                .ins()
+                .stack_store(*part, parts_slot, (i * 8) as i32);
+        }
+        let parts_ptr = self.builder.ins().stack_addr(PTR, parts_slot, 0);
+        self.call_native(
+            NativeFuncId::StringTemplate,
+            &[template_val, parts_count, parts_ptr],
+        )[0]
+    }
+
+    fn assert_func_ret_ok(&mut self, err_val: Value, span: &Span) {
+        let is_ok = self.builder.ins().icmp_imm(IntCC::Equal, err_val, 0);
+
+        let before_block = self.builder.current_block().unwrap();
+        let fail_block = self.builder.create_block();
+        let ok_block = self.builder.create_block();
+        self.builder.set_cold_block(fail_block);
+        self.builder
+            .ins()
+            .brif(is_ok, ok_block, &[], fail_block, &[]);
+
+        self.builder.switch_to_block(fail_block);
+        self.builder.seal_block(fail_block);
+
+        self.print_string_constant(format!(
+            "TEMP ERROR (at {}): Function call failed\n",
+            span.start
+        ));
+        let msg = self.string_literal_owned(String::new());
+        let err_ptr = self.alloc_error(msg, err_val, span);
+        self.translate_return_err(err_ptr);
+
+        self.builder.switch_to_block(ok_block);
+        self.builder.seal_block(ok_block);
+        self.builder.insert_block_after(ok_block, before_block);
+    }
+
+    fn alloc_error(&mut self, msg: Value, inner: Value, span: &Span) -> Value {
+        let pos = self.builder.ins().iconst(I64, span.start as i64);
+        self.call_native(NativeFuncId::AllocError, &[msg, inner, pos])[0]
     }
 
     fn do_if(&mut self, cond: Value, then: impl FnOnce(&mut Self)) {
@@ -1911,13 +2066,8 @@ impl<'a> FunctionTranslator<'a> {
         let nanish = value64::NANISH as i64;
         let and = self.builder.ins().band_imm(val_int, nanish);
         let is_f64 = self.builder.ins().icmp_imm(IntCC::NotEqual, and, nanish);
-        self.assert(is_f64, |s| {
-            s.print_string_constant(format!(
-                "ERROR (at {}): Expected an f64, found ",
-                span.start
-            ));
-            s.call_native(NativeFuncId::Print, &[val.as_bvalue()]);
-            s.print_string_constant("\n".to_string());
+        self.assert2(is_f64, span, |s| {
+            s.string_template("Expected an f64, found {}", &[val.as_bvalue()])
         });
     }
 
@@ -1930,8 +2080,8 @@ impl<'a> FunctionTranslator<'a> {
         self.const_value64_bits(bits)
     }
 
-    fn string_literal_owned(&mut self, string: String) -> BValue {
-        let string_val = self.string_literal_borrow(string);
+    fn string_literal_owned(&mut self, string: impl Into<String>) -> BValue {
+        let string_val = self.string_literal_borrow(string.into());
         self.clone_val64(string_val)
     }
 

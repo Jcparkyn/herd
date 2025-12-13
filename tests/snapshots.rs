@@ -3,6 +3,7 @@ use std::fmt::Display;
 use std::path::PathBuf;
 
 use herd::analysis::Analyzer;
+use herd::error::HerdError;
 use herd::jit::{self, ModuleLoader, VmContext};
 use herd::lang::ProgramParser;
 use herd::rc::Weak;
@@ -27,6 +28,7 @@ fn reset_tracker() {
     });
 }
 
+#[track_caller] // Report the location of the test failure, not inside this function
 fn assert_rcs_dropped() {
     fn assert_rc_dropped<T: Display>(rc: &Weak<T>, expected_count: usize) {
         assert_eq!(
@@ -62,6 +64,16 @@ fn add() {
     "#;
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"3");
+    assert_rcs_dropped();
+}
+
+#[test]
+fn add_invalid_types() {
+    let program = r#"
+        return 1 + '2';
+    "#;
+    let result = eval(program).expect_err_string();
+    insta::assert_snapshot!(result, @"At 20: Expected an f64, found '2'");
     assert_rcs_dropped();
 }
 
@@ -482,8 +494,8 @@ fn string_interning() {
     let program = r#"
         return ['hello', 'hello'];
     "#;
-    let result = eval_snapshot(program, HashMap::new());
-    insta::assert_snapshot!(result.to_string(), @r#"['hello', 'hello']"#);
+    let result = eval(program).expect_ok();
+    insta::assert_snapshot!(result, @r#"['hello', 'hello']"#);
     let list = result.try_into_list().unwrap();
     // This is a dirty way to check that the pointers are equal.
     assert_eq!(list.values[0].bits(), list.values[1].bits());
@@ -984,12 +996,86 @@ fn parallel_map() {
         return sum;
     "#;
 
-    let result = eval_snapshot_str(main_program);
+    let result = eval(main_program).expect_ok_string();
     insta::assert_snapshot!(result, @"5001");
     assert_rcs_dropped();
 }
 
-fn eval_snapshot(program: &str, modules: HashMap<String, String>) -> Value64 {
+#[test]
+fn parallel_map_error() {
+    let main_program = r#"
+        inputs = range 0 2;
+        results = Parallel.parallelMap inputs (\x\ x + '1');
+        return results;
+    "#;
+
+    let result = eval(main_program).expect_err_string();
+    insta::assert_snapshot!(result);
+    assert_rcs_dropped();
+}
+
+pub struct EvalConfig<'a> {
+    pub program: &'a str,
+    pub modules: HashMap<String, String>,
+}
+
+impl EvalConfig<'_> {
+    pub fn with_module(mut self, path: &str, source: &str) -> Self {
+        self.modules.insert(path.to_string(), source.to_string());
+        self
+    }
+
+    pub fn eval(&self) -> Result<Value64, HerdError> {
+        eval_snapshot(self.program, self.modules.clone())
+    }
+
+    #[track_caller]
+    pub fn expect_ok(&self) -> Value64 {
+        self.eval().expect("The program should return successfully")
+    }
+
+    #[track_caller]
+    pub fn expect_ok_string(&self) -> String {
+        self.expect_ok().to_string()
+    }
+
+    #[track_caller]
+    pub fn expect_err(&self) -> HerdError {
+        self.eval().expect_err("The program should return an error")
+    }
+
+    #[track_caller]
+    pub fn expect_err_string(&self) -> String {
+        let error = self.expect_err();
+        error_to_string(&error, 0)
+    }
+}
+
+fn eval(program: &str) -> EvalConfig<'_> {
+    EvalConfig {
+        program,
+        modules: HashMap::new(),
+    }
+}
+
+fn error_to_string(err: &HerdError, indent: usize) -> String {
+    let mut result = String::new();
+
+    if let Some(inner) = &err.inner {
+        result.push_str(&error_to_string(inner, indent));
+    }
+
+    let indent_str = " ".repeat(indent);
+    let pos_str = match err.pos {
+        Some(pos) => pos.to_string(),
+        None => "[internal method]".to_string(),
+    };
+    result.push_str(&format!("{}At {}: {}\n", indent_str, pos_str, err.message));
+
+    result
+}
+
+fn eval_snapshot(program: &str, modules: HashMap<String, String>) -> Result<Value64, HerdError> {
     let parser = ProgramParser::new();
     let prelude_ast = parser.parse(include_str!("../src/prelude.herd")).unwrap();
     let mut program_ast = parser.parse(program).unwrap();
@@ -1006,16 +1092,15 @@ fn eval_snapshot(program: &str, modules: HashMap<String, String>) -> Value64 {
     reset_tracker();
     let vmc = VmContext::new(jit, vec![]);
     let result = unsafe { vmc.run_func(main_func, vec![]) };
-
     result
 }
 
 fn eval_snapshot_str(program: &str) -> String {
-    eval_snapshot(program, HashMap::new()).to_string()
+    eval_snapshot(program, HashMap::new()).unwrap().to_string()
 }
 
 fn eval_snapshot_str_modules(program: &str, modules: HashMap<String, String>) -> String {
-    eval_snapshot(program, modules).to_string()
+    eval_snapshot(program, modules).unwrap().to_string()
 }
 
 struct TestModuleLoader {

@@ -1,6 +1,7 @@
 pub mod analysis;
 pub mod ast;
 mod dict;
+pub mod error;
 pub mod jit;
 pub mod lines;
 pub mod natives;

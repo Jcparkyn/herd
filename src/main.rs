@@ -1,3 +1,4 @@
+use herd::error::HerdError;
 use herd::rc::Rc;
 use std::fmt::Debug;
 use std::path::{Path, PathBuf};
@@ -96,11 +97,17 @@ fn run_file(path: &Path, args: &Args) -> ExitCode {
     };
     let vmc = VmContext::new(jit, args.program_args.clone());
     let result = unsafe { vmc.run_func(main_func, vec![]) };
-    if result.is_error() {
-        return ExitCode::FAILURE;
-    }
-    if !result.is_nil() {
-        println!("Result: {}", result);
+    match result {
+        Err(err) => {
+            println!("Error while running program:");
+            print_herd_error(&err, 2);
+            return ExitCode::FAILURE;
+        }
+        Ok(val) => {
+            if !val.is_nil() {
+                println!("Result: {}", val);
+            }
+        }
     }
     return ExitCode::SUCCESS;
 }
@@ -156,7 +163,7 @@ fn run_repl(args: Args) {
         .unwrap();
 
     let vmc = VmContext::new(jit, args.program_args.clone());
-    let prelude_return = unsafe { vmc.run_func(prelude_func, vec![]) };
+    let prelude_return = unsafe { vmc.run_func(prelude_func, vec![]) }.unwrap();
     let mut globals = get_repl_globals(&prelude_return).globals;
     // Keep track of previous number of lines entered, so new code has unique line counts.
     let mut line_count = 0usize;
@@ -202,15 +209,18 @@ fn run_repl(args: Args) {
             .unwrap();
 
         let func_return = unsafe { vmc.run_func(func, values) };
-        if func_return.is_error() {
-            // TODO: We need to roll back the analyzer state here.
-            println!("Error!");
-        } else {
-            let response = get_repl_globals(&func_return);
-            if !response.retval.is_nil() {
-                println!("Result: {}", response.retval);
+        match func_return {
+            Err(err) => {
+                // TODO: We need to roll back the analyzer state here.
+                println!("Error while running program: {:?}", err);
             }
-            globals = response.globals;
+            Ok(val) => {
+                let response = get_repl_globals(&val);
+                if !response.retval.is_nil() {
+                    println!("Result: {}", response.retval);
+                }
+                globals = response.globals;
+            }
         }
     }
 }
@@ -221,6 +231,14 @@ fn print_analysis_errors(errs: Vec<Spanned<AnalysisError>>, lines: Lines) {
         let location = lines.location(err.span.start).unwrap();
         println!("\t{} (at {})", err.value, location);
     }
+}
+
+fn print_herd_error(err: &HerdError, indent: usize) {
+    if let Some(inner) = &err.inner {
+        print_herd_error(inner, indent);
+    }
+    let indent_str = " ".repeat(indent);
+    println!("{}At {}: {}", indent_str, err.pos.unwrap_or(0), err.message);
 }
 
 #[derive(Completer, Helper, Hinter, Highlighter)]
