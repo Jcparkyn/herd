@@ -1,4 +1,5 @@
 use herd::error::HerdError;
+use herd::prelude::PRELUDE;
 use herd::rc::Rc;
 use std::fmt::Debug;
 use std::path::{Path, PathBuf};
@@ -67,7 +68,7 @@ fn run_file(path: &Path, args: &Args) -> ExitCode {
         }
         Ok(program) => program,
     };
-    let prelude_ast = parser.parse(include_str!("prelude.herd")).unwrap();
+    let prelude_ast = parser.parse(PRELUDE).unwrap();
     program.splice(0..0, prelude_ast);
     let mut analyzer = Analyzer::new();
     let analyze_result = analyzer.analyze_statements(&mut program);
@@ -149,7 +150,7 @@ fn run_repl(args: Args) {
     let parser = lang::ReplProgramParser::new();
     let mut analyzer = Analyzer::new();
 
-    let mut prelude_ast = parser.parse(include_str!("prelude.herd")).unwrap();
+    let mut prelude_ast = parser.parse(PRELUDE).unwrap();
     analyzer.analyze_statements(&mut prelude_ast).unwrap();
 
     let current_dir = std::env::current_dir().unwrap();

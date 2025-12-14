@@ -1,0 +1,144 @@
+mod common;
+use common::snapshot_helpers::{assert_rcs_dropped, eval, eval_snapshot_str};
+
+#[test]
+fn stdlib_imports() {
+    let main_program = r#"
+        list = import '@list';
+        return list.push [1, 2] 3;
+    "#;
+
+    let result = eval_snapshot_str(main_program);
+    insta::assert_snapshot!(result, @"[1, 2, 3]");
+    assert_rcs_dropped();
+}
+
+#[test]
+fn stdlib_map() {
+    let main_program = r#"
+        list = import '@list';
+        return [1, 2] | list.map \(_ + 1);
+    "#;
+
+    let result = eval_snapshot_str(main_program);
+    insta::assert_snapshot!(result, @"[2, 3]");
+    assert_rcs_dropped();
+}
+
+#[test]
+fn stdlib_filter() {
+    let main_program = r#"
+        list = import '@list';
+        return [1, 2, 3] | list.filter \(_ != 2);
+    "#;
+
+    let result = eval_snapshot_str(main_program);
+    insta::assert_snapshot!(result, @"[1, 3]");
+    assert_rcs_dropped();
+}
+
+#[test]
+fn stdlib_reverse() {
+    let main_program = r#"
+        list = import '@list';
+        return [1, 2, 3] | list.reverse;
+    "#;
+
+    let result = eval_snapshot_str(main_program);
+    insta::assert_snapshot!(result, @"[3, 2, 1]");
+    assert_rcs_dropped();
+}
+
+#[test]
+fn stdlib_slice() {
+    let main_program = r#"
+        list = [1, 2, 3];
+        return [
+            List.slice list 0 1,
+            List.slice list () 1,
+            List.slice list 1 (),
+            List.slice list 1 2,
+            List.slice list 2 5,
+            List.slice list -2 -1,
+            List.slice list -2 (),
+        ];
+    "#;
+
+    let result = eval_snapshot_str(main_program);
+    insta::assert_snapshot!(result, @"[[1], [1], [2, 3], [2], [3], [2], [2, 3]]");
+    assert_rcs_dropped();
+}
+
+#[test]
+fn stdlib_bitwise_xor() {
+    let main_program = r#"
+        !{xor} = import '@bitwise';
+        return [
+            xor 1 2,
+            xor 7 9,
+            xor 0.5 1.5,
+        ];
+    "#;
+
+    let result = eval_snapshot_str(main_program);
+    insta::assert_snapshot!(result, @"[3, 14, 1]");
+    assert_rcs_dropped();
+}
+
+#[test]
+fn stdlib_bitwise_and() {
+    let main_program = r#"
+        !{ bitwiseAnd } = import '@bitwise';
+        return [
+            bitwiseAnd 43 27,
+            bitwiseAnd 0 0,
+            bitwiseAnd 13.5 7.5,
+        ];
+    "#;
+
+    let result = eval_snapshot_str(main_program);
+    insta::assert_snapshot!(result, @"[11, 0, 5]");
+    assert_rcs_dropped();
+}
+
+#[test]
+fn stdlib_sort() {
+    let main_program = r#"
+        !{ sort } = import '@list';
+        return sort [1, 'dog', 3, 2, 'zebra', 'cat'];
+    "#;
+
+    let result = eval_snapshot_str(main_program);
+    insta::assert_snapshot!(result, @"['cat', 'dog', 'zebra', 1, 2, 3]");
+    assert_rcs_dropped();
+}
+
+#[test]
+fn parallel_map() {
+    let main_program = r#"
+        inputs = range 0 10002;
+        results = Parallel.parallelMap inputs (\x\ x - 5000);
+        var sum = 0;
+        for x in results do (
+            set sum = sum + x;
+        )
+        return sum;
+    "#;
+
+    let result = eval(main_program).expect_ok_string();
+    insta::assert_snapshot!(result, @"5001");
+    assert_rcs_dropped();
+}
+
+#[test]
+fn parallel_map_error() {
+    let main_program = r#"
+        inputs = range 0 2;
+        results = Parallel.parallelMap inputs (\x\ x + '1');
+        return results;
+    "#;
+
+    let result = eval(main_program).expect_err_string();
+    insta::assert_snapshot!(result);
+    assert_rcs_dropped();
+}

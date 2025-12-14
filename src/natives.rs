@@ -22,6 +22,7 @@ use crate::{
     error::HerdError,
     jit::VmContext,
     lang::ProgramParser,
+    prelude::PRELUDE,
     rc::Rc,
     stdlib::load_stdlib_module,
     value64::{LambdaFunction, ListInstance, Value64, rc_mutate, rc_new},
@@ -802,7 +803,7 @@ fn import_module_panic(vmc: &VmContext, name: &Value64) -> Result<Value64, Strin
     let parser = ProgramParser::new();
     let mut program_ast = parser.parse(&program).map_err(|e| e.to_string())?;
     if !is_stdlib {
-        let prelude_ast = parser.parse(include_str!("../src/prelude.herd")).unwrap();
+        let prelude_ast = parser.parse(PRELUDE).unwrap();
         program_ast.splice(0..0, prelude_ast);
     }
     let mut analyzer = Analyzer::new();

@@ -7,6 +7,7 @@ pub mod lines;
 pub mod natives;
 pub mod parse_helpers;
 pub mod pos;
+pub mod prelude;
 pub mod rc;
 mod stdlib;
 pub mod value64;

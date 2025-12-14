@@ -1,5 +1,5 @@
 ---
-source: tests/snapshots.rs
+source: tests/stdlib_snapshots.rs
 expression: result
 ---
 At 84: Expected an f64, found '1'
