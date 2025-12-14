@@ -80,13 +80,13 @@ pub struct AssignmentTarget {
 
 #[derive(PartialEq, Debug, Clone)]
 pub struct SpreadListPattern {
-    pub before: Vec<MatchPattern>,
-    pub spread: Box<MatchPattern>,
-    pub after: Vec<MatchPattern>,
+    pub before: Vec<Spanned<MatchPattern>>,
+    pub spread: Box<Spanned<MatchPattern>>,
+    pub after: Vec<Spanned<MatchPattern>>,
 }
 
 impl SpreadListPattern {
-    pub fn all_parts_mut(&mut self) -> impl Iterator<Item = &mut MatchPattern> {
+    pub fn all_parts_mut(&mut self) -> impl Iterator<Item = &mut Spanned<MatchPattern>> {
         self.before
             .iter_mut()
             .chain(iter::once(&mut *self.spread))
@@ -100,7 +100,7 @@ impl SpreadListPattern {
 
 #[derive(PartialEq, Debug, Clone)]
 pub struct DictPattern {
-    pub entries: Vec<(String, MatchPattern)>,
+    pub entries: Vec<(String, Spanned<MatchPattern>)>,
 }
 
 #[derive(PartialEq, Debug, Clone, Copy)]
@@ -111,7 +111,7 @@ pub enum DeclarationType {
 
 #[derive(PartialEq, Debug, Clone)]
 pub enum MatchPattern {
-    SimpleList(Vec<MatchPattern>),
+    SimpleList(Vec<Spanned<MatchPattern>>),
     SpreadList(SpreadListPattern),
     Dict(DictPattern),
     Declaration(VarRef, DeclarationType),

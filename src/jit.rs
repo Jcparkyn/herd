@@ -506,7 +506,7 @@ impl<'a, 'b> VariableBuilder<'a, 'b> {
             self.create_variable(&var.name, val, false);
         }
         for pattern in &*func.params {
-            self.declare_variables_in_pattern(&pattern.value);
+            self.declare_variables_in_pattern(pattern);
             // Actual match is done in function body, so we can reuse the logic from FunctionTranslator.
         }
         // Reference to self function for recursion
@@ -558,7 +558,7 @@ impl<'a, 'b> VariableBuilder<'a, 'b> {
             }
             Expr::ForIn { iter, var, body } => {
                 self.declare_variables_in_expr(iter);
-                self.declare_variables_in_pattern(&var.value);
+                self.declare_variables_in_pattern(var);
                 self.declare_variables_in_expr(body);
             }
             Expr::While { condition, body } => {
@@ -606,20 +606,20 @@ impl<'a, 'b> VariableBuilder<'a, 'b> {
             Statement::Return(e) => self.declare_variables_in_expr(e),
             Statement::PatternAssignment(pattern, rhs) => {
                 self.declare_variables_in_expr(rhs);
-                self.declare_variables_in_pattern(&pattern.value);
+                self.declare_variables_in_pattern(pattern);
             }
         }
     }
 
     fn declare_variables_in_match(&mut self, match_expr: &MatchExpr) {
         for (pattern, body) in &match_expr.branches {
-            self.declare_variables_in_pattern(&pattern.value);
+            self.declare_variables_in_pattern(pattern);
             self.declare_variables_in_expr(body);
         }
     }
 
-    fn declare_variables_in_pattern(&mut self, pattern: &MatchPattern) {
-        match pattern {
+    fn declare_variables_in_pattern(&mut self, pattern: &Spanned<MatchPattern>) {
+        match &pattern.value {
             MatchPattern::Declaration(var, _) => {
                 let nil = self
                     .builder
@@ -693,7 +693,7 @@ impl<'a> FunctionTranslator<'a> {
     fn translate_function_entry(&mut self, lambda: &LambdaExpr, entry_block: Block) {
         for (i, pattern) in lambda.params.iter().enumerate() {
             let value = self.builder.block_params(entry_block)[i + 3];
-            self.translate_match_pattern(&pattern.value, value.assert_owned());
+            self.translate_match_pattern(pattern, value.assert_owned());
         }
     }
 
@@ -1001,11 +1001,12 @@ impl<'a> FunctionTranslator<'a> {
         pattern: &Spanned<MatchPattern>,
     ) {
         let rhs_value = self.translate_expr(rhs);
-        self.translate_match_pattern(&pattern.value, rhs_value);
+        self.translate_match_pattern(&pattern, rhs_value);
     }
 
-    fn translate_match_pattern(&mut self, pattern: &MatchPattern, value: MValue) {
-        match pattern {
+    fn translate_match_pattern(&mut self, pattern: &Spanned<MatchPattern>, value: MValue) {
+        self.set_src_span(&pattern.span);
+        match &pattern.value {
             MatchPattern::Discard => {
                 self.drop_val64(value);
             }
@@ -1058,7 +1059,7 @@ impl<'a> FunctionTranslator<'a> {
             }
             MatchPattern::Dict(dict) => {
                 for (key, pattern) in &dict.entries {
-                    if pattern == &MatchPattern::Discard {
+                    if pattern.value == MatchPattern::Discard {
                         continue;
                     }
                     let keyval = self.string_literal_borrow(key.clone());
@@ -1126,7 +1127,7 @@ impl<'a> FunctionTranslator<'a> {
                     }
                     let ival = self.builder.ins().iconst(I64, i as i64);
                     let element = self.call_native(NativeFuncId::ListBorrowU64, &[value, ival])[0];
-                    let matches = self.translate_matches_pattern(part, element);
+                    let matches = self.translate_matches_pattern(&part.value, element);
                     // TODO short-circuit
                     matches_all = self.builder.ins().band(matches_all, matches);
                 }
@@ -1162,14 +1163,14 @@ impl<'a> FunctionTranslator<'a> {
 
                 let mut matches_all = self.builder.ins().iconst(types::I8, 1);
                 for (key, pattern) in &dict_pattern.entries {
-                    if pattern.always_matches() {
+                    if pattern.value.always_matches() {
                         // skip simple patterns that will always be true (e.g. _)
                         continue;
                     }
                     let keyval = self.string_literal_borrow(key.clone());
 
                     let (element, found) = self.dict_lookup(value, keyval);
-                    let matches = self.translate_matches_pattern(pattern, element);
+                    let matches = self.translate_matches_pattern(&pattern.value, element);
                     self.drop_val64(element.assert_owned());
                     // TODO short-circuit
                     matches_all = self.builder.ins().band(matches_all, found);
@@ -1387,7 +1388,7 @@ impl<'a> FunctionTranslator<'a> {
             &[iter_value.borrow(), current_index],
         )[0]
         .assert_owned();
-        self.translate_match_pattern(&var.value, current_item);
+        self.translate_match_pattern(&var, current_item);
         self.translate_expr(body);
         let next_index = self.builder.ins().iadd_imm(current_index, 1);
         self.builder
@@ -1673,7 +1674,7 @@ impl<'a> FunctionTranslator<'a> {
 
             // Branch body
             self.builder.switch_to_block(branch_body_blocks[i]);
-            self.translate_match_pattern(&pattern.value, subject);
+            self.translate_match_pattern(pattern, subject);
             let body_value = self.translate_expr(body).into_owned(self);
             self.builder
                 .ins()

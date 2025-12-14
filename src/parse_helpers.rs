@@ -40,7 +40,9 @@ pub fn parse_string_literal(s: &str) -> String {
     result
 }
 
-pub fn process_list_match(parts: Vec<(MatchPattern, bool)>) -> Result<MatchPattern, &'static str> {
+pub fn process_list_match(
+    parts: Vec<(Spanned<MatchPattern>, bool)>,
+) -> Result<MatchPattern, &'static str> {
     let mut spread_idx = None;
     for (i, (_, is_spread)) in parts.iter().enumerate() {
         if *is_spread {
@@ -50,7 +52,7 @@ pub fn process_list_match(parts: Vec<(MatchPattern, bool)>) -> Result<MatchPatte
             spread_idx = Some(i);
         }
     }
-    let mut parts_vec: Vec<MatchPattern> = parts.into_iter().map(|p| p.0).collect();
+    let mut parts_vec: Vec<Spanned<MatchPattern>> = parts.into_iter().map(|p| p.0).collect();
     match spread_idx {
         Some(idx) => {
             let after = parts_vec.split_off(idx + 1);

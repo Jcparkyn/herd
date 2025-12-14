@@ -123,18 +123,18 @@ impl VariableAnalyzer {
         match stmt {
             Statement::PatternAssignment(pattern, rhs) => {
                 self.analyze_expr(rhs);
-                self.analyze_pattern(&mut pattern.value, pattern.span);
+                self.analyze_pattern(pattern);
             }
             Statement::Expression(expr) => self.analyze_expr(expr),
             Statement::Return(expr) => self.analyze_expr(expr),
         }
     }
 
-    fn analyze_pattern(&mut self, pattern: &mut MatchPattern, span: Span) {
-        match pattern {
+    fn analyze_pattern(&mut self, pattern: &mut Spanned<MatchPattern>) {
+        match &mut pattern.value {
             MatchPattern::Declaration(var, decl_type) => {
                 if let Some(_) = self.get_slot(&var.name) {
-                    self.push_err(VariableAlreadyDefined(var.name.clone()), span);
+                    self.push_err(VariableAlreadyDefined(var.name.clone()), pattern.span);
                 }
                 self.push_var(var, *decl_type == DeclarationType::Mutable);
             }
@@ -142,10 +142,10 @@ impl VariableAnalyzer {
                 if let Some(slot) = self.get_slot(&target.var.name) {
                     target.var.slot = slot;
                     if !self.vars[slot as usize].mutable {
-                        self.push_err(AssignToConst(target.var.name.clone()), span);
+                        self.push_err(AssignToConst(target.var.name.clone()), pattern.span);
                     }
                 } else {
-                    self.push_err(VariableNotDefined(target.var.name.clone()), span);
+                    self.push_err(VariableNotDefined(target.var.name.clone()), pattern.span);
                 }
                 for index in target.path.iter_mut() {
                     self.analyze_expr(index);
@@ -153,19 +153,19 @@ impl VariableAnalyzer {
             }
             MatchPattern::SimpleList(parts) => {
                 for part in parts {
-                    self.analyze_pattern(part, span);
+                    self.analyze_pattern(part);
                 }
             }
             MatchPattern::SpreadList(pattern) => {
                 for part in pattern.all_parts_mut() {
-                    self.analyze_pattern(part, span);
+                    self.analyze_pattern(part);
                 }
             }
             MatchPattern::Discard => {}
             MatchPattern::Constant(_) => {}
             MatchPattern::Dict(dict) => {
                 for (_key, pattern) in dict.entries.iter_mut() {
-                    self.analyze_pattern(pattern, span);
+                    self.analyze_pattern(pattern);
                 }
             }
         }
@@ -200,7 +200,7 @@ impl VariableAnalyzer {
                 self.analyze_expr(&mut m.condition);
                 for (pattern, body) in m.branches.iter_mut() {
                     self.push_scope();
-                    self.analyze_pattern(&mut pattern.value, span);
+                    self.analyze_pattern(pattern);
                     self.analyze_expr(body);
                     self.pop_scope();
                 }
@@ -224,7 +224,7 @@ impl VariableAnalyzer {
             Expr::Lambda(l) => {
                 let mut lambda_analyzer = VariableAnalyzer::new();
                 for param in Rc::get_mut(&mut l.params).unwrap() {
-                    lambda_analyzer.analyze_pattern(&mut param.value, span)
+                    lambda_analyzer.analyze_pattern(param)
                 }
                 for capture in &mut l.potential_captures {
                     if let Some(slot) = self.get_slot(&capture.name) {
@@ -268,7 +268,7 @@ impl VariableAnalyzer {
             Expr::ForIn { iter, var, body } => {
                 self.analyze_expr(iter);
                 self.push_scope();
-                self.analyze_pattern(&mut var.value, span);
+                self.analyze_pattern(var);
                 self.analyze_expr(body);
                 self.pop_scope();
             }
@@ -349,19 +349,19 @@ fn analyze_pattern_liveness(pattern: &mut MatchPattern, deps: &mut HashSet<Strin
         }
         MatchPattern::SimpleList(parts) => {
             for part in parts {
-                analyze_pattern_liveness(part, deps);
+                analyze_pattern_liveness(&mut part.value, deps);
             }
         }
         MatchPattern::SpreadList(pattern) => {
             for part in pattern.all_parts_mut() {
-                analyze_pattern_liveness(part, deps);
+                analyze_pattern_liveness(&mut part.value, deps);
             }
         }
         MatchPattern::Discard => {}
         MatchPattern::Constant(_) => {}
         MatchPattern::Dict(dict) => {
             for (_key, pattern) in dict.entries.iter_mut() {
-                analyze_pattern_liveness(pattern, deps);
+                analyze_pattern_liveness(&mut pattern.value, deps);
             }
         }
     }
