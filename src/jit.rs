@@ -845,7 +845,7 @@ impl<'a> FunctionTranslator<'a> {
         let (func_ptr, closure_ptr) = self.get_lambda_details(args, callee_val.borrow());
 
         // Null pointer means callee wasn't a lambda
-        self.assert2(func_ptr, &callee.span, |s| {
+        self.assert(func_ptr, &callee.span, |s| {
             s.string_template(
                 "Tried to call something that isn't a function (or wrong parameter count): {}",
                 &[callee_val.borrow()],
@@ -1022,29 +1022,32 @@ impl<'a> FunctionTranslator<'a> {
             }
             MatchPattern::Constant(c) => {
                 let matches = self.translate_matches_constant(c, value.borrow());
-                self.drop_val64(value);
-                self.assert(matches, |s| {
-                    s.print_string_constant(
-                        "ERROR: pattern match failed on constant\n".to_string(),
-                    );
+                self.assert(matches, &pattern.span, |s| {
+                    let template =
+                        format!("Pattern match failed: Expected constant {}, found {{}}", c);
+                    s.string_template(template, &[value.borrow()])
                 });
+                self.drop_val64(value);
             }
             MatchPattern::SimpleList(parts) => {
                 let is_list = self.is_ptr_type(value, PointerTag::List);
-                self.assert(is_list, |s| {
-                    s.print_string_constant(
-                        "ERROR: pattern match failed on non-list\n".to_string(),
-                    );
+                self.assert(is_list, &pattern.span, |s| {
+                    s.string_template(
+                        "Pattern match failed: Expected list, found {}",
+                        &[value.borrow()],
+                    )
                 });
                 let value_len = self.call_native(NativeFuncId::ListLenU64, &[value.borrow()])[0];
                 let len_eq =
                     self.builder
                         .ins()
                         .icmp_imm(IntCC::Equal, value_len, parts.len() as i64);
-                self.assert(len_eq, |s| {
-                    s.print_string_constant(
-                        "ERROR: pattern match failed on list of wrong length\n".to_string(),
+                self.assert(len_eq, &pattern.span, |s| {
+                    let template = format!(
+                        "Pattern match failed: Expected list of length {}, found {{}}",
+                        parts.len()
                     );
+                    s.string_template(template, &[value.borrow()])
                 });
                 for (i, part) in parts.iter().enumerate() {
                     let ival = self.builder.ins().iconst(I64, i as i64);
@@ -1062,12 +1065,13 @@ impl<'a> FunctionTranslator<'a> {
                     if pattern.value == MatchPattern::Discard {
                         continue;
                     }
+                    // TODO: assert dict type
                     let keyval = self.string_literal_borrow(key.clone());
                     let (element, found) = self.dict_lookup(value, keyval);
-                    self.assert(found, |s| {
-                        s.print_string_constant(format!(
-                            "ERROR: pattern match failed on dict, key {key} not found\n",
-                        ));
+                    self.assert(found, &pattern.span, |s| {
+                        s.string_literal_owned(format!(
+                            "Pattern match failed: Dict key {key} was not found\n",
+                        ))
                     });
                     self.translate_match_pattern(pattern, element.assert_owned());
                 }
@@ -1655,7 +1659,7 @@ impl<'a> FunctionTranslator<'a> {
             self.set_src_span(&pattern.span);
             let matches = self.translate_matches_pattern(&pattern.value, subject.borrow());
             if is_last_branch {
-                self.assert2(matches, &match_expr.condition.span, |s| {
+                self.assert(matches, &match_expr.condition.span, |s| {
                     s.string_template(
                         "No branches matched in match expression. Value: {}",
                         &[subject.borrow()],
@@ -1748,34 +1752,8 @@ impl<'a> FunctionTranslator<'a> {
         ))
     }
 
-    /// Returns a sentinel value if the assertion is zero.
-    /// `on_fail` is used for printing an error message.
-    /// This is a temporary solution, and should ideally store the error information somewhere instead of printing.
-    fn assert(&mut self, assertion: Value, on_fail: impl FnOnce(&mut Self)) {
-        let before_block = self.builder.current_block().unwrap();
-        let fail_block = self.builder.create_block();
-        let ok_block = self.builder.create_block();
-        self.builder.set_cold_block(fail_block);
-        self.builder
-            .ins()
-            .brif(assertion, ok_block, &[], fail_block, &[]);
-
-        self.builder.switch_to_block(fail_block);
-        self.builder.seal_block(fail_block);
-        on_fail(self);
-
-        let null_ptr = self.builder.ins().iconst(PTR, 0);
-        let msg = self.string_literal_owned("TEMP assertion failed".to_string());
-        let pos = self.builder.ins().iconst(I64, 69); // TODO
-        let err_ptr = self.call_native(NativeFuncId::AllocError, &[msg, null_ptr, pos])[0];
-        self.translate_return_err(err_ptr);
-
-        self.builder.switch_to_block(ok_block);
-        self.builder.seal_block(ok_block);
-        self.builder.insert_block_after(ok_block, before_block);
-    }
-
-    fn assert2(
+    /// Asserts that the given condition is non-zero, otherwise builds and raises an error using the given build_msg closure.
+    fn assert(
         &mut self,
         assertion: Value,
         span: &Span,
@@ -2064,7 +2042,7 @@ impl<'a> FunctionTranslator<'a> {
         let nanish = value64::NANISH as i64;
         let and = self.builder.ins().band_imm(val_int, nanish);
         let is_f64 = self.builder.ins().icmp_imm(IntCC::NotEqual, and, nanish);
-        self.assert2(is_f64, span, |s| {
+        self.assert(is_f64, span, |s| {
             s.string_template("Expected an f64, found {}", &[val.as_bvalue()])
         });
     }
@@ -2094,7 +2072,7 @@ impl<'a> FunctionTranslator<'a> {
         let result = self.call_native(NativeFuncId::ImportModule, &[vm_ptr, path_val])[0];
         let is_ok = self.cmp_bits_imm(IntCC::NotEqual, result, value64::ERROR_VALUE);
 
-        self.assert2(is_ok, span, |s| {
+        self.assert(is_ok, span, |s| {
             let msg_path = s.string_literal_borrow(path.to_string());
             s.string_template("Import failed for path: {}", &[msg_path])
         });

@@ -610,6 +610,24 @@ fn pattern_assignment_simple() {
 }
 
 #[test]
+fn pattern_assignment_const_mismatch() {
+    let program = r#"
+        ![1] = [2];
+    "#;
+    let result = eval(program).expect_err_string();
+    insta::assert_snapshot!(result, @"At 11: Pattern match failed: Expected constant 1, found 2");
+}
+
+#[test]
+fn pattern_assignment_const_mismatch_nested() {
+    let program = r#"
+        ![[1], b] = [[2], 3];
+    "#;
+    let result = eval(program).expect_err_string();
+    insta::assert_snapshot!(result, @"At 12: Pattern match failed: Expected constant 1, found 2");
+}
+
+#[test]
 fn pattern_assignment_set() {
     let program = r#"
         var a = 3;
@@ -622,6 +640,24 @@ fn pattern_assignment_set() {
 }
 
 #[test]
+fn pattern_assignment_list_not_a_list() {
+    let program = r#"
+        ![a, b] = 1;
+    "#;
+    let result = eval(program).expect_err_string();
+    insta::assert_snapshot!(result, @"At 10: Pattern match failed: Expected list, found 1");
+}
+
+#[test]
+fn pattern_assignment_list_wrong_length() {
+    let program = r#"
+        ![a, b] = [1, 2, 3];
+    "#;
+    let result = eval(program).expect_err_string();
+    insta::assert_snapshot!(result, @"At 10: Pattern match failed: Expected list of length 2, found [1, 2, 3]");
+}
+
+#[test]
 fn pattern_assignment_nested() {
     let program = r#"
         ![[a, b], c] = [[1, 2], 3];
@@ -630,6 +666,24 @@ fn pattern_assignment_nested() {
     let result = eval_snapshot_str(program);
     insta::assert_snapshot!(result, @"[1, 2, 3]");
     assert_rcs_dropped();
+}
+
+#[test]
+fn pattern_assignment_dict_missing_key() {
+    let program = r#"
+        !{a, b} = {a: 1};
+    "#;
+    let result = eval(program).expect_err_string();
+    insta::assert_snapshot!(result, @"At 14: Pattern match failed: Dict key b was not found");
+}
+
+#[test]
+fn pattern_assignment_dict_missing_key_nested() {
+    let program = r#"
+        !{a, b: {c}} = {a: 1, b: {}};
+    "#;
+    let result = eval(program).expect_err_string();
+    insta::assert_snapshot!(result, @"At 18: Pattern match failed: Dict key c was not found");
 }
 
 #[test]
