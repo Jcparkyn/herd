@@ -770,7 +770,7 @@ impl<'a> FunctionTranslator<'a> {
             }
             Expr::Lambda(l) => self.translate_lambda_definition(l).assert_owned(),
             Expr::Match(m) => self.translate_match_expr(m),
-            Expr::Import { path } => self.translate_import(path),
+            Expr::Import { path } => self.translate_import(path, &expr.span),
         }
     }
 
@@ -845,15 +845,12 @@ impl<'a> FunctionTranslator<'a> {
         let (func_ptr, closure_ptr) = self.get_lambda_details(args, callee_val.borrow());
 
         // Null pointer means callee wasn't a lambda
-        self.assert(func_ptr, |s| {
-            s.print_string_constant(format!(
-                "ERROR (at {}): Tried to call something that isn't a function (or wrong parameter count): ",
-                callee.span.start
-            ));
-            s.call_native(NativeFuncId::Print, &[callee_val.borrow()]);
-            s.print_string_constant("\n".to_string());
+        self.assert2(func_ptr, &callee.span, |s| {
+            s.string_template(
+                "Tried to call something that isn't a function (or wrong parameter count): {}",
+                &[callee_val.borrow()],
+            )
         });
-
         let mut sig = self.module.make_signature();
         Self::build_function_signature(&mut sig, args.len());
         let sig_ref = self.builder.import_signature(sig);
@@ -2090,14 +2087,15 @@ impl<'a> FunctionTranslator<'a> {
         self.call_native(NativeFuncId::Print, &[string_val64]);
     }
 
-    fn translate_import(&mut self, path: &str) -> MValue {
+    fn translate_import(&mut self, path: &str, span: &Span) -> MValue {
         let vm_ptr = self.get_vm_ptr();
         let path_val = self.string_literal_owned(path.to_string());
         let result = self.call_native(NativeFuncId::ImportModule, &[vm_ptr, path_val])[0];
         let is_ok = self.cmp_bits_imm(IntCC::NotEqual, result, value64::ERROR_VALUE);
 
-        self.assert(is_ok, |s| {
-            s.print_string_constant(format!("ERROR: Import failed\n"));
+        self.assert2(is_ok, span, |s| {
+            let msg_path = s.string_literal_borrow(path.to_string());
+            s.string_template("Import failed for path: {}", &[msg_path])
         });
         result.assert_owned()
     }

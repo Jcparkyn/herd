@@ -690,7 +690,7 @@ fn match_empty_dict() {
     let program = r#"
         x = {};
         return switch x on {
-            {} => 'empty_dict', 
+            {} => 'empty_dict',
         };
     "#;
     let result = eval_snapshot_str(program);
@@ -815,4 +815,23 @@ fn simple_imports() {
         .expect_ok_string();
     insta::assert_snapshot!(result, @"42");
     assert_rcs_dropped();
+}
+
+#[test]
+fn call_non_function() {
+    let program = r#"
+        return 1 ();
+    "#;
+    let result = eval(program).expect_err_string();
+    insta::assert_snapshot!(result);
+}
+
+#[test]
+fn call_wrong_arg_count() {
+    let program = r#"
+        f = \a\ a;
+        return f 1 2;
+    "#;
+    let result = eval(program).expect_err_string();
+    insta::assert_snapshot!(result);
 }

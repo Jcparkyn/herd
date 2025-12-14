@@ -2,5 +2,5 @@
 source: tests/stdlib_snapshots.rs
 expression: result
 ---
-At 69: TEMP assertion failed
+At 293: Tried to call something that isn't a function (or wrong parameter count): 123
 At 56:

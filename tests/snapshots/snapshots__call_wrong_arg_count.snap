@@ -1,0 +1,5 @@
+---
+source: tests/snapshots.rs
+expression: result
+---
+At 35: Tried to call something that isn't a function (or wrong parameter count): <lambda: f>
