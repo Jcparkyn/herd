@@ -599,7 +599,7 @@ pub extern "C" fn val_take_index(
             return Value64::ERROR;
         }
         let element = rc_mutate(&mut list, |l| {
-            std::mem::replace(&mut l.values[index_int], Value64::from_f64(69.0))
+            std::mem::replace(&mut l.values[index_int], Value64::NIL)
         });
         unsafe { *element_out = element };
         Value64::from_list(list)
@@ -607,7 +607,7 @@ pub extern "C" fn val_take_index(
         let mut dict = val.try_into_dict().unwrap();
         let element = rc_mutate(&mut dict, |d| {
             if let Some(value) = d.get_mut(&index) {
-                std::mem::replace(value, Value64::from_f64(70.0))
+                std::mem::replace(value, Value64::NIL)
             } else {
                 Value64::NIL
             }
