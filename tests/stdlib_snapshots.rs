@@ -142,3 +142,61 @@ fn parallel_map_error() {
     insta::assert_snapshot!(result);
     assert_rcs_dropped();
 }
+
+#[test]
+fn stdlib_sort_error() {
+    let main_program = r#"
+        !{ sort } = import '@list';
+        return sort { a: 1, b: 2 };
+    "#;
+
+    let result = eval(main_program).expect_err_string();
+    insta::assert_snapshot!(result);
+    // assert_rcs_dropped();
+}
+
+#[test]
+fn stdlib_slice_error() {
+    let main_program = r#"
+        list = [1, 2, 3];
+        return List.slice list 'a' 1; // Invalid index type
+    "#;
+
+    let result = eval(main_program).expect_err_string();
+    insta::assert_snapshot!(result);
+    assert_rcs_dropped();
+}
+
+#[test]
+fn stdlib_map_error() {
+    let main_program = r#"
+        list = import '@list';
+        return [1, 2] | list.map 123; // 123 is not a function
+    "#;
+
+    let result = eval(main_program).expect_err_string();
+    insta::assert_snapshot!(result);
+    // assert_rcs_dropped();
+}
+
+#[test]
+fn stdlib_import_error_non_existent() {
+    let main_program = r#"
+        return import '@nonexistent_module';
+    "#;
+
+    let result = eval(main_program).expect_err_string();
+    insta::assert_snapshot!(result);
+    assert_rcs_dropped();
+}
+
+#[test]
+fn stdlib_import_error_malformed_path() {
+    let main_program = r#"
+        return import 'malformed/path';
+    "#;
+
+    let result = eval(main_program).expect_err_string();
+    insta::assert_snapshot!(result);
+    assert_rcs_dropped();
+}

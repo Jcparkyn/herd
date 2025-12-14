@@ -87,7 +87,13 @@ impl EvalConfig<'_> {
 
     #[track_caller]
     pub fn expect_err(&self) -> HerdError {
-        self.eval().expect_err("The program should return an error")
+        match self.eval() {
+            Ok(v) => panic!(
+                "The program should return an error, but instead returned: {}",
+                v
+            ),
+            Err(err) => err,
+        }
     }
 
     #[track_caller]

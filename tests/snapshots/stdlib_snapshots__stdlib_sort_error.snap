@@ -1,0 +1,7 @@
+---
+source: tests/stdlib_snapshots.rs
+expression: result
+---
+At [internal method]: Expected a list, got {a: 1, b: 2}
+At 0: 
+At 52:

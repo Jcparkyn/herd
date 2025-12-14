@@ -1,0 +1,7 @@
+---
+source: tests/stdlib_snapshots.rs
+expression: result
+---
+At [internal method]: Expected a number, got 'a'
+At 0: 
+At 42:

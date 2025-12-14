@@ -1,0 +1,6 @@
+---
+source: tests/stdlib_snapshots.rs
+expression: result
+---
+At 69: TEMP assertion failed
+At 56:
