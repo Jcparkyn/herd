@@ -142,6 +142,40 @@ fn index_list() {
 }
 
 #[test]
+fn index_list_from_end() {
+    let program = r#"
+        return ['a', 'b', 'c'].[-1];
+    "#;
+    let result = eval(program).expect_ok_string();
+    insta::assert_snapshot!(result, @"'c'");
+    assert_rcs_dropped();
+}
+
+#[test]
+fn index_list_out_of_range() {
+    let program = r#"
+        return ['a', 'b', 'c'].[3];
+    "#;
+    let result = eval(program).expect_err_string();
+    insta::assert_snapshot!(result, @r###"
+    At [internal method]: List index out of range, got 3 but length is 3
+    At 0:
+    "###);
+}
+
+#[test]
+fn index_list_with_string() {
+    let program = r#"
+        return ['a', 'b', 'c'].['3'];
+    "#;
+    let result = eval(program).expect_err_string();
+    insta::assert_snapshot!(result, @r###"
+    At [internal method]: List index should be an integer, got '3'
+    At 0:
+    "###);
+}
+
+#[test]
 fn index_dict() {
     let program = r#"
         dict = {a: 'A', b: 'B'};

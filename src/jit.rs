@@ -742,7 +742,7 @@ impl<'a> FunctionTranslator<'a> {
             Expr::GetIndex(val, index) => {
                 let index = self.translate_expr(index);
                 let val = self.translate_expr(val);
-                let result = self.call_native(
+                let result = self.call_native_fallible(
                     NativeFuncId::ValBorrowIndex,
                     &[val.borrow(), index.borrow()],
                 )[0];
@@ -1061,11 +1061,11 @@ impl<'a> FunctionTranslator<'a> {
                 todo!("Pattern matching with ... isn't supported here yet")
             }
             MatchPattern::Dict(dict) => {
+                // TODO: assert dict type
                 for (key, pattern) in &dict.entries {
                     if pattern.value == MatchPattern::Discard {
                         continue;
                     }
-                    // TODO: assert dict type
                     let keyval = self.string_literal_borrow(key.clone());
                     let (element, found) = self.dict_lookup(value, keyval);
                     self.assert(found, &pattern.span, |s| {

@@ -160,9 +160,9 @@ fn get_native_func_def(func: NativeFuncId) -> NativeFuncDef {
         NativeFuncId::DictLookup => get_def!(3, dict_lookup),
         NativeFuncId::Clone => get_def!(1, clone),
         NativeFuncId::Drop => get_def!(1, val_drop),
-        NativeFuncId::ValBorrowIndex => get_def!(2, val_borrow_index), // TODO
-        NativeFuncId::ValReplaceIndex => get_def!(3, val_take_index),  // TODO
-        NativeFuncId::ValSetIndex => get_def!(3, val_set_index),       // TODO
+        NativeFuncId::ValBorrowIndex => get_def!(3, val_borrow_index).fallible(), // TODO
+        NativeFuncId::ValReplaceIndex => get_def!(3, val_take_index),             // TODO
+        NativeFuncId::ValSetIndex => get_def!(3, val_set_index),                  // TODO
         NativeFuncId::ValEq => get_def!(2, val_eq),
         NativeFuncId::ValEqU8 => get_def!(2, val_eq_u8),
         NativeFuncId::ValTruthy => get_def!(1, val_truthy_u8),
@@ -255,9 +255,10 @@ generate_get_def!(get_def3, T1, T2, T3);
 generate_get_def!(get_def4, T1, T2, T3, T4);
 generate_get_def!(get_def5, T1, T2, T3, T4, T5);
 
-fn handle_c_result<F>(error_out: *mut *const HerdError, f: F) -> Value64
+fn handle_c_result<F, TReturn>(error_out: *mut *const HerdError, f: F) -> TReturn
 where
-    F: FnOnce() -> Result<Value64, HerdError>,
+    TReturn: Default,
+    F: FnOnce() -> Result<TReturn, HerdError>,
 {
     unsafe {
         *error_out = std::ptr::null();
@@ -269,7 +270,7 @@ where
                 *error_out = Box::into_raw(Box::new(err));
             }
         }
-        Value64::NIL
+        TReturn::default()
     })
 }
 
@@ -308,7 +309,7 @@ fn guard_lambda(val: &Value64) -> Result<&LambdaFunction, HerdError> {
 pub struct Value64Ref(ManuallyDrop<Value64>);
 
 impl Value64Ref {
-    const ERROR: Self = Self(ManuallyDrop::new(Value64::ERROR));
+    const NIL: Self = Self(ManuallyDrop::new(Value64::NIL));
 
     pub fn from_ref(val: &Value64) -> Self {
         Self(ManuallyDrop::new(unsafe { std::ptr::read(val) }))
@@ -326,6 +327,12 @@ impl Deref for Value64Ref {
 impl std::fmt::Display for Value64Ref {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Display::fmt(&*self.0, f)
+    }
+}
+
+impl Default for Value64Ref {
+    fn default() -> Self {
+        Self::NIL
     }
 }
 
@@ -357,14 +364,14 @@ fn parse_list_index_f64(val: f64, len: usize) -> Option<usize> {
     }
 }
 
-macro_rules! guard_list_index {
+macro_rules! guard_list_index_old {
     ($val:expr, $len:expr) => {
         if let Some(f) = $val.as_f64() {
             if let Some(i) = parse_list_index_f64(f, $len) {
                 i
             } else {
                 println!(
-                    "ERROR: List index out of range, got {} but length is {}",
+                    "ERROR: List index out of range, got index {} but length is {}",
                     f, $len
                 );
                 return Value64::ERROR;
@@ -374,6 +381,25 @@ macro_rules! guard_list_index {
             return Value64::ERROR;
         }
     };
+}
+
+fn guard_list_index(val: Value64Ref, len: usize) -> Result<usize, HerdError> {
+    let f = match val.as_f64() {
+        Some(f) => f,
+        None => {
+            return Err(HerdError::new(format!(
+                "List index should be an integer, got {}",
+                *val
+            )));
+        }
+    };
+    match parse_list_index_f64(f, len) {
+        Some(i) => Ok(i),
+        None => Err(HerdError::new(format!(
+            "List index out of range, got {} but length is {}",
+            f, len
+        ))),
+    }
 }
 
 type Out<T> = *mut T;
@@ -593,7 +619,7 @@ pub extern "C" fn val_take_index(
 ) -> Value64 {
     if val.is_list() {
         let mut list = val.try_into_list().unwrap();
-        let index_int = guard_list_index!(index, list.values.len());
+        let index_int = guard_list_index_old!(index, list.values.len());
         if index_int >= list.values.len() {
             println!("ERROR: Out of range");
             return Value64::ERROR;
@@ -620,37 +646,32 @@ pub extern "C" fn val_take_index(
     }
 }
 
-pub extern "C" fn val_borrow_index(val: Value64Ref, index: Value64Ref) -> Value64Ref {
-    if let Some(list) = val.as_list() {
-        match index.as_f64() {
-            Some(f) => {
-                if let Some(index_int) = parse_list_index_f64(f, list.len()) {
-                    return Value64Ref::from_ref(&list.values[index_int]);
-                } else {
-                    println!(
-                        "ERROR: List index out of range, got {} but length is {}",
-                        f,
-                        list.len()
-                    );
-                    return Value64Ref::ERROR;
-                }
-            }
-            _ => {
-                println!("ERROR: Out of range");
-                return Value64Ref::from_ref(&Value64::ERROR);
-            }
+pub extern "C" fn val_borrow_index(
+    error_out: *mut *const HerdError,
+    val: Value64Ref,
+    index: Value64Ref,
+) -> Value64Ref {
+    handle_c_result(error_out, || {
+        if let Some(list) = val.as_list() {
+            let index_int = guard_list_index(index, list.len())?;
+            Ok(Value64Ref::from_ref(&list.values[index_int]))
+        } else if let Some(dict) = val.as_dict() {
+            Ok(Value64Ref::from_ref(
+                dict.get(&index).unwrap_or(&Value64::NIL),
+            ))
+        } else {
+            Err(HerdError::new(format!(
+                "Expected list or dict, was {}",
+                *val
+            )))
         }
-    } else if let Some(dict) = val.as_dict() {
-        Value64Ref::from_ref(dict.get(&index).unwrap_or(&Value64::NIL))
-    } else {
-        panic!("Expected list or dict, was {}", *val)
-    }
+    })
 }
 
 pub extern "C" fn val_set_index(val: Value64, index: Value64, new_val: Value64) -> Value64 {
     if val.is_list() {
         let mut list = val.try_into_list().unwrap();
-        let index_int = guard_list_index!(index, list.len());
+        let index_int = guard_list_index_old!(index, list.len());
         rc_mutate(&mut list, |l| {
             l.values[index_int] = new_val;
         });
