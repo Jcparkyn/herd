@@ -160,8 +160,8 @@ fn get_native_func_def(func: NativeFuncId) -> NativeFuncDef {
         NativeFuncId::DictLookup => get_def!(3, dict_lookup),
         NativeFuncId::Clone => get_def!(1, clone),
         NativeFuncId::Drop => get_def!(1, val_drop),
-        NativeFuncId::ValBorrowIndex => get_def!(3, val_borrow_index).fallible(), // TODO
-        NativeFuncId::ValReplaceIndex => get_def!(4, val_take_index).fallible(),  // TODO
+        NativeFuncId::ValBorrowIndex => get_def!(3, val_borrow_index).fallible(),
+        NativeFuncId::ValReplaceIndex => get_def!(4, val_take_index).fallible(),
         NativeFuncId::ValSetIndex => get_def!(4, val_set_index).fallible(),
         NativeFuncId::ValEq => get_def!(2, val_eq),
         NativeFuncId::ValEqU8 => get_def!(2, val_eq_u8),
@@ -274,35 +274,6 @@ where
     })
 }
 
-fn guard_f64_new(val: &Value64) -> Result<f64, HerdError> {
-    val.as_f64()
-        .ok_or_else(|| HerdError::new(format!("Expected a number, got {}", val)))
-}
-
-fn guard_i64(val: &Value64) -> Result<i64, HerdError> {
-    guard_f64_new(val).map(|f| f as i64)
-}
-
-fn guard_into_list(val: Value64) -> Result<Rc<ListInstance>, HerdError> {
-    val.try_into_list()
-        .map_err(|v| HerdError::new(format!("Expected a list, got {}", v)))
-}
-
-fn guard_into_dict(val: Value64) -> Result<Rc<DictInstance>, HerdError> {
-    val.try_into_dict()
-        .map_err(|v| HerdError::new(format!("Expected a dict, got {}", v)))
-}
-
-fn guard_str(val: &Value64) -> Result<&str, HerdError> {
-    val.as_str()
-        .ok_or_else(|| HerdError::new(format!("Expected a string, got {}", val)))
-}
-
-fn guard_lambda(val: &Value64) -> Result<&LambdaFunction, HerdError> {
-    val.as_lambda()
-        .ok_or_else(|| HerdError::new(format!("Expected a lambda, got {}", val)))
-}
-
 // Not using &Value64, so that the ABI for these functions still takes
 // regular f64 values.
 #[repr(transparent)]
@@ -340,23 +311,33 @@ impl Default for Value64Ref {
     }
 }
 
-macro_rules! guard_f64 {
-    ($val:expr) => {
-        match $val.as_f64() {
-            Some(f) => f,
-            None => {
-                println!("ERROR: Expected f64, got {}", $val);
-                return Value64::ERROR;
-            }
-        }
-    };
+fn guard_f64(val: &Value64) -> Result<f64, HerdError> {
+    val.as_f64()
+        .ok_or_else(|| HerdError::new(format!("Expected a number, got {}", val)))
 }
 
-macro_rules! guard_usize {
-    ($val:expr) => {
-        // TODO assert int
-        guard_f64!($val) as usize
-    };
+fn guard_i64(val: &Value64) -> Result<i64, HerdError> {
+    guard_f64(val).map(|f| f as i64)
+}
+
+fn guard_into_list(val: Value64) -> Result<Rc<ListInstance>, HerdError> {
+    val.try_into_list()
+        .map_err(|v| HerdError::new(format!("Expected a list, got {}", v)))
+}
+
+fn guard_into_dict(val: Value64) -> Result<Rc<DictInstance>, HerdError> {
+    val.try_into_dict()
+        .map_err(|v| HerdError::new(format!("Expected a dict, got {}", v)))
+}
+
+fn guard_str(val: &Value64) -> Result<&str, HerdError> {
+    val.as_str()
+        .ok_or_else(|| HerdError::new(format!("Expected a string, got {}", val)))
+}
+
+fn guard_lambda(val: &Value64) -> Result<&LambdaFunction, HerdError> {
+    val.as_lambda()
+        .ok_or_else(|| HerdError::new(format!("Expected a lambda, got {}", val)))
 }
 
 fn parse_list_index_f64(val: f64, len: usize) -> Option<usize> {
@@ -726,8 +707,8 @@ pub extern "C" fn float_pow(
     exponent: Value64,
 ) -> Value64 {
     handle_c_result(error_out, || {
-        let base_float = guard_f64_new(&base)?;
-        let exp_float = guard_f64_new(&exponent)?;
+        let base_float = guard_f64(&base)?;
+        let exp_float = guard_f64(&exponent)?;
         Ok(Value64::from_f64(base_float.powf(exp_float)))
     })
 }
@@ -853,12 +834,6 @@ pub extern "C" fn val_shift_left(
     })
 }
 
-pub extern "C" fn val_xor(val1: Value64, val2: Value64) -> Value64 {
-    let a = guard_usize!(val1);
-    let b = guard_usize!(val2);
-    Value64::from_f64((a ^ b) as f64)
-}
-
 pub extern "C" fn val_not(val: Value64) -> Value64 {
     Value64::from_bool(!val.truthy())
 }
@@ -887,8 +862,8 @@ pub extern "C" fn random_float(
     max: Value64,
 ) -> Value64 {
     handle_c_result(error_out, || {
-        let min_float = guard_f64_new(&min)?;
-        let max_float = guard_f64_new(&max)?;
+        let min_float = guard_f64(&min)?;
+        let max_float = guard_f64(&max)?;
         if min_float >= max_float {
             return Err(HerdError::new(
                 "min should be < max in randomFloat".to_string(),
