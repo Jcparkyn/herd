@@ -913,7 +913,7 @@ impl<'a> FunctionTranslator<'a> {
         let closure_ptr_slot = self.create_stack_slot(PTR, 1);
         let closure_ptr_ptr_val = self.builder.ins().stack_addr(I64, closure_ptr_slot, 0);
         let arg_count_val = self.builder.ins().iconst(types::I64, args.len() as i64);
-        let func_ptr = self.call_native(
+        let func_ptr = self.call_native_fallible(
             NativeFuncId::ValGetLambdaDetails,
             &[callee_val, arg_count_val, closure_ptr_ptr_val],
         )[0];
@@ -1573,11 +1573,6 @@ impl<'a> FunctionTranslator<'a> {
 
         let return_value = trans.translate_expr(&lambda.body).into_owned(&mut trans);
 
-        // let null_ptr = self.builder.ins().iconst(PTR, 8);
-        // trans.builder.ins().jump(
-        //     trans.return_block,
-        //     &[BlockArg::Value(return_value), BlockArg::Value(null_ptr)],
-        // );
         trans.translate_return_ok(return_value);
 
         trans.translate_return_block(false);
@@ -1624,7 +1619,7 @@ impl<'a> FunctionTranslator<'a> {
         } else {
             self.const_nil()
         };
-        // let name_val = self.const_nil();
+
         let lambda_val = self.call_native(
             NativeFuncId::ConstructLambda,
             &[

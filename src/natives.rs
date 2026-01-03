@@ -6,7 +6,6 @@ use std::{
     ops::Deref,
     panic::AssertUnwindSafe,
     path::PathBuf,
-    ptr::null,
     time::SystemTime,
 };
 
@@ -167,7 +166,7 @@ fn get_native_func_def(func: NativeFuncId) -> NativeFuncDef {
         NativeFuncId::ValEqU8 => get_def!(2, val_eq_u8),
         NativeFuncId::ValTruthy => get_def!(1, val_truthy_u8),
         NativeFuncId::ValConcat => get_def!(2, val_concat), // TODO
-        NativeFuncId::ValGetLambdaDetails => get_def!(3, get_lambda_details), // check result in JIT
+        NativeFuncId::ValGetLambdaDetails => get_def!(4, get_lambda_details).fallible(),
         NativeFuncId::ConstructLambda => get_def!(5, construct_lambda),
         NativeFuncId::ImportModule => get_def!(2, import_module), // check result in JIT
         NativeFuncId::Print => get_def!(1, print),
@@ -255,7 +254,7 @@ generate_get_def!(get_def3, T1, T2, T3);
 generate_get_def!(get_def4, T1, T2, T3, T4);
 generate_get_def!(get_def5, T1, T2, T3, T4, T5);
 
-fn handle_c_result<F, TReturn>(error_out: *mut *const HerdError, f: F) -> TReturn
+fn handle_c_result<F, TReturn>(error_out: ErrorOut, f: F) -> TReturn
 where
     TReturn: Default,
     F: FnOnce() -> Result<TReturn, HerdError>,
@@ -369,6 +368,7 @@ fn guard_list_index(val: &Value64, len: usize) -> Result<usize, HerdError> {
 }
 
 type Out<T> = *mut T;
+type ErrorOut = *mut *const HerdError;
 
 pub extern "C" fn list_new(len: u64, items: *const Value64) -> Value64 {
     let items_slice = unsafe { std::slice::from_raw_parts(items, len as usize) };
@@ -380,11 +380,7 @@ pub extern "C" fn list_new(len: u64, items: *const Value64) -> Value64 {
     Value64::from_list(rc_new(ListInstance::new(items)))
 }
 
-pub extern "C" fn list_push(
-    error_out: *mut *const HerdError,
-    list: Value64,
-    val: Value64,
-) -> Value64 {
+pub extern "C" fn list_push(error_out: ErrorOut, list: Value64, val: Value64) -> Value64 {
     handle_c_result(error_out, || {
         let mut list = guard_into_list(list)?;
         rc_mutate(&mut list, |l| l.values.push(val));
@@ -392,7 +388,7 @@ pub extern "C" fn list_push(
     })
 }
 
-pub extern "C" fn list_pop(error_out: *mut *const HerdError, list: Value64) -> Value64 {
+pub extern "C" fn list_pop(error_out: ErrorOut, list: Value64) -> Value64 {
     handle_c_result(error_out, || {
         let mut list = guard_into_list(list)?;
         rc_mutate(&mut list, |l| {
@@ -416,7 +412,7 @@ pub extern "C" fn list_borrow_u64(list: Value64Ref, index: u64) -> Value64Ref {
     Value64Ref::from_ref(&list2.values[index as usize])
 }
 
-pub extern "C" fn list_sort(error_out: *mut *const HerdError, list_val: Value64) -> Value64 {
+pub extern "C" fn list_sort(error_out: ErrorOut, list_val: Value64) -> Value64 {
     handle_c_result(error_out, || {
         let mut list = guard_into_list(list_val)?;
         rc_mutate(&mut list, |l| {
@@ -437,7 +433,7 @@ fn get_slice_index(index: i64, len: usize) -> usize {
 }
 
 pub extern "C" fn list_slice(
-    error_out: *mut *const HerdError,
+    error_out: ErrorOut,
     list_val: Value64,
     start_index: Value64,
     stop_index: Value64,
@@ -496,11 +492,7 @@ pub extern "C" fn dict_lookup(dict: Value64Ref, key: Value64Ref, found: Out<u8>)
     }
 }
 
-pub extern "C" fn dict_remove_key(
-    error_out: *mut *const HerdError,
-    dict: Value64,
-    key: Value64,
-) -> Value64 {
+pub extern "C" fn dict_remove_key(error_out: ErrorOut, dict: Value64, key: Value64) -> Value64 {
     handle_c_result(error_out, || {
         let mut dict = guard_into_dict(dict)?;
         rc_mutate(&mut dict, |d| {
@@ -510,7 +502,7 @@ pub extern "C" fn dict_remove_key(
     })
 }
 
-pub extern "C" fn dict_keys(error_out: *mut *const HerdError, dict: Value64) -> Value64 {
+pub extern "C" fn dict_keys(error_out: ErrorOut, dict: Value64) -> Value64 {
     handle_c_result(error_out, || {
         let dict = guard_into_dict(dict)?;
         let keys: Vec<Value64> = dict.keys().cloned().collect();
@@ -518,7 +510,7 @@ pub extern "C" fn dict_keys(error_out: *mut *const HerdError, dict: Value64) -> 
     })
 }
 
-pub extern "C" fn dict_entries(error_out: *mut *const HerdError, dict: Value64) -> Value64 {
+pub extern "C" fn dict_entries(error_out: ErrorOut, dict: Value64) -> Value64 {
     handle_c_result(error_out, || {
         let dict = guard_into_dict(dict)?;
         let entries: Vec<Value64> = dict
@@ -532,11 +524,7 @@ pub extern "C" fn dict_entries(error_out: *mut *const HerdError, dict: Value64) 
     })
 }
 
-pub extern "C" fn range(
-    error_out: *mut *const HerdError,
-    start: Value64,
-    stop: Value64,
-) -> Value64 {
+pub extern "C" fn range(error_out: ErrorOut, start: Value64, stop: Value64) -> Value64 {
     handle_c_result(error_out, || {
         let start_int = guard_i64(&start)?;
         let stop_int = guard_i64(&stop)?;
@@ -548,7 +536,7 @@ pub extern "C" fn range(
     })
 }
 
-pub extern "C" fn len(error_out: *mut *const HerdError, val: Value64) -> Value64 {
+pub extern "C" fn len(error_out: ErrorOut, val: Value64) -> Value64 {
     handle_c_result(error_out, || {
         if val.is_list() {
             let list = val.try_into_list().unwrap();
@@ -579,7 +567,7 @@ pub extern "C" fn val_drop(val: Value64) {
 // Replaces the element at an index with NIL, and returns the old element via element_out.
 // The return value is the new list/dict.
 pub extern "C" fn val_take_index(
-    error_out: *mut *const HerdError,
+    error_out: ErrorOut,
     val: Value64,
     index: Value64Ref,
     element_out: *mut Value64,
@@ -615,7 +603,7 @@ pub extern "C" fn val_take_index(
 }
 
 pub extern "C" fn val_borrow_index(
-    error_out: *mut *const HerdError,
+    error_out: ErrorOut,
     val: Value64Ref,
     index: Value64Ref,
 ) -> Value64Ref {
@@ -637,7 +625,7 @@ pub extern "C" fn val_borrow_index(
 }
 
 pub extern "C" fn val_set_index(
-    error_out: *mut *const HerdError,
+    error_out: ErrorOut,
     val: Value64,
     index: Value64,
     new_val: Value64,
@@ -701,11 +689,7 @@ pub extern "C" fn val_concat(val1: Value64, val2: Value64) -> Value64 {
     }
 }
 
-pub extern "C" fn float_pow(
-    error_out: *mut *const HerdError,
-    base: Value64,
-    exponent: Value64,
-) -> Value64 {
+pub extern "C" fn float_pow(error_out: ErrorOut, base: Value64, exponent: Value64) -> Value64 {
     handle_c_result(error_out, || {
         let base_float = guard_f64(&base)?;
         let exp_float = guard_f64(&exponent)?;
@@ -713,7 +697,7 @@ pub extern "C" fn float_pow(
     })
 }
 
-pub extern "C" fn assert_truthy(error_out: *mut *const HerdError, val: Value64) -> Value64 {
+pub extern "C" fn assert_truthy(error_out: ErrorOut, val: Value64) -> Value64 {
     handle_c_result(error_out, || {
         if !val.truthy() {
             Err(HerdError::new(format!(
@@ -727,27 +711,31 @@ pub extern "C" fn assert_truthy(error_out: *mut *const HerdError, val: Value64) 
 }
 
 pub extern "C" fn get_lambda_details(
+    error_out: ErrorOut,
     val: Value64Ref,
     param_count: u64,
     closure_out: Out<*const Value64>,
 ) -> *const u8 {
-    let lambda = match val.as_lambda() {
-        Some(l) => l,
-        None => {
-            println!("Not a lambda");
-            return null();
+    handle_c_result(error_out, || {
+        let Some(lambda) = val.as_lambda() else {
+            return Err(HerdError::new(format!(
+                "Tried to call something that isn't a function: {}",
+                val
+            )));
+        };
+        if lambda.param_count != param_count as usize {
+            return Err(HerdError::new(format!(
+                "Wrong number of arguments passed to function {}. Expected {}, got {}",
+                val, lambda.param_count, param_count
+            )));
+        } else {
+            unsafe {
+                // We can only return one value, so passing this via pointer
+                *closure_out = lambda.closure.as_ptr();
+            }
+            return Ok(lambda.func_ptr.unwrap());
         }
-    };
-    if lambda.param_count != param_count as usize {
-        println!("Wrong number of parameters");
-        return null();
-    } else {
-        unsafe {
-            // We can only return one value, so passing this via pointer
-            *closure_out = lambda.closure.as_ptr();
-        }
-        return lambda.func_ptr.unwrap();
-    }
+    })
 }
 
 pub extern "C" fn construct_lambda(
@@ -821,11 +809,7 @@ fn import_module_panic(vmc: &VmContext, name: &Value64) -> Result<Value64, Strin
     return Ok(result);
 }
 
-pub extern "C" fn val_shift_left(
-    error_out: *mut *const HerdError,
-    val: Value64,
-    by: Value64,
-) -> Value64 {
+pub extern "C" fn val_shift_left(error_out: ErrorOut, val: Value64, by: Value64) -> Value64 {
     handle_c_result(error_out, || {
         let a = guard_i64(&val)?;
         let b = guard_i64(&by)?;
@@ -838,47 +822,31 @@ pub extern "C" fn val_not(val: Value64) -> Value64 {
     Value64::from_bool(!val.truthy())
 }
 
-pub extern "C" fn random_int(
-    error_out: *mut *const HerdError,
-    min: Value64,
-    max: Value64,
-) -> Value64 {
+pub extern "C" fn random_int(error_out: ErrorOut, min: Value64, max: Value64) -> Value64 {
     handle_c_result(error_out, || {
         let min_int = guard_i64(&min)?;
         let max_int = guard_i64(&max)?;
         if min_int >= max_int {
-            return Err(HerdError::new(
-                "min should be < max in randomInt".to_string(),
-            ));
+            return Err(HerdError::new("min should be < max in randomInt"));
         }
         let result = rand::rng().random_range(min_int..max_int);
         Ok(Value64::from_f64(result as f64))
     })
 }
 
-pub extern "C" fn random_float(
-    error_out: *mut *const HerdError,
-    min: Value64,
-    max: Value64,
-) -> Value64 {
+pub extern "C" fn random_float(error_out: ErrorOut, min: Value64, max: Value64) -> Value64 {
     handle_c_result(error_out, || {
         let min_float = guard_f64(&min)?;
         let max_float = guard_f64(&max)?;
         if min_float >= max_float {
-            return Err(HerdError::new(
-                "min should be < max in randomFloat".to_string(),
-            ));
+            return Err(HerdError::new("min should be < max in randomFloat"));
         }
         let result = rand::rng().random_range(min_float..=max_float);
         Ok(Value64::from_f64(result))
     })
 }
 
-pub extern "C" fn regex_find(
-    error_out: *mut *const HerdError,
-    text: Value64,
-    regex: Value64,
-) -> Value64 {
+pub extern "C" fn regex_find(error_out: ErrorOut, text: Value64, regex: Value64) -> Value64 {
     handle_c_result(error_out, || {
         let regex_str = guard_str(&regex)?;
         let text_str = guard_str(&text)?;
@@ -898,7 +866,7 @@ pub extern "C" fn regex_find(
 }
 
 pub extern "C" fn regex_replace(
-    error_out: *mut *const HerdError,
+    error_out: ErrorOut,
     text: Value64,
     regex: Value64,
     replacement: Value64,
@@ -915,7 +883,7 @@ pub extern "C" fn regex_replace(
 
 #[unsafe(no_mangle)]
 pub extern "C" fn parallel_map(
-    error_out: *mut *const HerdError,
+    error_out: ErrorOut,
     vm: &VmContext,
     list: Value64,
     func: Value64,
@@ -942,7 +910,7 @@ pub extern "C" fn parallel_map(
     })
 }
 
-pub extern "C" fn epoch_time(error_out: *mut *const HerdError) -> Value64 {
+pub extern "C" fn epoch_time(error_out: ErrorOut) -> Value64 {
     handle_c_result(error_out, || {
         let duration_since_epoch = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
@@ -951,7 +919,7 @@ pub extern "C" fn epoch_time(error_out: *mut *const HerdError) -> Value64 {
     })
 }
 
-pub extern "C" fn parse_float(error_out: *mut *const HerdError, val: Value64) -> Value64 {
+pub extern "C" fn parse_float(error_out: ErrorOut, val: Value64) -> Value64 {
     handle_c_result(error_out, || {
         let s = guard_str(&val)?;
         match s.parse::<f64>() {
@@ -968,7 +936,7 @@ pub extern "C" fn val_to_string(val: Value64) -> Value64 {
     Value64::from_string(rc_new(format!("{}", val)))
 }
 
-pub extern "C" fn string_to_chars(error_out: *mut *const HerdError, val: Value64) -> Value64 {
+pub extern "C" fn string_to_chars(error_out: ErrorOut, val: Value64) -> Value64 {
     handle_c_result(error_out, || {
         let s = guard_str(&val)?;
         let chars: Vec<Value64> = s
@@ -979,25 +947,21 @@ pub extern "C" fn string_to_chars(error_out: *mut *const HerdError, val: Value64
     })
 }
 
-pub extern "C" fn string_lower(error_out: *mut *const HerdError, val: Value64) -> Value64 {
+pub extern "C" fn string_lower(error_out: ErrorOut, val: Value64) -> Value64 {
     handle_c_result(error_out, || {
         let s = guard_str(&val)?;
         Ok(Value64::from_string(rc_new(s.to_lowercase())))
     })
 }
 
-pub extern "C" fn string_upper(error_out: *mut *const HerdError, val: Value64) -> Value64 {
+pub extern "C" fn string_upper(error_out: ErrorOut, val: Value64) -> Value64 {
     handle_c_result(error_out, || {
         let s = guard_str(&val)?;
         Ok(Value64::from_string(rc_new(s.to_uppercase())))
     })
 }
 
-pub extern "C" fn string_split(
-    error_out: *mut *const HerdError,
-    val: Value64,
-    delimiter: Value64,
-) -> Value64 {
+pub extern "C" fn string_split(error_out: ErrorOut, val: Value64, delimiter: Value64) -> Value64 {
     handle_c_result(error_out, || {
         let s = guard_str(&val)?;
         let delim_str = guard_str(&delimiter)?;
@@ -1018,7 +982,7 @@ pub extern "C" fn program_args(vm: &VmContext) -> Value64 {
     Value64::from_list(rc_new(ListInstance::new(result)))
 }
 
-pub extern "C" fn file_to_string(error_out: *mut *const HerdError, path: Value64) -> Value64 {
+pub extern "C" fn file_to_string(error_out: ErrorOut, path: Value64) -> Value64 {
     handle_c_result(error_out, || {
         let path_str = path.as_str().ok_or_else(|| {
             HerdError::new(format!("Expected path to be a string, found {}", path))
@@ -1028,7 +992,7 @@ pub extern "C" fn file_to_string(error_out: *mut *const HerdError, path: Value64
     })
 }
 
-pub extern "C" fn file_lines(error_out: *mut *const HerdError, path: Value64) -> Value64 {
+pub extern "C" fn file_lines(error_out: ErrorOut, path: Value64) -> Value64 {
     handle_c_result(error_out, || {
         let path_str = guard_str(&path)?;
         let file = std::fs::File::open(path_str).map_err(|e| HerdError::new(e.to_string()))?;
@@ -1058,7 +1022,7 @@ pub extern "C" fn print(val: Value64) {
     io::stdout().flush().unwrap();
 }
 
-pub extern "C" fn readln(error_out: *mut *const HerdError) -> Value64 {
+pub extern "C" fn readln(error_out: ErrorOut) -> Value64 {
     handle_c_result(error_out, || {
         let mut input = String::new();
         match std::io::stdin().read_line(&mut input) {
