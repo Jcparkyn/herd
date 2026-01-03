@@ -728,7 +728,9 @@ impl<'a> FunctionTranslator<'a> {
             Expr::ForIn { iter, var, body } => self.translate_for_in(iter, var, body),
             Expr::While { condition, body } => self.translate_while_loop(condition, body),
             Expr::Call { callee, args } => self.translate_indirect_call(callee, args),
-            Expr::CallBuiltin { callee, args } => self.translate_builtin_call(callee, args),
+            Expr::CallBuiltin { callee, args } => {
+                self.translate_builtin_call(callee, args, &expr.span)
+            }
             Expr::List(l) => {
                 let slot = self.create_stack_slot(VAL64, l.len());
                 for (i, item) in l.iter().enumerate() {
@@ -745,6 +747,7 @@ impl<'a> FunctionTranslator<'a> {
                 let result = self.call_native_fallible(
                     NativeFuncId::ValBorrowIndex,
                     &[val.borrow(), index.borrow()],
+                    &expr.span,
                 )[0];
                 if val.owned {
                     // result is a borrowed reference, so if we drop val first then result becomes invalid.
@@ -842,7 +845,8 @@ impl<'a> FunctionTranslator<'a> {
     fn translate_indirect_call(&mut self, callee: &SpannedExpr, args: &Vec<SpannedExpr>) -> MValue {
         let callee_val = self.translate_expr(callee);
 
-        let (func_ptr, closure_ptr) = self.get_lambda_details(args, callee_val.borrow());
+        let (func_ptr, closure_ptr) =
+            self.get_lambda_details(args, callee_val.borrow(), &callee.span);
 
         // Null pointer means callee wasn't a lambda
         self.assert(func_ptr, &callee.span, |s| {
@@ -909,6 +913,7 @@ impl<'a> FunctionTranslator<'a> {
         &mut self,
         args: &Vec<Spanned<Expr>>,
         callee_val: BValue,
+        span: &Span,
     ) -> (Value, Value) {
         let closure_ptr_slot = self.create_stack_slot(PTR, 1);
         let closure_ptr_ptr_val = self.builder.ins().stack_addr(I64, closure_ptr_slot, 0);
@@ -916,12 +921,18 @@ impl<'a> FunctionTranslator<'a> {
         let func_ptr = self.call_native_fallible(
             NativeFuncId::ValGetLambdaDetails,
             &[callee_val, arg_count_val, closure_ptr_ptr_val],
+            span,
         )[0];
         let closure_ptr = self.builder.ins().stack_load(I64, closure_ptr_slot, 0);
         (func_ptr, closure_ptr)
     }
 
-    fn translate_builtin_call(&mut self, callee: &str, args: &Vec<SpannedExpr>) -> MValue {
+    fn translate_builtin_call(
+        &mut self,
+        callee: &str,
+        args: &Vec<SpannedExpr>,
+        span: &Span,
+    ) -> MValue {
         fn bitwise_op(
             s: &mut FunctionTranslator,
             args: &[SpannedExpr],
@@ -952,7 +963,7 @@ impl<'a> FunctionTranslator<'a> {
             }
             _ => {
                 if let Some(func) = self.builtins_map.get(callee) {
-                    return self.call_native_eval(&func, args).assert_owned();
+                    return self.call_native_eval(&func, args, span).assert_owned();
                 }
                 panic!("ERROR: Native function not implemented ({})\n", callee);
             }
@@ -960,13 +971,18 @@ impl<'a> FunctionTranslator<'a> {
     }
 
     /// Wraps [Self::call_native] and evaluates arguments
-    fn call_native_eval(&mut self, func: &NativeFunc, args: &Vec<SpannedExpr>) -> Value {
+    fn call_native_eval(
+        &mut self,
+        func: &NativeFunc,
+        args: &Vec<SpannedExpr>,
+        span: &Span,
+    ) -> Value {
         let mut arg_values = Vec::new();
         for arg in args {
             arg_values.push(self.translate_expr(arg).into_owned(self))
         }
 
-        match &self.call_native_func_fallible(func, &arg_values)[..] {
+        match &self.call_native_func_fallible(func, &arg_values, span)[..] {
             [val] => *val,
             [] => self.const_nil(),
             _ => panic!("Built-in functions should only return zero or one value"),
@@ -1257,9 +1273,14 @@ impl<'a> FunctionTranslator<'a> {
         rest_path: &[OValue],
         rhs: OValue,
     ) -> Value {
+        let temp_span = Span::default();
         match rest_path {
             [] => {
-                return self.call_native_fallible(NativeFuncId::ValSetIndex, &[val, index, rhs])[0];
+                return self.call_native_fallible(
+                    NativeFuncId::ValSetIndex,
+                    &[val, index, rhs],
+                    &temp_span,
+                )[0];
             }
             [next_index, rest @ ..] => {
                 let old_part_slot = self.create_stack_slot(VAL64, 1);
@@ -1270,11 +1291,15 @@ impl<'a> FunctionTranslator<'a> {
                 let val = self.call_native_fallible(
                     NativeFuncId::ValReplaceIndex,
                     &[val, index, old_part_ptr],
+                    &temp_span,
                 )[0];
                 let old_part = self.builder.ins().stack_load(VAL64, old_part_slot, 0);
                 let new_part = self.assign_part(old_part, *next_index, rest, rhs);
-                return self
-                    .call_native_fallible(NativeFuncId::ValSetIndex, &[val, index, new_part])[0];
+                return self.call_native_fallible(
+                    NativeFuncId::ValSetIndex,
+                    &[val, index, new_part],
+                    &temp_span,
+                )[0];
             }
         }
     }
@@ -1709,7 +1734,12 @@ impl<'a> FunctionTranslator<'a> {
         self.call_native_func(func_def, args)
     }
 
-    fn call_native_func_fallible(&mut self, func: &NativeFunc, user_args: &[Value]) -> Vec<Value> {
+    fn call_native_func_fallible(
+        &mut self,
+        func: &NativeFunc,
+        user_args: &[Value],
+        span: &Span,
+    ) -> Vec<Value> {
         let expected_arg_count = func.expected_arg_count();
         assert_eq!(
             expected_arg_count,
@@ -1730,14 +1760,19 @@ impl<'a> FunctionTranslator<'a> {
         let result: Vec<_> = self.call_native_func(func, &arg_values).to_vec();
         if func.fallible {
             let err_val = self.builder.ins().stack_load(I64, err_slot, 0);
-            self.assert_func_ret_ok(err_val, &Span::default()); // TODO span
+            self.assert_func_ret_ok(err_val, span);
         }
         return result;
     }
 
-    fn call_native_fallible(&mut self, func: NativeFuncId, args: &[Value]) -> Vec<Value> {
+    fn call_native_fallible(
+        &mut self,
+        func: NativeFuncId,
+        args: &[Value],
+        span: &Span,
+    ) -> Vec<Value> {
         let func_def = self.natives_map.get(&func).unwrap();
-        self.call_native_func_fallible(func_def, args)
+        self.call_native_func_fallible(func_def, args, span)
     }
 
     fn create_stack_slot(&mut self, ty: Type, count: usize) -> StackSlot {

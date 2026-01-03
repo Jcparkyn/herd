@@ -159,7 +159,7 @@ fn index_list_out_of_range() {
     let result = eval(program).expect_err_string();
     insta::assert_snapshot!(result, @r###"
     At [internal method]: List index out of range, got 3 but length is 3
-    At 0:
+    At 16:
     "###);
 }
 
@@ -171,7 +171,7 @@ fn index_list_with_string() {
     let result = eval(program).expect_err_string();
     insta::assert_snapshot!(result, @r###"
     At [internal method]: List index should be an integer, got '3'
-    At 0:
+    At 16:
     "###);
 }
 
@@ -943,7 +943,7 @@ fn call_non_function() {
     let result = eval(program).expect_err_string();
     insta::assert_snapshot!(result, @r###"
     At [internal method]: Tried to call something that isn't a function: 1
-    At 0:
+    At 16:
     "###);
 }
 
@@ -956,6 +956,6 @@ fn call_wrong_arg_count() {
     let result = eval(program).expect_err_string();
     insta::assert_snapshot!(result, @r###"
     At [internal method]: Wrong number of arguments passed to function <lambda: f>. Expected 1, got 2
-    At 0:
+    At 35:
     "###);
 }

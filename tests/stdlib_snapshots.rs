@@ -142,7 +142,7 @@ fn parallel_map_error() {
     insta::assert_snapshot!(result, @r###"
     At 84: Expected an f64, found '1'
     At [internal method]: Error in parallel map
-    At 0: 
+    At 22: 
     At 47:
     "###);
 }
@@ -157,7 +157,7 @@ fn stdlib_sort_error() {
     let result = eval(main_program).expect_err_string();
     insta::assert_snapshot!(result, @r###"
     At [internal method]: Expected a list, got {a: 1, b: 2}
-    At 0: 
+    At 195: 
     At 52:
     "###);
 }
@@ -172,7 +172,7 @@ fn stdlib_slice_error() {
     let result = eval(main_program).expect_err_string();
     insta::assert_snapshot!(result, @r###"
     At [internal method]: Expected a number, got 'a'
-    At 0: 
+    At 673: 
     At 42:
     "###);
 }
@@ -186,7 +186,8 @@ fn stdlib_map_error() {
 
     let result = eval(main_program).expect_err_string();
     insta::assert_snapshot!(result, @r###"
-    At 293: Tried to call something that isn't a function (or wrong parameter count): 123
+    At [internal method]: Tried to call something that isn't a function: 123
+    At 293: 
     At 56:
     "###);
 }
