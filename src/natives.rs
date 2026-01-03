@@ -161,8 +161,8 @@ fn get_native_func_def(func: NativeFuncId) -> NativeFuncDef {
         NativeFuncId::Clone => get_def!(1, clone),
         NativeFuncId::Drop => get_def!(1, val_drop),
         NativeFuncId::ValBorrowIndex => get_def!(3, val_borrow_index).fallible(), // TODO
-        NativeFuncId::ValReplaceIndex => get_def!(3, val_take_index),             // TODO
-        NativeFuncId::ValSetIndex => get_def!(3, val_set_index),                  // TODO
+        NativeFuncId::ValReplaceIndex => get_def!(4, val_take_index).fallible(),  // TODO
+        NativeFuncId::ValSetIndex => get_def!(4, val_set_index).fallible(),
         NativeFuncId::ValEq => get_def!(2, val_eq),
         NativeFuncId::ValEqU8 => get_def!(2, val_eq_u8),
         NativeFuncId::ValTruthy => get_def!(1, val_truthy_u8),
@@ -314,6 +314,10 @@ impl Value64Ref {
     pub fn from_ref(val: &Value64) -> Self {
         Self(ManuallyDrop::new(unsafe { std::ptr::read(val) }))
     }
+
+    pub fn as_ref(&self) -> &Value64 {
+        &self.0
+    }
 }
 
 impl Deref for Value64Ref {
@@ -364,26 +368,7 @@ fn parse_list_index_f64(val: f64, len: usize) -> Option<usize> {
     }
 }
 
-macro_rules! guard_list_index_old {
-    ($val:expr, $len:expr) => {
-        if let Some(f) = $val.as_f64() {
-            if let Some(i) = parse_list_index_f64(f, $len) {
-                i
-            } else {
-                println!(
-                    "ERROR: List index out of range, got index {} but length is {}",
-                    f, $len
-                );
-                return Value64::ERROR;
-            }
-        } else {
-            println!("ERROR: List index should be an integer, got {}", $val);
-            return Value64::ERROR;
-        }
-    };
-}
-
-fn guard_list_index(val: Value64Ref, len: usize) -> Result<usize, HerdError> {
+fn guard_list_index(val: &Value64, len: usize) -> Result<usize, HerdError> {
     let f = match val.as_f64() {
         Some(f) => f,
         None => {
@@ -613,37 +598,39 @@ pub extern "C" fn val_drop(val: Value64) {
 // Replaces the element at an index with NIL, and returns the old element via element_out.
 // The return value is the new list/dict.
 pub extern "C" fn val_take_index(
+    error_out: *mut *const HerdError,
     val: Value64,
     index: Value64Ref,
     element_out: *mut Value64,
 ) -> Value64 {
-    if val.is_list() {
-        let mut list = val.try_into_list().unwrap();
-        let index_int = guard_list_index_old!(index, list.values.len());
-        if index_int >= list.values.len() {
-            println!("ERROR: Out of range");
-            return Value64::ERROR;
+    unsafe { *element_out = Value64::NIL };
+    handle_c_result(error_out, || {
+        if val.is_list() {
+            let mut list = val.try_into_list().unwrap();
+            let index_int = guard_list_index(index.as_ref(), list.len())?;
+            let element = rc_mutate(&mut list, |l| {
+                std::mem::replace(&mut l.values[index_int], Value64::NIL)
+            });
+            unsafe { *element_out = element };
+            Ok(Value64::from_list(list))
+        } else if val.is_dict() {
+            let mut dict = val.try_into_dict().unwrap();
+            let element = rc_mutate(&mut dict, |d| {
+                if let Some(value) = d.get_mut(&index) {
+                    std::mem::replace(value, Value64::NIL)
+                } else {
+                    Value64::NIL
+                }
+            });
+            unsafe { *element_out = element };
+            Ok(Value64::from_dict(dict))
+        } else {
+            Err(HerdError::new(format!(
+                "Expected list or dict, was {}",
+                &val
+            )))
         }
-        let element = rc_mutate(&mut list, |l| {
-            std::mem::replace(&mut l.values[index_int], Value64::NIL)
-        });
-        unsafe { *element_out = element };
-        Value64::from_list(list)
-    } else if val.is_dict() {
-        let mut dict = val.try_into_dict().unwrap();
-        let element = rc_mutate(&mut dict, |d| {
-            if let Some(value) = d.get_mut(&index) {
-                std::mem::replace(value, Value64::NIL)
-            } else {
-                Value64::NIL
-            }
-        });
-        unsafe { *element_out = element };
-        Value64::from_dict(dict)
-    } else {
-        println!("Expected list or dict, was {}", val);
-        Value64::ERROR
-    }
+    })
 }
 
 pub extern "C" fn val_borrow_index(
@@ -653,7 +640,7 @@ pub extern "C" fn val_borrow_index(
 ) -> Value64Ref {
     handle_c_result(error_out, || {
         if let Some(list) = val.as_list() {
-            let index_int = guard_list_index(index, list.len())?;
+            let index_int = guard_list_index(index.as_ref(), list.len())?;
             Ok(Value64Ref::from_ref(&list.values[index_int]))
         } else if let Some(dict) = val.as_dict() {
             Ok(Value64Ref::from_ref(
@@ -668,23 +655,33 @@ pub extern "C" fn val_borrow_index(
     })
 }
 
-pub extern "C" fn val_set_index(val: Value64, index: Value64, new_val: Value64) -> Value64 {
-    if val.is_list() {
-        let mut list = val.try_into_list().unwrap();
-        let index_int = guard_list_index_old!(index, list.len());
-        rc_mutate(&mut list, |l| {
-            l.values[index_int] = new_val;
-        });
-        Value64::from_list(list)
-    } else if val.is_dict() {
-        let mut dict = val.try_into_dict().unwrap();
-        rc_mutate(&mut dict, |d| {
-            d.insert(index, new_val);
-        });
-        Value64::from_dict(dict)
-    } else {
-        panic!("Expected list or dict, was {}", val)
-    }
+pub extern "C" fn val_set_index(
+    error_out: *mut *const HerdError,
+    val: Value64,
+    index: Value64,
+    new_val: Value64,
+) -> Value64 {
+    handle_c_result(error_out, || {
+        if val.is_list() {
+            let mut list = val.try_into_list().unwrap();
+            let index_int = guard_list_index(&index, list.len())?;
+            rc_mutate(&mut list, |l| {
+                l.values[index_int] = new_val;
+            });
+            Ok(Value64::from_list(list))
+        } else if val.is_dict() {
+            let mut dict = val.try_into_dict().unwrap();
+            rc_mutate(&mut dict, |d| {
+                d.insert(index, new_val);
+            });
+            Ok(Value64::from_dict(dict))
+        } else {
+            Err(HerdError::new(format!(
+                "Expected list or dict, was {}",
+                &val
+            )))
+        }
+    })
 }
 
 pub extern "C" fn val_eq(val1: Value64Ref, val2: Value64Ref) -> Value64 {

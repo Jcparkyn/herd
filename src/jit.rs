@@ -1259,7 +1259,7 @@ impl<'a> FunctionTranslator<'a> {
     ) -> Value {
         match rest_path {
             [] => {
-                return self.call_native(NativeFuncId::ValSetIndex, &[val, index, rhs])[0];
+                return self.call_native_fallible(NativeFuncId::ValSetIndex, &[val, index, rhs])[0];
             }
             [next_index, rest @ ..] => {
                 let old_part_slot = self.create_stack_slot(VAL64, 1);
@@ -1273,7 +1273,8 @@ impl<'a> FunctionTranslator<'a> {
                 )[0];
                 let old_part = self.builder.ins().stack_load(VAL64, old_part_slot, 0);
                 let new_part = self.assign_part(old_part, *next_index, rest, rhs);
-                return self.call_native(NativeFuncId::ValSetIndex, &[val, index, new_part])[0];
+                return self
+                    .call_native_fallible(NativeFuncId::ValSetIndex, &[val, index, new_part])[0];
             }
         }
     }

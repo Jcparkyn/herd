@@ -513,9 +513,39 @@ fn array_assign() {
         set b.[1] = '5';
         return [a, b];
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"[['1', '2', '3'], ['4', '5', '3']]");
     assert_rcs_dropped();
+}
+
+#[test]
+fn array_assign_out_of_range() {
+    let program = r#"
+        a = ['1', '2', '3'];
+        var b = a;
+        set b.[3] = '4';
+        return [a, b];
+    "#;
+    let result = eval(program).expect_err_string();
+    insta::assert_snapshot!(result, @r###"
+    At [internal method]: List index out of range, got 3 but length is 3
+    At 0:
+    "###);
+}
+
+#[test]
+fn array_assign_invalid_type() {
+    let program = r#"
+        a = ['1', '2', '3'];
+        var b = a;
+        set b.['3'] = '4';
+        return [a, b];
+    "#;
+    let result = eval(program).expect_err_string();
+    insta::assert_snapshot!(result, @r###"
+    At [internal method]: List index should be an integer, got '3'
+    At 0:
+    "###);
 }
 
 #[test]
@@ -541,7 +571,7 @@ fn nested_assign() {
         set b.[1] = 5;
         return [a, b];
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"[[{x: 1, y: 2}, 3], [{x: 4, y: 3}, 5]]");
     assert_rcs_dropped();
 }
