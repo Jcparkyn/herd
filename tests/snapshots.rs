@@ -941,7 +941,7 @@ fn call_non_function() {
         return 1 ();
     "#;
     let result = eval(program).expect_err_string();
-    insta::assert_snapshot!(result);
+    insta::assert_snapshot!(result, @"At 16: Tried to call something that isn't a function (or wrong parameter count): 1");
 }
 
 #[test]
@@ -951,5 +951,5 @@ fn call_wrong_arg_count() {
         return f 1 2;
     "#;
     let result = eval(program).expect_err_string();
-    insta::assert_snapshot!(result);
+    insta::assert_snapshot!(result, @"At 35: Tried to call something that isn't a function (or wrong parameter count): <lambda: f>");
 }

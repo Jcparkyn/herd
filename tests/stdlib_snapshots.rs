@@ -139,7 +139,12 @@ fn parallel_map_error() {
     "#;
 
     let result = eval(main_program).expect_err_string();
-    insta::assert_snapshot!(result);
+    insta::assert_snapshot!(result, @r###"
+    At 84: Expected an f64, found '1'
+    At [internal method]: Error in parallel map
+    At 0: 
+    At 47:
+    "###);
 }
 
 #[test]
@@ -150,7 +155,11 @@ fn stdlib_sort_error() {
     "#;
 
     let result = eval(main_program).expect_err_string();
-    insta::assert_snapshot!(result);
+    insta::assert_snapshot!(result, @r###"
+    At [internal method]: Expected a list, got {a: 1, b: 2}
+    At 0: 
+    At 52:
+    "###);
 }
 
 #[test]
@@ -161,7 +170,11 @@ fn stdlib_slice_error() {
     "#;
 
     let result = eval(main_program).expect_err_string();
-    insta::assert_snapshot!(result);
+    insta::assert_snapshot!(result, @r###"
+    At [internal method]: Expected a number, got 'a'
+    At 0: 
+    At 42:
+    "###);
 }
 
 #[test]
@@ -172,7 +185,10 @@ fn stdlib_map_error() {
     "#;
 
     let result = eval(main_program).expect_err_string();
-    insta::assert_snapshot!(result);
+    insta::assert_snapshot!(result, @r###"
+    At 293: Tried to call something that isn't a function (or wrong parameter count): 123
+    At 56:
+    "###);
 }
 
 #[test]
@@ -182,7 +198,7 @@ fn stdlib_import_error_non_existent() {
     "#;
 
     let result = eval(main_program).expect_err_string();
-    insta::assert_snapshot!(result);
+    insta::assert_snapshot!(result, @"At 16: Import failed for path: '@nonexistent_module'");
 }
 
 #[test]
@@ -192,5 +208,5 @@ fn stdlib_import_error_malformed_path() {
     "#;
 
     let result = eval(main_program).expect_err_string();
-    insta::assert_snapshot!(result);
+    insta::assert_snapshot!(result, @"At 16: Import failed for path: 'malformed/path'");
 }

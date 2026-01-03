@@ -1,5 +1,0 @@
----
-source: tests/stdlib_snapshots.rs
-expression: result
----
-At 16: Import failed for path: 'malformed/path'
