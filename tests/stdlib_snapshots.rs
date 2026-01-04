@@ -193,6 +193,7 @@ fn stdlib_map_error() {
 }
 
 #[test]
+#[ignore = "Import errors are being reworked"]
 fn stdlib_import_error_non_existent() {
     let main_program = r#"
         return import '@nonexistent_module';

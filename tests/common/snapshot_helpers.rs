@@ -1,16 +1,11 @@
 #![allow(dead_code)]
 
-use std::collections::HashMap;
-use std::fmt::Display;
-use std::path::PathBuf;
-
-use herd::analysis::Analyzer;
 use herd::error::HerdError;
 use herd::jit::{self, ModuleLoader, VmContext};
-use herd::lang::ProgramParser;
-use herd::prelude::PRELUDE;
 use herd::rc::Weak;
 use herd::value64::{Boxable, RC_TRACKER, RcTrackList, Value64};
+use std::collections::HashMap;
+use std::fmt::Display;
 
 pub fn reset_tracker() {
     fn reset_list<T: Boxable>(list: &mut RcTrackList<T>) {
@@ -129,24 +124,14 @@ fn error_to_string(err: &HerdError, indent: usize) -> String {
 
 pub fn eval_snapshot(
     program: &str,
-    modules: HashMap<String, String>,
+    mut modules: HashMap<String, String>,
 ) -> Result<Value64, HerdError> {
-    let parser = ProgramParser::new();
-    let prelude_ast = parser.parse(PRELUDE).unwrap();
-    let mut program_ast = parser.parse(program).unwrap();
-    program_ast.splice(0..0, prelude_ast);
-    let mut analyzer = Analyzer::new();
-    analyzer.analyze_statements(&mut program_ast).unwrap();
-
+    modules.insert("main.herd".to_string(), program.to_string());
     let module_loader = TestModuleLoader { modules };
-    let mut jit = jit::JIT::new(Box::new(module_loader));
-    let src_path = PathBuf::new();
-    let main_func = jit
-        .compile_program_as_function(&program_ast, &src_path)
-        .unwrap();
-    reset_tracker();
+    let jit = jit::JIT::new(Box::new(module_loader));
     let vmc = VmContext::new(jit, vec![]);
-    let result = unsafe { vmc.run_func(main_func, vec![]) };
+    reset_tracker();
+    let result = vmc.execute_file("main.herd").unwrap();
     result
 }
 

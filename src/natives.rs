@@ -5,7 +5,6 @@ use std::{
     mem::ManuallyDrop,
     ops::Deref,
     panic::AssertUnwindSafe,
-    path::PathBuf,
     time::SystemTime,
 };
 
@@ -16,14 +15,10 @@ use regex::Regex;
 use strum::{EnumIter, IntoEnumIterator};
 
 use crate::{
-    analysis::Analyzer,
     dict::DictInstance,
     error::HerdError,
     jit::VmContext,
-    lang::ProgramParser,
-    prelude::PRELUDE,
     rc::Rc,
-    stdlib::load_stdlib_module,
     value64::{LambdaFunction, ListInstance, Value64, rc_mutate, rc_new},
 };
 
@@ -767,46 +762,16 @@ pub extern "C" fn import_module(vm: &VmContext, name: Value64) -> Value64 {
 }
 
 fn import_module_panic(vmc: &VmContext, name: &Value64) -> Result<Value64, String> {
-    let path = name.as_str().unwrap();
+    let path = name
+        .as_str()
+        .ok_or_else(|| format!("Module name must be a string, got {}", name))?;
 
-    let mut vm = vmc.jit.try_lock().unwrap();
-    if let Some(maybe_module) = vm.modules.get(path) {
-        if let Some(ref module_result) = *maybe_module {
-            return Ok(module_result.clone());
-        } else {
-            return Err("Import cycle detected!".to_string());
-        }
-    }
+    let result = vmc.execute_file(&path);
 
-    vm.modules.insert(path.to_string(), None);
-
-    // Compile the module
-    let is_stdlib = path.starts_with("@");
-    let program = if is_stdlib {
-        load_stdlib_module(path)
-    } else {
-        &vm.module_loader.load(&path).map_err(|e| e.to_string())?
+    return match result {
+        Ok(Ok(module_val)) => Ok(module_val),
+        err => Err(format!("Error importing module {}: {:?}", path, err)),
     };
-    let parser = ProgramParser::new();
-    let mut program_ast = parser.parse(&program).map_err(|e| e.to_string())?;
-    if !is_stdlib {
-        let prelude_ast = parser.parse(PRELUDE).unwrap();
-        program_ast.splice(0..0, prelude_ast);
-    }
-    let mut analyzer = Analyzer::new();
-    analyzer
-        .analyze_statements(&mut program_ast)
-        .map_err(|e| format!("{:?}", e))?;
-
-    let main_func = vm
-        .compile_program_as_function(&program_ast, &PathBuf::from(path))
-        .map_err(|e| e.to_string())?;
-    drop(vm);
-
-    let result = unsafe { vmc.run_func(main_func, vec![]) }.unwrap(); // TODO handle error
-    let mut vm = vmc.jit.try_lock().unwrap();
-    vm.modules.insert(path.to_string(), Some(result.clone()));
-    return Ok(result);
 }
 
 pub extern "C" fn val_shift_left(error_out: ErrorOut, val: Value64, by: Value64) -> Value64 {

@@ -1,6 +1,6 @@
 use crate::pos::Pos;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct HerdError {
     pub message: String,
     pub pos: Option<Pos>,

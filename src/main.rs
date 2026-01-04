@@ -9,7 +9,6 @@ use clap::Parser;
 use herd::analysis::{AnalysisError, Analyzer};
 use herd::jit::{self, DefaultModuleLoader, VmContext};
 use herd::lang;
-use herd::lang::ProgramParser;
 use herd::lines::Lines;
 use herd::pos::Spanned;
 use herd::value64::Value64;
@@ -52,62 +51,32 @@ fn main() -> ExitCode {
 }
 
 fn run_file(path: &Path, args: &Args) -> ExitCode {
-    let program_str = match std::fs::read_to_string(path) {
-        Ok(program) => program,
-        Err(err) => {
-            println!("Error while reading file: {}", err);
-            return ExitCode::FAILURE;
-        }
-    };
-    let lines = Lines::new(program_str.clone().into_bytes());
-    let parser = ProgramParser::new();
-    let mut program = match parser.parse(&program_str) {
-        Err(err) => {
-            println!("Error while parsing: {}", err);
-            return ExitCode::FAILURE;
-        }
-        Ok(program) => program,
-    };
-    let prelude_ast = parser.parse(PRELUDE).unwrap();
-    program.splice(0..0, prelude_ast);
-    let mut analyzer = Analyzer::new();
-    let analyze_result = analyzer.analyze_statements(&mut program);
-    if args.ast {
-        println!("ast: {:#?}", program);
-    }
-    match analyze_result {
-        Ok(()) => {}
-        Err(errs) => {
-            print_analysis_errors(errs, lines);
-            return ExitCode::FAILURE;
-        }
-    }
     let module_loader = DefaultModuleLoader {
         base_path: path.parent().unwrap().to_path_buf(),
     };
-
-    let mut jit = jit::JIT::new(Box::new(module_loader));
-    // TODO: Make it impossible to import from the root script, to prevent cycles
-    // jit.modules.insert(path.canonicalize().unwrap(), None);
-    let main_func = match jit.compile_program_as_function(&program, path) {
-        Ok(id) => id,
-        Err(err) => {
-            println!("Error while compiling function: {:?}", err);
-            return ExitCode::FAILURE;
-        }
-    };
+    let jit = jit::JIT::new(Box::new(module_loader));
     let vmc = VmContext::new(jit, args.program_args.clone());
-    let result = unsafe { vmc.run_func(main_func, vec![]) };
+    let result = vmc.execute_file(path.file_name().unwrap().to_str().unwrap());
+
+    // TODO: AST printing
+    // if args.ast {
+    //     println!("ast: {:#?}", program);
+    // }
+
     match result {
-        Err(err) => {
+        Ok(Ok(val)) => {
+            if !val.is_nil() {
+                println!("Result: {}", val);
+            }
+        }
+        Ok(Err(err)) => {
             println!("Error while running program:");
             print_herd_error(&err, 2);
             return ExitCode::FAILURE;
         }
-        Ok(val) => {
-            if !val.is_nil() {
-                println!("Result: {}", val);
-            }
+        Err(err) => {
+            println!("Error while running program: {:?}", err);
+            return ExitCode::FAILURE;
         }
     }
     return ExitCode::SUCCESS;

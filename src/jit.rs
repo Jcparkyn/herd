@@ -3,6 +3,7 @@ use core::panic;
 use cranelift::{codegen::ir::BlockArg, prelude::*};
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{DataDescription, FuncId, FuncOrDataId, Linkage, Module, ModuleError};
+use lalrpop_util::ParseError;
 use std::{
     collections::HashMap,
     hash::Hash,
@@ -16,14 +17,19 @@ use types::I64;
 
 use crate::{
     Value64,
+    analysis::{AnalysisError, Analyzer},
     ast::{
         self, Expr, LambdaExpr, MatchConstant, MatchExpr, MatchPattern, Opcode, SpannedExpr,
         SpannedStatement, Statement, VarRef,
     },
     error::HerdError,
+    lang::ProgramParser,
+    lines::Lines,
     natives::{self, NativeFuncDef, NativeFuncId},
     pos::{Span, Spanned},
+    prelude::PRELUDE,
     rc::Rc,
+    stdlib::load_stdlib_module,
     value64::{self, PointerTag},
 };
 
@@ -34,7 +40,11 @@ const PTR: ir::Type = ir::types::I64;
 
 #[derive(Debug, Display)]
 pub enum JITError {
-    Module(ModuleError),
+    CraneliftModule(ModuleError),
+    File(std::io::Error),
+    ImportCycle,
+    Analysis(Vec<Spanned<AnalysisError>>),
+    Parse(ParseError<usize, String, &'static str>),
 }
 
 pub type JITResult<T> = Result<T, JITError>;
@@ -52,6 +62,12 @@ impl ModuleLoader for DefaultModuleLoader {
         let path = self.base_path.join(path);
         std::fs::read_to_string(path)
     }
+}
+
+pub struct HerdModuleEntry {
+    pub return_value: Option<Result<Value64, HerdError>>,
+    pub lines: Lines,
+    pub file_id: usize,
 }
 
 /// The basic JIT class.
@@ -78,7 +94,7 @@ pub struct JIT {
 
     /// Return values from herd modules (files). Files currently being evaluated
     /// are stored as `None`.
-    pub modules: HashMap<String, Option<Value64>>,
+    pub modules: HashMap<String, HerdModuleEntry>,
 
     pub module_loader: Box<dyn ModuleLoader>,
     builtins_map: HashMap<&'static str, NativeFunc>,
@@ -96,6 +112,64 @@ impl VmContext {
             jit: Mutex::new(jit),
             program_args,
         }
+    }
+
+    pub fn execute_file(&self, path: &str) -> JITResult<Result<Value64, HerdError>> {
+        let mut jit = self.jit.lock().unwrap();
+        if let Some(module) = jit.modules.get(path) {
+            if let Some(ref module_return_value) = module.return_value {
+                return Ok(module_return_value.clone());
+            } else {
+                return Err(JITError::ImportCycle);
+            }
+        }
+        let is_stdlib = path.starts_with("@");
+        let program_source = if is_stdlib {
+            load_stdlib_module(path)
+        } else {
+            // TODO: canonicalize path
+            &jit.module_loader.load(&path).map_err(JITError::File)?
+        };
+
+        let new_file_id = jit.modules.len();
+        jit.modules.insert(
+            path.to_string(),
+            HerdModuleEntry {
+                return_value: None,
+                lines: Lines::new(program_source.bytes()),
+                file_id: new_file_id,
+            },
+        );
+
+        let parser = ProgramParser::new();
+        let mut program_ast = parser
+            .parse(&program_source)
+            .map_err(|e| JITError::Parse(e.map_token(|t| t.to_string())))?;
+
+        if !is_stdlib {
+            let prelude_ast = parser
+                .parse(PRELUDE)
+                .expect("prelude should have valid syntax");
+            program_ast.splice(0..0, prelude_ast);
+        }
+
+        let mut analyzer = Analyzer::new();
+        analyzer
+            .analyze_statements(&mut program_ast)
+            .map_err(JITError::Analysis)?;
+
+        let main_func = jit.compile_program_as_function(&program_ast, Path::new(path))?;
+        drop(jit); // release lock
+
+        let result = unsafe { self.run_func(main_func, vec![]) };
+
+        let mut jit = self.jit.lock().unwrap();
+        jit.modules
+            .get_mut(path)
+            .expect("module entry should be inserted by this point")
+            .return_value = Some(result.clone());
+
+        Ok(result)
     }
 
     pub unsafe fn run_func(
@@ -367,13 +441,13 @@ impl JIT {
             // Don't use a name in JIT mode, to avoid collisions
             self.module
                 .declare_anonymous_function(&self.ctx.func.signature)
-                .map_err(JITError::Module)?
+                .map_err(JITError::CraneliftModule)?
         } else {
             let func_name = format!("MAIN:{}", src_path.to_str().unwrap());
 
             self.module
                 .declare_function(&func_name, Linkage::Export, &self.ctx.func.signature)
-                .map_err(JITError::Module)?
+                .map_err(JITError::CraneliftModule)?
         };
 
         // Define the function to jit. This finishes compilation, although
@@ -383,7 +457,7 @@ impl JIT {
         // function below.
         self.module
             .define_function(id, &mut self.ctx)
-            .map_err(JITError::Module)?;
+            .map_err(JITError::CraneliftModule)?;
 
         // Now that compilation is finished, we can clear out the context state.
         self.module.clear_context(&mut self.ctx);
@@ -393,7 +467,7 @@ impl JIT {
         // available).
         self.module
             .finalize_definitions()
-            .map_err(JITError::Module)?;
+            .map_err(JITError::CraneliftModule)?;
 
         Ok(id)
     }
