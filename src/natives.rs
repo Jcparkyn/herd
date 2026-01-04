@@ -163,7 +163,7 @@ fn get_native_func_def(func: NativeFuncId) -> NativeFuncDef {
         NativeFuncId::ValConcat => get_def!(2, val_concat), // TODO
         NativeFuncId::ValGetLambdaDetails => get_def!(4, get_lambda_details).fallible(),
         NativeFuncId::ConstructLambda => get_def!(5, construct_lambda),
-        NativeFuncId::ImportModule => get_def!(2, import_module), // check result in JIT
+        NativeFuncId::ImportModule => get_def!(3, import_module).fallible().with_vm(),
         NativeFuncId::Print => get_def!(1, print),
         NativeFuncId::AllocError => get_def!(3, alloc_herd_error),
         NativeFuncId::StringTemplate => get_def!(3, string_template),
@@ -750,28 +750,25 @@ pub extern "C" fn construct_lambda(
     Value64::from_lambda(rc_new(lambda))
 }
 
-pub extern "C" fn import_module(vm: &VmContext, name: Value64) -> Value64 {
-    let result = std::panic::catch_unwind(AssertUnwindSafe(|| import_module_panic(vm, &name)));
-    match result {
-        Ok(Ok(result)) => result,
-        err => {
-            println!("Error while importing {}: {:?}", name, err);
-            Value64::ERROR
+pub extern "C" fn import_module(error_out: ErrorOut, vm: &VmContext, name: Value64) -> Value64 {
+    handle_c_result(error_out, || {
+        let path = name
+            .as_str()
+            .ok_or_else(|| HerdError::new(format!("Module name must be a string, got {}", name)))?;
+        let result = std::panic::catch_unwind(AssertUnwindSafe(|| vm.execute_file(&path)));
+        match result {
+            Ok(Ok(Ok(result))) => Ok(result),
+            Ok(Ok(Err(err))) => Err(err.wrap(format!("Error importing module {}", name))),
+            Ok(Err(err)) => Err(HerdError::new(format!(
+                "Error importing module {}: {:?}",
+                name, err
+            ))),
+            Err(err) => Err(HerdError::new(format!(
+                "Panic occurred while importing module {}: {:?}",
+                name, err
+            ))),
         }
-    }
-}
-
-fn import_module_panic(vmc: &VmContext, name: &Value64) -> Result<Value64, String> {
-    let path = name
-        .as_str()
-        .ok_or_else(|| format!("Module name must be a string, got {}", name))?;
-
-    let result = vmc.execute_file(&path);
-
-    return match result {
-        Ok(Ok(module_val)) => Ok(module_val),
-        err => Err(format!("Error importing module {}: {:?}", path, err)),
-    };
+    })
 }
 
 pub extern "C" fn val_shift_left(error_out: ErrorOut, val: Value64, by: Value64) -> Value64 {

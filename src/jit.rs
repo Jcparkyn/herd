@@ -42,6 +42,7 @@ const PTR: ir::Type = ir::types::I64;
 pub enum JITError {
     CraneliftModule(ModuleError),
     File(std::io::Error),
+    MissingStdLibModule(String),
     ImportCycle,
     Analysis(Vec<Spanned<AnalysisError>>),
     Parse(ParseError<usize, String, &'static str>),
@@ -126,6 +127,7 @@ impl VmContext {
         let is_stdlib = path.starts_with("@");
         let program_source = if is_stdlib {
             load_stdlib_module(path)
+                .ok_or_else(|| JITError::MissingStdLibModule(path.to_string()))?
         } else {
             // TODO: canonicalize path
             &jit.module_loader.load(&path).map_err(JITError::File)?
@@ -2172,15 +2174,8 @@ impl<'a> FunctionTranslator<'a> {
     }
 
     fn translate_import(&mut self, path: &str, span: &Span) -> MValue {
-        let vm_ptr = self.get_vm_ptr();
         let path_val = self.string_literal_owned(path.to_string());
-        let result = self.call_native(NativeFuncId::ImportModule, &[vm_ptr, path_val])[0];
-        let is_ok = self.cmp_bits_imm(IntCC::NotEqual, result, value64::ERROR_VALUE);
-
-        self.assert(is_ok, span, |s| {
-            let msg_path = s.string_literal_borrow(path.to_string());
-            s.string_template("Import failed for path: {}", &[msg_path])
-        });
+        let result = self.call_native_fallible(NativeFuncId::ImportModule, &[path_val], span)[0];
         result.assert_owned()
     }
 }

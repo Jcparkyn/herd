@@ -193,14 +193,16 @@ fn stdlib_map_error() {
 }
 
 #[test]
-#[ignore = "Import errors are being reworked"]
 fn stdlib_import_error_non_existent() {
     let main_program = r#"
         return import '@nonexistent_module';
     "#;
 
     let result = eval(main_program).expect_err_string();
-    insta::assert_snapshot!(result, @"At 16: Import failed for path: '@nonexistent_module'");
+    insta::assert_snapshot!(result, @r###"
+    At [internal method]: Error importing module '@nonexistent_module': MissingStdLibModule("@nonexistent_module")
+    At 16:
+    "###);
 }
 
 #[test]
@@ -210,5 +212,8 @@ fn stdlib_import_error_malformed_path() {
     "#;
 
     let result = eval(main_program).expect_err_string();
-    insta::assert_snapshot!(result, @"At 16: Import failed for path: 'malformed/path'");
+    insta::assert_snapshot!(result, @r###"
+    At [internal method]: Error importing module 'malformed/path': File(Custom { kind: NotFound, error: "Module not found: malformed/path" })
+    At 16:
+    "###);
 }

@@ -15,4 +15,12 @@ impl HerdError {
             inner: None,
         }
     }
+
+    pub fn wrap(self, message: impl Into<String>) -> Self {
+        HerdError {
+            message: message.into(),
+            pos: None,
+            inner: Some(Box::new(self)),
+        }
+    }
 }
