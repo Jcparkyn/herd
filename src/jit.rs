@@ -115,7 +115,7 @@ impl VmContext {
         }
     }
 
-    pub fn execute_file(&self, path: &str) -> JITResult<Result<Value64, HerdError>> {
+    pub fn execute_file(&self, path: &str, prelude: bool) -> JITResult<Result<Value64, HerdError>> {
         let mut jit = self.jit.lock().unwrap();
         if let Some(module) = jit.modules.get(path) {
             if let Some(ref module_return_value) = module.return_value {
@@ -148,7 +148,7 @@ impl VmContext {
             .parse(&program_source)
             .map_err(|e| JITError::Parse(e.map_token(|t| t.to_string())))?;
 
-        if !is_stdlib {
+        if prelude && !is_stdlib {
             let prelude_ast = parser
                 .parse(PRELUDE)
                 .expect("prelude should have valid syntax");

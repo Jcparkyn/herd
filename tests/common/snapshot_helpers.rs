@@ -58,6 +58,7 @@ pub fn assert_rcs_dropped() {
 pub struct EvalConfig<'a> {
     pub program: &'a str,
     pub modules: HashMap<String, String>,
+    pub prelude: bool,
 }
 
 impl EvalConfig<'_> {
@@ -66,8 +67,13 @@ impl EvalConfig<'_> {
         self
     }
 
+    pub fn prelude(mut self, prelude: bool) -> Self {
+        self.prelude = prelude;
+        self
+    }
+
     pub fn eval(&self) -> Result<Value64, HerdError> {
-        eval_snapshot(self.program, self.modules.clone())
+        eval_snapshot(&self)
     }
 
     #[track_caller]
@@ -102,6 +108,7 @@ pub fn eval(program: &str) -> EvalConfig<'_> {
     EvalConfig {
         program,
         modules: HashMap::new(),
+        prelude: false,
     }
 }
 
@@ -122,21 +129,24 @@ fn error_to_string(err: &HerdError, indent: usize) -> String {
     result
 }
 
-pub fn eval_snapshot(
-    program: &str,
-    mut modules: HashMap<String, String>,
-) -> Result<Value64, HerdError> {
-    modules.insert("main.herd".to_string(), program.to_string());
+pub fn eval_snapshot(cfg: &EvalConfig) -> Result<Value64, HerdError> {
+    let mut modules = cfg.modules.clone();
+    modules.insert("main.herd".to_string(), cfg.program.to_string());
     let module_loader = TestModuleLoader { modules };
     let jit = jit::JIT::new(Box::new(module_loader));
     let vmc = VmContext::new(jit, vec![]);
     reset_tracker();
-    let result = vmc.execute_file("main.herd").unwrap();
+    let result = vmc.execute_file("main.herd", cfg.prelude).unwrap();
     result
 }
 
 pub fn eval_snapshot_str(program: &str) -> String {
-    eval_snapshot(program, HashMap::new()).unwrap().to_string()
+    let cfg = EvalConfig {
+        program,
+        modules: HashMap::new(),
+        prelude: true,
+    };
+    eval_snapshot(&cfg).unwrap().to_string()
 }
 
 struct TestModuleLoader {

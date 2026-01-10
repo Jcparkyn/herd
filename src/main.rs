@@ -56,7 +56,7 @@ fn run_file(path: &Path, args: &Args) -> ExitCode {
     };
     let jit = jit::JIT::new(Box::new(module_loader));
     let vmc = VmContext::new(jit, args.program_args.clone());
-    let result = vmc.execute_file(path.file_name().unwrap().to_str().unwrap());
+    let result = vmc.execute_file(path.file_name().unwrap().to_str().unwrap(), true);
 
     // TODO: AST printing
     // if args.ast {

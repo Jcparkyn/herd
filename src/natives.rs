@@ -755,7 +755,7 @@ pub extern "C" fn import_module(error_out: ErrorOut, vm: &VmContext, name: Value
         let path = name
             .as_str()
             .ok_or_else(|| HerdError::new(format!("Module name must be a string, got {}", name)))?;
-        let result = std::panic::catch_unwind(AssertUnwindSafe(|| vm.execute_file(&path)));
+        let result = std::panic::catch_unwind(AssertUnwindSafe(|| vm.execute_file(&path, true)));
         match result {
             Ok(Ok(Ok(result))) => Ok(result),
             Ok(Ok(Err(err))) => Err(err.wrap(format!("Error importing module {}", name))),
