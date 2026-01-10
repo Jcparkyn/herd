@@ -140,15 +140,6 @@ pub fn eval_snapshot(cfg: &EvalConfig) -> Result<Value64, HerdError> {
     result
 }
 
-pub fn eval_snapshot_str(program: &str) -> String {
-    let cfg = EvalConfig {
-        program,
-        modules: HashMap::new(),
-        prelude: true,
-    };
-    eval_snapshot(&cfg).unwrap().to_string()
-}
-
 struct TestModuleLoader {
     modules: HashMap<String, String>,
 }

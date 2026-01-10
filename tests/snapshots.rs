@@ -1,12 +1,12 @@
 mod common;
-use common::snapshot_helpers::{assert_rcs_dropped, eval, eval_snapshot_str};
+use common::snapshot_helpers::{assert_rcs_dropped, eval};
 
 #[test]
 fn add() {
     let program = r#"
         return 1 + 2;
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"3");
     assert_rcs_dropped();
 }
@@ -26,7 +26,7 @@ fn sub() {
     let program = r#"
         return 1 - 2;
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"-1");
     assert_rcs_dropped();
 }
@@ -36,7 +36,7 @@ fn bodmas() {
     let program = r#"
         return 6 + (1 - 2) * 3;
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"3");
     assert_rcs_dropped();
 }
@@ -46,7 +46,7 @@ fn array_literal() {
     let program = r#"
         return [1, 2, 3];
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"[1, 2, 3]");
     assert_rcs_dropped();
 }
@@ -56,7 +56,7 @@ fn nested_array_literal() {
     let program = r#"
         return [[1, 2], [3]];
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"[[1, 2], [3]]");
     assert_rcs_dropped();
 }
@@ -70,7 +70,7 @@ fn variables() {
             a + b
         );
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"3");
     assert_rcs_dropped();
 }
@@ -83,7 +83,7 @@ fn equals() {
             [0] == [1], [1] == [1]
         ];
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"[false, true, false, true, false, true]");
     assert_rcs_dropped();
 }
@@ -97,7 +97,7 @@ fn cmp_lt() {
             0 <= 1, 1 <= 1, 1 <= (), () <= (),
         ];
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"[true, false, false, false, true, true, false, false]");
     assert_rcs_dropped();
 }
@@ -110,7 +110,7 @@ fn cmp_gt() {
             0 >= 1, 1 >= 1, 1 >= (), () >= (),
         ];
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"[false, false, false, false, false, true, false, false]");
     assert_rcs_dropped();
 }
@@ -126,7 +126,7 @@ fn blocks() {
         );
         return [x, y, z];
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"['A', ['B', 'A'], ['Z', 'Y']]");
     assert_rcs_dropped();
 }
@@ -136,7 +136,7 @@ fn index_list() {
     let program = r#"
         return ['a', 'b', 'c'].[1];
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"'b'");
     assert_rcs_dropped();
 }
@@ -181,7 +181,7 @@ fn index_dict() {
         dict = {a: 'A', b: 'B'};
         return [dict, dict.a, dict.b];
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"[{a: 'A', b: 'B'}, 'A', 'B']");
     assert_rcs_dropped();
 }
@@ -192,7 +192,7 @@ fn index_dict_drop() {
         dict = {a: [1], b: [2]};
         return dict.a;
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"[1]");
     assert_rcs_dropped();
 }
@@ -206,7 +206,7 @@ fn index_dict_parameter() {
         return state;
     "#;
 
-    let result = eval_snapshot_str(main_program);
+    let result = eval(main_program).expect_ok_string();
     insta::assert_snapshot!(result, @"{val: [42]}");
     assert_rcs_dropped();
 }
@@ -221,7 +221,7 @@ fn if_else() {
             if 1 == 0 then 1,
         ];
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"[1, 1, 0, ()]");
     assert_rcs_dropped();
 }
@@ -236,7 +236,7 @@ fn if_else_else_if() {
             f 3,
         ];
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"['1', '2', 'unknown']");
     assert_rcs_dropped();
 }
@@ -251,7 +251,7 @@ fn logic_and() {
             false and false,
         ];
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"[true, false, false, false]");
     assert_rcs_dropped();
 }
@@ -264,7 +264,7 @@ fn logic_and_reference() {
             '' and 'false',
         ];
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"[true, false]");
     assert_rcs_dropped();
 }
@@ -276,7 +276,7 @@ fn logic_and_short_circuit_truthy() {
         result = 42 and (set marker = 1; true);
         return [result, marker];
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"[true, 1]");
     assert_rcs_dropped();
 }
@@ -288,7 +288,7 @@ fn logic_and_short_circuit_falsy() {
         result = '' and (set marker = 1; true);
         return [result, marker];
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"[false, 0]");
     assert_rcs_dropped();
 }
@@ -300,7 +300,7 @@ fn logic_or_short_circuit_truthy() {
         result = 42 or (set marker = 1; false);
         return [result, marker];
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"[true, 0]");
     assert_rcs_dropped();
 }
@@ -312,7 +312,7 @@ fn logic_or_short_circuit_falsy() {
         result = '' or (set marker = 1; true);
         return [result, marker];
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"[true, 1]");
     assert_rcs_dropped();
 }
@@ -325,7 +325,7 @@ fn logic_or_reference() {
             '' or [],
         ];
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"[true, false]");
     assert_rcs_dropped();
 }
@@ -340,7 +340,7 @@ fn logic_or() {
             false or false,
         ];
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"[true, true, true, false]");
     assert_rcs_dropped();
 }
@@ -354,7 +354,7 @@ fn for_in_loop() {
         )
         return result;
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).prelude(true).expect_ok_string();
     insta::assert_snapshot!(result, @"['a', 'b', 'c']");
     assert_rcs_dropped();
 }
@@ -371,7 +371,7 @@ fn for_in_loop_scope() {
         y = 2;
         return result;
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).prelude(true).expect_ok_string();
     insta::assert_snapshot!(result, @"['a', 'b']");
     assert_rcs_dropped();
 }
@@ -385,7 +385,7 @@ fn while_loop() {
         )
         return sum;
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"16");
     assert_rcs_dropped();
 }
@@ -396,7 +396,7 @@ fn user_functions() {
         square = \a\ a * a;
         return square 3;
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"9");
     assert_rcs_dropped();
 }
@@ -410,7 +410,7 @@ fn user_functions_2() {
             mul 5 6,
         ];
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"[12, 30]");
     assert_rcs_dropped();
 }
@@ -420,7 +420,7 @@ fn builtin_range() {
     let program = r#"
         return range -1 3;
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).prelude(true).expect_ok_string();
     insta::assert_snapshot!(result, @"[-1, 0, 1, 2]");
     assert_rcs_dropped();
 }
@@ -430,7 +430,7 @@ fn builtin_not() {
     let program = r#"
         return [not true, not 1, not false];
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).prelude(true).expect_ok_string();
     insta::assert_snapshot!(result, @"[false, false, true]");
     assert_rcs_dropped();
 }
@@ -441,7 +441,7 @@ fn early_return_if() {
         f = \a\ [if a then 'A' else (return 'B';)];
         return [f true, f false];
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"[['A'], 'B']");
     assert_rcs_dropped();
 }
@@ -452,7 +452,7 @@ fn early_return_cleanup() {
     let program = r#"
         return 'A' ++ 'B' ++ (return 42;);
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"42");
     assert_rcs_dropped();
 }
@@ -462,8 +462,8 @@ fn string_literal() {
     let program = r#"
         return ['hello', 'world'];
     "#;
-    let result = eval_snapshot_str(program);
-    insta::assert_snapshot!(result, @r#"['hello', 'world']"#);
+    let result = eval(program).expect_ok_string();
+    insta::assert_snapshot!(result, @r###"['hello', 'world']"###);
     assert_rcs_dropped();
 }
 
@@ -473,7 +473,7 @@ fn string_interning() {
         return ['hello', 'hello'];
     "#;
     let result = eval(program).expect_ok();
-    insta::assert_snapshot!(result, @r#"['hello', 'hello']"#);
+    insta::assert_snapshot!(result, @r###"['hello', 'hello']"###);
     let list = result.try_into_list().unwrap();
     // This is a dirty way to check that the pointers are equal.
     assert_eq!(list.values[0].bits(), list.values[1].bits());
@@ -487,7 +487,7 @@ fn dict_literal() {
         dict = {a: 'A', b: 'B'};
         return [dict, dict.a, dict.b];
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"[{a: 'A', b: 'B'}, 'A', 'B']");
     assert_rcs_dropped();
 }
@@ -499,7 +499,7 @@ fn dict_literal_shorthand() {
         dict = {a, b: 'B'};
         return dict;
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"{a: 'A', b: 'B'}");
     assert_rcs_dropped();
 }
@@ -556,7 +556,7 @@ fn dict_assign() {
         set b.x = 4;
         return [a, b];
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"[{x: 1, y: 2}, {x: 4, y: 2}]");
     assert_rcs_dropped();
 }
@@ -582,7 +582,7 @@ fn lambda_func() {
         f = \x y\ x + 2 * y;
         return f 2 3;
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"8");
     assert_rcs_dropped();
 }
@@ -593,7 +593,7 @@ fn call_order() {
         f = \a\ not a;
         return (f (f true));
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).prelude(true).expect_ok_string();
     insta::assert_snapshot!(result, @"true");
     assert_rcs_dropped();
 }
@@ -605,7 +605,7 @@ fn func_with_captures() {
         f = \x\ [x, a];
         return f 'b';
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"['b', 'a']");
     assert_rcs_dropped();
 }
@@ -617,7 +617,7 @@ fn multiple_funcs() {
         g = \b\ (f b) * 2;
         return g 6;
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"14");
     assert_rcs_dropped();
 }
@@ -632,7 +632,7 @@ fn func_with_locals() {
         );
         return f 2;
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"6");
     assert_rcs_dropped();
 }
@@ -646,7 +646,7 @@ fn func_with_pattern_matching() {
         );
         return f [3, 4];
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"11");
     assert_rcs_dropped();
 }
@@ -657,7 +657,7 @@ fn simple_recursion() {
         fac = \n\ if n < 2 then 1 else (n * (fac (n - 1)));
         return fac 5;
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"120");
     assert_rcs_dropped();
 }
@@ -668,7 +668,7 @@ fn pattern_assignment_simple() {
         ![a, b] = [1, 2];
         return [b, a];
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"[2, 1]");
     assert_rcs_dropped();
 }
@@ -698,7 +698,7 @@ fn pattern_assignment_set() {
         ![set a, b] = [1, 2];
         return [b, a];
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"[2, 1]");
     assert_rcs_dropped();
 }
@@ -727,7 +727,7 @@ fn pattern_assignment_nested() {
         ![[a, b], c] = [[1, 2], 3];
         return [a, b, c];
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"[1, 2, 3]");
     assert_rcs_dropped();
 }
@@ -756,7 +756,7 @@ fn pattern_assignment_dict() {
         !{a, b: [b0, b1]} = {a: 1, b: [2, 3], c: 4};
         return [a, b0, b1];
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"[1, 2, 3]");
     assert_rcs_dropped();
 }
@@ -769,7 +769,7 @@ fn string_concat() {
             'hello ' ++ 'world' ++ '!',
         ];
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"['hello world', 'hello world!']");
     assert_rcs_dropped();
 }
@@ -779,7 +779,7 @@ fn list_concat() {
     let program = r#"
         return ['hello', 'world'] ++ ['!'];
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"['hello', 'world', '!']");
     assert_rcs_dropped();
 }
@@ -798,7 +798,7 @@ fn match_expression() {
         };
         return [b, c];
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"[5, 0]");
     assert_rcs_dropped();
 }
@@ -811,7 +811,7 @@ fn match_empty_dict() {
             {} => 'empty_dict',
         };
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"'empty_dict'");
     assert_rcs_dropped();
 }
@@ -837,7 +837,7 @@ fn match_dict() {
             f {},
         ];
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"['nil', 'empty_list', 'any_dict', ['dict0', 'A'], ['dict1', 'A'], ['dict2', 'A', 3], 'any_dict']");
     assert_rcs_dropped();
 }
@@ -866,7 +866,7 @@ fn match_constant() {
             f [3, 4],
         ];
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"['nil', 'empty', 'foo', 'bar', 'singleton', 'zero', 'one', 4]");
     assert_rcs_dropped();
 }
@@ -889,7 +889,7 @@ fn binary_trees() {
             checkTree (makeTree 2),
         ];
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"[1, 3, 7]");
     assert_rcs_dropped();
 }
@@ -911,7 +911,7 @@ fn mutual_recursion() {
             isOdd 6,
         ];
     "#;
-    let result = eval_snapshot_str(program);
+    let result = eval(program).expect_ok_string();
     insta::assert_snapshot!(result, @"[true, false, false, true, false, true, true, false]");
     assert_rcs_dropped();
 }

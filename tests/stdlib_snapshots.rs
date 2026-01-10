@@ -1,5 +1,5 @@
 mod common;
-use common::snapshot_helpers::{assert_rcs_dropped, eval, eval_snapshot_str};
+use common::snapshot_helpers::{assert_rcs_dropped, eval};
 
 #[test]
 fn stdlib_imports() {
@@ -8,7 +8,7 @@ fn stdlib_imports() {
         return list.push [1, 2] 3;
     "#;
 
-    let result = eval_snapshot_str(main_program);
+    let result = eval(main_program).prelude(true).expect_ok_string();
     insta::assert_snapshot!(result, @"[1, 2, 3]");
     assert_rcs_dropped();
 }
@@ -20,7 +20,7 @@ fn stdlib_map() {
         return [1, 2] | list.map \(_ + 1);
     "#;
 
-    let result = eval_snapshot_str(main_program);
+    let result = eval(main_program).prelude(true).expect_ok_string();
     insta::assert_snapshot!(result, @"[2, 3]");
     assert_rcs_dropped();
 }
@@ -32,7 +32,7 @@ fn stdlib_filter() {
         return [1, 2, 3] | list.filter \(_ != 2);
     "#;
 
-    let result = eval_snapshot_str(main_program);
+    let result = eval(main_program).prelude(true).expect_ok_string();
     insta::assert_snapshot!(result, @"[1, 3]");
     assert_rcs_dropped();
 }
@@ -44,7 +44,7 @@ fn stdlib_reverse() {
         return [1, 2, 3] | list.reverse;
     "#;
 
-    let result = eval_snapshot_str(main_program);
+    let result = eval(main_program).prelude(true).expect_ok_string();
     insta::assert_snapshot!(result, @"[3, 2, 1]");
     assert_rcs_dropped();
 }
@@ -64,7 +64,7 @@ fn stdlib_slice() {
         ];
     "#;
 
-    let result = eval_snapshot_str(main_program);
+    let result = eval(main_program).prelude(true).expect_ok_string();
     insta::assert_snapshot!(result, @"[[1], [1], [2, 3], [2], [3], [2], [2, 3]]");
     assert_rcs_dropped();
 }
@@ -80,7 +80,7 @@ fn stdlib_bitwise_xor() {
         ];
     "#;
 
-    let result = eval_snapshot_str(main_program);
+    let result = eval(main_program).prelude(true).expect_ok_string();
     insta::assert_snapshot!(result, @"[3, 14, 1]");
     assert_rcs_dropped();
 }
@@ -96,7 +96,7 @@ fn stdlib_bitwise_and() {
         ];
     "#;
 
-    let result = eval_snapshot_str(main_program);
+    let result = eval(main_program).prelude(true).expect_ok_string();
     insta::assert_snapshot!(result, @"[11, 0, 5]");
     assert_rcs_dropped();
 }
@@ -108,7 +108,7 @@ fn stdlib_sort() {
         return sort [1, 'dog', 3, 2, 'zebra', 'cat'];
     "#;
 
-    let result = eval_snapshot_str(main_program);
+    let result = eval(main_program).prelude(true).expect_ok_string();
     insta::assert_snapshot!(result, @"['cat', 'dog', 'zebra', 1, 2, 3]");
     assert_rcs_dropped();
 }
@@ -125,7 +125,7 @@ fn parallel_map() {
         return sum;
     "#;
 
-    let result = eval(main_program).expect_ok_string();
+    let result = eval(main_program).prelude(true).expect_ok_string();
     insta::assert_snapshot!(result, @"5001");
     assert_rcs_dropped();
 }
@@ -138,7 +138,7 @@ fn parallel_map_error() {
         return results;
     "#;
 
-    let result = eval(main_program).expect_err_string();
+    let result = eval(main_program).prelude(true).expect_err_string();
     insta::assert_snapshot!(result, @r###"
     At 84: Expected an f64, found '1'
     At [internal method]: Error in parallel map
@@ -169,7 +169,7 @@ fn stdlib_slice_error() {
         return List.slice list 'a' 1;
     "#;
 
-    let result = eval(main_program).expect_err_string();
+    let result = eval(main_program).prelude(true).expect_err_string();
     insta::assert_snapshot!(result, @r###"
     At [internal method]: Expected a number, got 'a'
     At 673: 
