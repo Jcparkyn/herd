@@ -119,7 +119,8 @@ fn run_repl(args: Args) {
     let parser = lang::ReplProgramParser::new();
     let mut analyzer = Analyzer::new();
 
-    let mut prelude_ast = parser.parse(PRELUDE).unwrap();
+    // TODO handle file IDs
+    let mut prelude_ast = parser.parse(0, PRELUDE).unwrap();
     analyzer.analyze_statements(&mut prelude_ast).unwrap();
 
     let current_dir = std::env::current_dir().unwrap();
@@ -148,7 +149,7 @@ fn run_repl(args: Args) {
             }
         };
 
-        let ast_result = parser.parse(&input);
+        let ast_result = parser.parse(0, &input);
         let lines = Lines::new(input.clone().into_bytes());
         line_count = lines.line_count();
         let mut statements = match ast_result {
@@ -212,7 +213,7 @@ struct ReplInputValidator {
 
 impl Validator for ReplInputValidator {
     fn validate(&self, ctx: &mut ValidationContext<'_>) -> rustyline::Result<ValidationResult> {
-        let parse_result = self.parser.parse(ctx.input());
+        let parse_result = self.parser.parse(0, ctx.input());
         match parse_result {
             Err(ParseError::UnrecognizedEof { .. }) => Ok(ValidationResult::Incomplete),
             _ => Ok(ValidationResult::Valid(None)),

@@ -145,12 +145,12 @@ impl VmContext {
 
         let parser = ProgramParser::new();
         let mut program_ast = parser
-            .parse(&program_source)
+            .parse(new_file_id, &program_source)
             .map_err(|e| JITError::Parse(e.map_token(|t| t.to_string())))?;
 
         if prelude && !is_stdlib {
             let prelude_ast = parser
-                .parse(PRELUDE)
+                .parse(new_file_id, PRELUDE)
                 .expect("prelude should have valid syntax");
             program_ast.splice(0..0, prelude_ast);
         }

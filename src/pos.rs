@@ -7,11 +7,12 @@ pub type Pos = usize;
 pub struct Span {
     pub start: Pos,
     pub end: Pos,
+    pub file_id: usize,
 }
 
 impl Span {
-    pub fn new(start: Pos, end: Pos) -> Self {
-        Span { start, end }
+    pub fn new(start: Pos, end: Pos, file_id: usize) -> Self {
+        Span { start, end, file_id }
     }
 
     pub fn wrap<T>(self, value: T) -> Spanned<T> {

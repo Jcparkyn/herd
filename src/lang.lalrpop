@@ -11,7 +11,7 @@ use crate::parse_helpers::{
     assignment_target_to_index_expr,
 };
 
-grammar;
+grammar(file_id: usize);
 
 match {
     r"\s*" => { }, // The default whitespace skipping is disabled if an `ignore pattern` is specified
@@ -53,7 +53,7 @@ StatementWithSemicolon: Statement = {
         Statement::PatternAssignment(target.map(MatchPattern::Assignment), e),
     "set" <target:Sp<AssignmentTarget>> "|" "=" <rhs_l:@L> <callee:Sp<Term>> <mut args:Sp<Term>*> <rhs_r:@R> ";" => {
         args.insert(0, assignment_target_to_index_expr(&target));
-        let rhs_span = Span::new(rhs_l, rhs_r);
+        let rhs_span = Span::new(rhs_l, rhs_r, file_id);
         let rhs = rhs_span.wrap(Expr::Call { callee: Box::new(callee), args });
         Statement::PatternAssignment(target.map(MatchPattern::Assignment), rhs)
     },
@@ -296,7 +296,7 @@ Tier<Op,NextTier>: Expr = {
 
 Sp<Rule>: Spanned<Rule> =
     <l: @L> <rule: Rule> <r: @R> => Spanned::new(
-        Span::new(l, r),
+        Span::new(l, r, file_id),
         rule,
     );
 
