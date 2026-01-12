@@ -140,10 +140,11 @@ fn parallel_map_error() {
 
     let result = eval(main_program).prelude(true).expect_err_string();
     insta::assert_snapshot!(result, @r###"
-    At 84: Expected an f64, found '1'
-    At [internal method]: Error in parallel map
-    At 22: 
-    At 47:
+    Error: Expected an f64, found '1'
+    at someMethod (main.herd:3:56)
+    Caused another error: Error in parallel map
+    at someMethod (main.herd:2:22)
+    at someMethod (main.herd:3:19)
     "###);
 }
 
@@ -156,9 +157,9 @@ fn stdlib_sort_error() {
 
     let result = eval(main_program).expect_err_string();
     insta::assert_snapshot!(result, @r###"
-    At [internal method]: Expected a list, got {a: 1, b: 2}
-    At 195: 
-    At 52:
+    Error: Expected a list, got {a: 1, b: 2}
+    at someMethod (main.herd:1:1)
+    at someMethod (main.herd:3:16)
     "###);
 }
 
@@ -171,9 +172,9 @@ fn stdlib_slice_error() {
 
     let result = eval(main_program).prelude(true).expect_err_string();
     insta::assert_snapshot!(result, @r###"
-    At [internal method]: Expected a number, got 'a'
-    At 673: 
-    At 42:
+    Error: Expected a number, got 'a'
+    at someMethod (main.herd:1:1)
+    at someMethod (main.herd:3:16)
     "###);
 }
 
@@ -186,9 +187,9 @@ fn stdlib_map_error() {
 
     let result = eval(main_program).expect_err_string();
     insta::assert_snapshot!(result, @r###"
-    At [internal method]: Tried to call something that isn't a function: 123
-    At 293: 
-    At 56:
+    Error: Tried to call something that isn't a function: 123
+    at someMethod (main.herd:1:1)
+    at someMethod (main.herd:3:25)
     "###);
 }
 
@@ -200,8 +201,8 @@ fn stdlib_import_error_non_existent() {
 
     let result = eval(main_program).expect_err_string();
     insta::assert_snapshot!(result, @r###"
-    At [internal method]: Error importing module '@nonexistent_module': MissingStdLibModule("@nonexistent_module")
-    At 16:
+    Error: Error importing module '@nonexistent_module': MissingStdLibModule("@nonexistent_module")
+    at someMethod (main.herd:2:16)
     "###);
 }
 
@@ -213,7 +214,7 @@ fn stdlib_import_error_malformed_path() {
 
     let result = eval(main_program).expect_err_string();
     insta::assert_snapshot!(result, @r###"
-    At [internal method]: Error importing module 'malformed/path': File(Custom { kind: NotFound, error: "Module not found: malformed/path" })
-    At 16:
+    Error: Error importing module 'malformed/path': File(Custom { kind: NotFound, error: "Module not found: malformed/path" })
+    at someMethod (main.herd:2:16)
     "###);
 }

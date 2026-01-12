@@ -24,7 +24,7 @@ use crate::{
     },
     error::HerdError,
     lang::ProgramParser,
-    lines::Lines,
+    lines::{Lines, Location},
     natives::{self, NativeFuncDef, NativeFuncId},
     pos::{Span, Spanned},
     prelude::PRELUDE,
@@ -548,6 +548,35 @@ impl JIT {
         // Tell the builder we're done with this function.
         trans.builder.finalize();
         Ok(())
+    }
+
+    pub fn format_error(&self, err: &HerdError) -> String {
+        let mut result = if let Some(inner) = &err.inner {
+            let mut r = self.format_error(inner);
+            if !err.message.is_empty() {
+                r.push_str(&format!("Caused another error: {}\n", err.message));
+            }
+            r
+        } else {
+            format!("Error: {}\n", err.message)
+        };
+        if let Some((filename, module_info)) = self
+            .modules
+            .iter()
+            .find(|m| Some(m.1.file_id) == err.file_id)
+        {
+            if let Some(pos) = err.pos {
+                // TOOD: panic on invalid location
+                let loc = module_info.lines.location(pos).unwrap_or_else(|| Location {
+                    line: 0,
+                    column: 0,
+                    absolute: pos,
+                });
+                let srcloc_str = format!("{}:{}", filename, loc);
+                result.push_str(&format!("at someMethod ({})\n", srcloc_str));
+            };
+        }
+        result
     }
 }
 
@@ -1162,7 +1191,7 @@ impl<'a> FunctionTranslator<'a> {
                     let (element, found) = self.dict_lookup(value, keyval);
                     self.assert(found, &pattern.span, |s| {
                         s.string_literal_owned(format!(
-                            "Pattern match failed: Dict key {key} was not found\n",
+                            "Pattern match failed: Dict key {key} was not found",
                         ))
                     });
                     self.translate_match_pattern(pattern, element.assert_owned());
@@ -1820,7 +1849,7 @@ impl<'a> FunctionTranslator<'a> {
         assert_eq!(
             expected_arg_count,
             user_args.len(),
-            "ERROR: Native function called with wrong number of arguments\n"
+            "ERROR: Native function called with wrong number of arguments"
         );
 
         let mut arg_values = Vec::new();
@@ -1916,10 +1945,6 @@ impl<'a> FunctionTranslator<'a> {
         self.builder.switch_to_block(fail_block);
         self.builder.seal_block(fail_block);
 
-        self.print_string_constant(format!(
-            "TEMP ERROR (at {}): Function call failed\n",
-            span.start
-        ));
         let msg = self.string_literal_owned(String::new());
         let err_ptr = self.alloc_error(msg, err_val, span);
         self.translate_return_err(err_ptr);
@@ -2166,11 +2191,6 @@ impl<'a> FunctionTranslator<'a> {
     fn string_literal_owned(&mut self, string: impl Into<String>) -> BValue {
         let string_val = self.string_literal_borrow(string.into());
         self.clone_val64(string_val)
-    }
-
-    fn print_string_constant(&mut self, string: String) {
-        let string_val64 = self.string_literal_owned(string);
-        self.call_native(NativeFuncId::Print, &[string_val64]);
     }
 
     fn translate_import(&mut self, path: &str, span: &Span) -> MValue {

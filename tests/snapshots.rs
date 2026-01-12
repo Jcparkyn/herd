@@ -17,7 +17,10 @@ fn add_invalid_types() {
         return 1 + '2';
     "#;
     let result = eval(program).expect_err_string();
-    insta::assert_snapshot!(result, @"At 20: Expected an f64, found '2'");
+    insta::assert_snapshot!(result, @r###"
+    Error: Expected an f64, found '2'
+    at someMethod (main.herd:2:20)
+    "###);
     assert_rcs_dropped();
 }
 
@@ -158,8 +161,8 @@ fn index_list_out_of_range() {
     "#;
     let result = eval(program).expect_err_string();
     insta::assert_snapshot!(result, @r###"
-    At [internal method]: List index out of range, got 3 but length is 3
-    At 16:
+    Error: List index out of range, got 3 but length is 3
+    at someMethod (main.herd:2:16)
     "###);
 }
 
@@ -170,8 +173,8 @@ fn index_list_with_string() {
     "#;
     let result = eval(program).expect_err_string();
     insta::assert_snapshot!(result, @r###"
-    At [internal method]: List index should be an integer, got '3'
-    At 16:
+    Error: List index should be an integer, got '3'
+    at someMethod (main.herd:2:16)
     "###);
 }
 
@@ -416,6 +419,20 @@ fn user_functions_2() {
 }
 
 #[test]
+fn nested_error() {
+    let program = r#"
+        mul = \a b\ a * b;
+        return mul -1 '2';
+    "#;
+    let result = eval(program).expect_err_string();
+    insta::assert_snapshot!(result, @r###"
+    Error: Expected an f64, found '2'
+    at someMethod (main.herd:2:25)
+    at someMethod (main.herd:3:16)
+    "###);
+}
+
+#[test]
 fn builtin_range() {
     let program = r#"
         return range -1 3;
@@ -528,8 +545,8 @@ fn array_assign_out_of_range() {
     "#;
     let result = eval(program).expect_err_string();
     insta::assert_snapshot!(result, @r###"
-    At [internal method]: List index out of range, got 3 but length is 3
-    At 0:
+    Error: List index out of range, got 3 but length is 3
+    at someMethod (main.herd:1:1)
     "###);
 }
 
@@ -543,8 +560,8 @@ fn array_assign_invalid_type() {
     "#;
     let result = eval(program).expect_err_string();
     insta::assert_snapshot!(result, @r###"
-    At [internal method]: List index should be an integer, got '3'
-    At 0:
+    Error: List index should be an integer, got '3'
+    at someMethod (main.herd:1:1)
     "###);
 }
 
@@ -679,7 +696,10 @@ fn pattern_assignment_const_mismatch() {
         ![1] = [2];
     "#;
     let result = eval(program).expect_err_string();
-    insta::assert_snapshot!(result, @"At 11: Pattern match failed: Expected constant 1, found 2");
+    insta::assert_snapshot!(result, @r###"
+    Error: Pattern match failed: Expected constant 1, found 2
+    at someMethod (main.herd:2:11)
+    "###);
 }
 
 #[test]
@@ -688,7 +708,10 @@ fn pattern_assignment_const_mismatch_nested() {
         ![[1], b] = [[2], 3];
     "#;
     let result = eval(program).expect_err_string();
-    insta::assert_snapshot!(result, @"At 12: Pattern match failed: Expected constant 1, found 2");
+    insta::assert_snapshot!(result, @r###"
+    Error: Pattern match failed: Expected constant 1, found 2
+    at someMethod (main.herd:2:12)
+    "###);
 }
 
 #[test]
@@ -709,7 +732,10 @@ fn pattern_assignment_list_not_a_list() {
         ![a, b] = 1;
     "#;
     let result = eval(program).expect_err_string();
-    insta::assert_snapshot!(result, @"At 10: Pattern match failed: Expected list, found 1");
+    insta::assert_snapshot!(result, @r###"
+    Error: Pattern match failed: Expected list, found 1
+    at someMethod (main.herd:2:10)
+    "###);
 }
 
 #[test]
@@ -718,7 +744,10 @@ fn pattern_assignment_list_wrong_length() {
         ![a, b] = [1, 2, 3];
     "#;
     let result = eval(program).expect_err_string();
-    insta::assert_snapshot!(result, @"At 10: Pattern match failed: Expected list of length 2, found [1, 2, 3]");
+    insta::assert_snapshot!(result, @r###"
+    Error: Pattern match failed: Expected list of length 2, found [1, 2, 3]
+    at someMethod (main.herd:2:10)
+    "###);
 }
 
 #[test]
@@ -738,7 +767,10 @@ fn pattern_assignment_dict_missing_key() {
         !{a, b} = {a: 1};
     "#;
     let result = eval(program).expect_err_string();
-    insta::assert_snapshot!(result, @"At 14: Pattern match failed: Dict key b was not found");
+    insta::assert_snapshot!(result, @r###"
+    Error: Pattern match failed: Dict key b was not found
+    at someMethod (main.herd:2:14)
+    "###);
 }
 
 #[test]
@@ -747,7 +779,10 @@ fn pattern_assignment_dict_missing_key_nested() {
         !{a, b: {c}} = {a: 1, b: {}};
     "#;
     let result = eval(program).expect_err_string();
-    insta::assert_snapshot!(result, @"At 18: Pattern match failed: Dict key c was not found");
+    insta::assert_snapshot!(result, @r###"
+    Error: Pattern match failed: Dict key c was not found
+    at someMethod (main.herd:2:18)
+    "###);
 }
 
 #[test]
@@ -942,8 +977,8 @@ fn call_non_function() {
     "#;
     let result = eval(program).expect_err_string();
     insta::assert_snapshot!(result, @r###"
-    At [internal method]: Tried to call something that isn't a function: 1
-    At 16:
+    Error: Tried to call something that isn't a function: 1
+    at someMethod (main.herd:2:16)
     "###);
 }
 
@@ -955,7 +990,7 @@ fn call_wrong_arg_count() {
     "#;
     let result = eval(program).expect_err_string();
     insta::assert_snapshot!(result, @r###"
-    At [internal method]: Wrong number of arguments passed to function <lambda: f>. Expected 1, got 2
-    At 35:
+    Error: Wrong number of arguments passed to function <lambda: f>. Expected 1, got 2
+    at someMethod (main.herd:3:16)
     "###);
 }

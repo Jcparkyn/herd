@@ -72,7 +72,7 @@ impl EvalConfig<'_> {
         self
     }
 
-    pub fn eval(&self) -> Result<Value64, HerdError> {
+    fn eval(&self) -> Result<Value64, String> {
         eval_snapshot(&self)
     }
 
@@ -87,7 +87,7 @@ impl EvalConfig<'_> {
     }
 
     #[track_caller]
-    pub fn expect_err(&self) -> HerdError {
+    pub fn expect_err_string(&self) -> String {
         match self.eval() {
             Ok(v) => panic!(
                 "The program should return an error, but instead returned: {}",
@@ -95,12 +95,6 @@ impl EvalConfig<'_> {
             ),
             Err(err) => err,
         }
-    }
-
-    #[track_caller]
-    pub fn expect_err_string(&self) -> String {
-        let error = self.expect_err();
-        error_to_string(&error, 0)
     }
 }
 
@@ -129,7 +123,7 @@ fn error_to_string(err: &HerdError, indent: usize) -> String {
     result
 }
 
-pub fn eval_snapshot(cfg: &EvalConfig) -> Result<Value64, HerdError> {
+fn eval_snapshot(cfg: &EvalConfig) -> Result<Value64, String> {
     let mut modules = cfg.modules.clone();
     modules.insert("main.herd".to_string(), cfg.program.to_string());
     let module_loader = TestModuleLoader { modules };
@@ -137,7 +131,7 @@ pub fn eval_snapshot(cfg: &EvalConfig) -> Result<Value64, HerdError> {
     let vmc = VmContext::new(jit, vec![]);
     reset_tracker();
     let result = vmc.execute_file("main.herd", cfg.prelude).unwrap();
-    result
+    result.map_err(|e| vmc.jit.lock().unwrap().format_error(&e))
 }
 
 struct TestModuleLoader {

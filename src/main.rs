@@ -1,4 +1,3 @@
-use herd::error::HerdError;
 use herd::prelude::PRELUDE;
 use herd::rc::Rc;
 use std::fmt::Debug;
@@ -71,7 +70,8 @@ fn run_file(path: &Path, args: &Args) -> ExitCode {
         }
         Ok(Err(err)) => {
             println!("Error while running program:");
-            print_herd_error(&err, 2);
+            // print_herd_error(&err, &jit, 2);
+            println!("{:?}", vmc.jit.lock().unwrap().format_error(&err));
             return ExitCode::FAILURE;
         }
         Err(err) => {
@@ -201,14 +201,6 @@ fn print_analysis_errors(errs: Vec<Spanned<AnalysisError>>, lines: Lines) {
         let location = lines.location(err.span.start).unwrap();
         println!("\t{} (at {})", err.value, location);
     }
-}
-
-fn print_herd_error(err: &HerdError, indent: usize) {
-    if let Some(inner) = &err.inner {
-        print_herd_error(inner, indent);
-    }
-    let indent_str = " ".repeat(indent);
-    println!("{}At {}: {}", indent_str, err.pos.unwrap_or(0), err.message);
 }
 
 #[derive(Completer, Helper, Hinter, Highlighter)]

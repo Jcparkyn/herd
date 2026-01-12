@@ -259,7 +259,6 @@ where
     }
     f().unwrap_or_else(|err| {
         if !error_out.is_null() {
-            println!("Returning error from native function: {:?}", err);
             unsafe {
                 *error_out = Box::into_raw(Box::new(err));
             }
@@ -864,6 +863,7 @@ pub extern "C" fn parallel_map(
             message: "Error in parallel map".to_string(),
             pos: None,
             inner: Some(Box::new(e)),
+            file_id: Some(0),
         });
 
         Ok(Value64::from_list(rc_new(ListInstance::new(
@@ -1008,6 +1008,7 @@ pub extern "C" fn alloc_herd_error(
         message: msg.as_str().unwrap_or("Unknown error").to_string(),
         pos: Some(pos as usize),
         inner: inner_box,
+        file_id: Some(0),
     };
     Box::into_raw(Box::new(error))
 }
