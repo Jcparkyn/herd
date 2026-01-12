@@ -143,7 +143,7 @@ fn parallel_map_error() {
     Error: Expected an f64, found '1'
     at someMethod (main.herd:3:56)
     Caused another error: Error in parallel map
-    at someMethod (main.herd:2:22)
+    at someMethod (@parallel:1:23)
     at someMethod (main.herd:3:19)
     "###);
 }
@@ -158,7 +158,7 @@ fn stdlib_sort_error() {
     let result = eval(main_program).expect_err_string();
     insta::assert_snapshot!(result, @r###"
     Error: Expected a list, got {a: 1, b: 2}
-    at someMethod (main.herd:1:1)
+    at someMethod (@list:11:14)
     at someMethod (main.herd:3:16)
     "###);
 }
@@ -173,7 +173,7 @@ fn stdlib_slice_error() {
     let result = eval(main_program).prelude(true).expect_err_string();
     insta::assert_snapshot!(result, @r###"
     Error: Expected a number, got 'a'
-    at someMethod (main.herd:1:1)
+    at someMethod (@list:43:25)
     at someMethod (main.herd:3:16)
     "###);
 }
@@ -181,15 +181,14 @@ fn stdlib_slice_error() {
 #[test]
 fn stdlib_map_error() {
     let main_program = r#"
-        list = import '@list';
-        return [1, 2] | list.map 123;
+        return [1, 2] | List.map 123;
     "#;
 
-    let result = eval(main_program).expect_err_string();
+    let result = eval(main_program).prelude(true).expect_err_string();
     insta::assert_snapshot!(result, @r###"
     Error: Tried to call something that isn't a function: 123
-    at someMethod (main.herd:1:1)
-    at someMethod (main.herd:3:25)
+    at someMethod (@list:16:19)
+    at someMethod (main.herd:2:25)
     "###);
 }
 

@@ -165,7 +165,7 @@ fn get_native_func_def(func: NativeFuncId) -> NativeFuncDef {
         NativeFuncId::ConstructLambda => get_def!(5, construct_lambda),
         NativeFuncId::ImportModule => get_def!(3, import_module).fallible().with_vm(),
         NativeFuncId::Print => get_def!(1, print),
-        NativeFuncId::AllocError => get_def!(3, alloc_herd_error),
+        NativeFuncId::AllocError => get_def!(4, alloc_herd_error),
         NativeFuncId::StringTemplate => get_def!(3, string_template),
     }
 }
@@ -998,6 +998,7 @@ pub extern "C" fn alloc_herd_error(
     msg: Value64,
     inner: *mut HerdError,
     pos: u64,
+    file_id: u64,
 ) -> *mut HerdError {
     let inner_box = if inner.is_null() {
         None
@@ -1008,7 +1009,7 @@ pub extern "C" fn alloc_herd_error(
         message: msg.as_str().unwrap_or("Unknown error").to_string(),
         pos: Some(pos as usize),
         inner: inner_box,
-        file_id: Some(0),
+        file_id: Some(file_id as usize),
     };
     Box::into_raw(Box::new(error))
 }

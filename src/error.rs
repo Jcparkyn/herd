@@ -14,7 +14,7 @@ impl HerdError {
             message: message.into(),
             pos: None,
             inner: None,
-            file_id: Some(0),
+            file_id: None,
         }
     }
 
@@ -22,7 +22,7 @@ impl HerdError {
         HerdError {
             message: message.into(),
             pos: None,
-            file_id: self.file_id,
+            file_id: None,
             inner: Some(Box::new(self)),
         }
     }

@@ -1956,7 +1956,8 @@ impl<'a> FunctionTranslator<'a> {
 
     fn alloc_error(&mut self, msg: Value, inner: Value, span: &Span) -> Value {
         let pos = self.builder.ins().iconst(I64, span.start as i64);
-        self.call_native(NativeFuncId::AllocError, &[msg, inner, pos])[0]
+        let file_id = self.builder.ins().iconst(I64, span.file_id as i64);
+        self.call_native(NativeFuncId::AllocError, &[msg, inner, pos, file_id])[0]
     }
 
     fn do_if(&mut self, cond: Value, then: impl FnOnce(&mut Self)) {
