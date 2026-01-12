@@ -1945,7 +1945,7 @@ impl<'a> FunctionTranslator<'a> {
         self.builder.switch_to_block(fail_block);
         self.builder.seal_block(fail_block);
 
-        let msg = self.string_literal_owned(String::new());
+        let msg = self.const_nil();
         let err_ptr = self.alloc_error(msg, err_val, span);
         self.translate_return_err(err_ptr);
 

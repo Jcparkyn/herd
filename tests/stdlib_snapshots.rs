@@ -142,7 +142,6 @@ fn parallel_map_error() {
     insta::assert_snapshot!(result, @r###"
     Error: Expected an f64, found '1'
     at someMethod (main.herd:3:56)
-    Caused another error: Error in parallel map
     at someMethod (@parallel:1:23)
     at someMethod (main.herd:3:19)
     "###);

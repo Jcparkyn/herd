@@ -306,7 +306,7 @@ impl Default for Value64Ref {
 
 fn guard_f64(val: &Value64) -> Result<f64, HerdError> {
     val.as_f64()
-        .ok_or_else(|| HerdError::new(format!("Expected a number, got {}", val)))
+        .ok_or_else(|| HerdError::native_code(format!("Expected a number, got {}", val)))
 }
 
 fn guard_i64(val: &Value64) -> Result<i64, HerdError> {
@@ -315,22 +315,22 @@ fn guard_i64(val: &Value64) -> Result<i64, HerdError> {
 
 fn guard_into_list(val: Value64) -> Result<Rc<ListInstance>, HerdError> {
     val.try_into_list()
-        .map_err(|v| HerdError::new(format!("Expected a list, got {}", v)))
+        .map_err(|v| HerdError::native_code(format!("Expected a list, got {}", v)))
 }
 
 fn guard_into_dict(val: Value64) -> Result<Rc<DictInstance>, HerdError> {
     val.try_into_dict()
-        .map_err(|v| HerdError::new(format!("Expected a dict, got {}", v)))
+        .map_err(|v| HerdError::native_code(format!("Expected a dict, got {}", v)))
 }
 
 fn guard_str(val: &Value64) -> Result<&str, HerdError> {
     val.as_str()
-        .ok_or_else(|| HerdError::new(format!("Expected a string, got {}", val)))
+        .ok_or_else(|| HerdError::native_code(format!("Expected a string, got {}", val)))
 }
 
 fn guard_lambda(val: &Value64) -> Result<&LambdaFunction, HerdError> {
     val.as_lambda()
-        .ok_or_else(|| HerdError::new(format!("Expected a lambda, got {}", val)))
+        .ok_or_else(|| HerdError::native_code(format!("Expected a lambda, got {}", val)))
 }
 
 fn parse_list_index_f64(val: f64, len: usize) -> Option<usize> {
@@ -346,7 +346,7 @@ fn guard_list_index(val: &Value64, len: usize) -> Result<usize, HerdError> {
     let f = match val.as_f64() {
         Some(f) => f,
         None => {
-            return Err(HerdError::new(format!(
+            return Err(HerdError::native_code(format!(
                 "List index should be an integer, got {}",
                 *val
             )));
@@ -354,7 +354,7 @@ fn guard_list_index(val: &Value64, len: usize) -> Result<usize, HerdError> {
     };
     match parse_list_index_f64(f, len) {
         Some(i) => Ok(i),
-        None => Err(HerdError::new(format!(
+        None => Err(HerdError::native_code(format!(
             "List index out of range, got {} but length is {}",
             f, len
         ))),
@@ -446,7 +446,7 @@ pub extern "C" fn list_slice(
             get_slice_index(guard_i64(&stop_index)?, len)
         };
         if start >= stop {
-            return Err(HerdError::new(
+            return Err(HerdError::native_code(
                 "Start index must be less than stop index".to_string(),
             ));
         }
@@ -542,7 +542,7 @@ pub extern "C" fn len(error_out: ErrorOut, val: Value64) -> Value64 {
             let s = guard_str(&val)?;
             Ok(Value64::from_f64(s.len() as f64))
         } else {
-            Err(HerdError::new(format!(
+            Err(HerdError::native_code(format!(
                 "Expected list, dict, or string, got {}",
                 val
             )))
@@ -588,7 +588,7 @@ pub extern "C" fn val_take_index(
             unsafe { *element_out = element };
             Ok(Value64::from_dict(dict))
         } else {
-            Err(HerdError::new(format!(
+            Err(HerdError::native_code(format!(
                 "Expected list or dict, was {}",
                 &val
             )))
@@ -610,7 +610,7 @@ pub extern "C" fn val_borrow_index(
                 dict.get(&index).unwrap_or(&Value64::NIL),
             ))
         } else {
-            Err(HerdError::new(format!(
+            Err(HerdError::native_code(format!(
                 "Expected list or dict, was {}",
                 *val
             )))
@@ -639,7 +639,7 @@ pub extern "C" fn val_set_index(
             });
             Ok(Value64::from_dict(dict))
         } else {
-            Err(HerdError::new(format!(
+            Err(HerdError::native_code(format!(
                 "Expected list or dict, was {}",
                 &val
             )))
@@ -694,7 +694,7 @@ pub extern "C" fn float_pow(error_out: ErrorOut, base: Value64, exponent: Value6
 pub extern "C" fn assert_truthy(error_out: ErrorOut, val: Value64) -> Value64 {
     handle_c_result(error_out, || {
         if !val.truthy() {
-            Err(HerdError::new(format!(
+            Err(HerdError::native_code(format!(
                 "Assertion failed. Expected truthy value, was {}",
                 val
             )))
@@ -712,13 +712,13 @@ pub extern "C" fn get_lambda_details(
 ) -> *const u8 {
     handle_c_result(error_out, || {
         let Some(lambda) = val.as_lambda() else {
-            return Err(HerdError::new(format!(
+            return Err(HerdError::native_code(format!(
                 "Tried to call something that isn't a function: {}",
                 val
             )));
         };
         if lambda.param_count != param_count as usize {
-            return Err(HerdError::new(format!(
+            return Err(HerdError::native_code(format!(
                 "Wrong number of arguments passed to function {}. Expected {}, got {}",
                 val, lambda.param_count, param_count
             )));
@@ -751,18 +751,18 @@ pub extern "C" fn construct_lambda(
 
 pub extern "C" fn import_module(error_out: ErrorOut, vm: &VmContext, name: Value64) -> Value64 {
     handle_c_result(error_out, || {
-        let path = name
-            .as_str()
-            .ok_or_else(|| HerdError::new(format!("Module name must be a string, got {}", name)))?;
+        let path = name.as_str().ok_or_else(|| {
+            HerdError::native_code(format!("Module name must be a string, got {}", name))
+        })?;
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| vm.execute_file(&path, true)));
         match result {
             Ok(Ok(Ok(result))) => Ok(result),
-            Ok(Ok(Err(err))) => Err(err.wrap(format!("Error importing module {}", name))),
-            Ok(Err(err)) => Err(HerdError::new(format!(
+            Ok(Ok(Err(err))) => Err(err.wrap_native(format!("Error importing module {}", name))),
+            Ok(Err(err)) => Err(HerdError::native_code(format!(
                 "Error importing module {}: {:?}",
                 name, err
             ))),
-            Err(err) => Err(HerdError::new(format!(
+            Err(err) => Err(HerdError::native_code(format!(
                 "Panic occurred while importing module {}: {:?}",
                 name, err
             ))),
@@ -788,7 +788,7 @@ pub extern "C" fn random_int(error_out: ErrorOut, min: Value64, max: Value64) ->
         let min_int = guard_i64(&min)?;
         let max_int = guard_i64(&max)?;
         if min_int >= max_int {
-            return Err(HerdError::new("min should be < max in randomInt"));
+            return Err(HerdError::native_code("min should be < max in randomInt"));
         }
         let result = rand::rng().random_range(min_int..max_int);
         Ok(Value64::from_f64(result as f64))
@@ -800,7 +800,7 @@ pub extern "C" fn random_float(error_out: ErrorOut, min: Value64, max: Value64) 
         let min_float = guard_f64(&min)?;
         let max_float = guard_f64(&max)?;
         if min_float >= max_float {
-            return Err(HerdError::new("min should be < max in randomFloat"));
+            return Err(HerdError::native_code("min should be < max in randomFloat"));
         }
         let result = rand::rng().random_range(min_float..=max_float);
         Ok(Value64::from_f64(result))
@@ -811,7 +811,7 @@ pub extern "C" fn regex_find(error_out: ErrorOut, text: Value64, regex: Value64)
     handle_c_result(error_out, || {
         let regex_str = guard_str(&regex)?;
         let text_str = guard_str(&text)?;
-        let regex = Regex::new(regex_str).map_err(|e| HerdError::new(e.to_string()))?;
+        let regex = Regex::new(regex_str).map_err(|e| HerdError::native_code(e.to_string()))?;
         let result = regex.find(text_str);
         match result {
             Some(m) => {
@@ -836,7 +836,7 @@ pub extern "C" fn regex_replace(
         let regex_str = guard_str(&regex)?;
         let text_str = guard_str(&text)?;
         let replacement_str = guard_str(&replacement)?;
-        let regex = Regex::new(regex_str).map_err(|e| HerdError::new(e.to_string()))?;
+        let regex = Regex::new(regex_str).map_err(|e| HerdError::native_code(e.to_string()))?;
         let result = regex.replace_all(text_str, replacement_str);
         Ok(Value64::from_string(rc_new(result.to_string())))
     })
@@ -860,10 +860,10 @@ pub extern "C" fn parallel_map(
             .collect::<Result<Vec<_>, HerdError>>();
 
         let result_mapped = result.map_err(|e| HerdError {
-            message: "Error in parallel map".to_string(),
+            message: String::new(),
             pos: None,
             inner: Some(Box::new(e)),
-            file_id: Some(0),
+            file_id: None,
         });
 
         Ok(Value64::from_list(rc_new(ListInstance::new(
@@ -876,7 +876,7 @@ pub extern "C" fn epoch_time(error_out: ErrorOut) -> Value64 {
     handle_c_result(error_out, || {
         let duration_since_epoch = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
-            .map_err(|e| HerdError::new(e.to_string()))?;
+            .map_err(|e| HerdError::native_code(e.to_string()))?;
         Ok(Value64::from_f64(duration_since_epoch.as_secs_f64()))
     })
 }
@@ -947,9 +947,10 @@ pub extern "C" fn program_args(vm: &VmContext) -> Value64 {
 pub extern "C" fn file_to_string(error_out: ErrorOut, path: Value64) -> Value64 {
     handle_c_result(error_out, || {
         let path_str = path.as_str().ok_or_else(|| {
-            HerdError::new(format!("Expected path to be a string, found {}", path))
+            HerdError::native_code(format!("Expected path to be a string, found {}", path))
         })?;
-        let content = fs::read_to_string(path_str).map_err(|e| HerdError::new(e.to_string()))?;
+        let content =
+            fs::read_to_string(path_str).map_err(|e| HerdError::native_code(e.to_string()))?;
         Ok(Value64::from_string(rc_new(content)))
     })
 }
@@ -957,14 +958,15 @@ pub extern "C" fn file_to_string(error_out: ErrorOut, path: Value64) -> Value64 
 pub extern "C" fn file_lines(error_out: ErrorOut, path: Value64) -> Value64 {
     handle_c_result(error_out, || {
         let path_str = guard_str(&path)?;
-        let file = std::fs::File::open(path_str).map_err(|e| HerdError::new(e.to_string()))?;
+        let file =
+            std::fs::File::open(path_str).map_err(|e| HerdError::native_code(e.to_string()))?;
         let reader = std::io::BufReader::new(file);
         let mut lines = Vec::new();
         for line in reader.lines() {
             match line {
                 Ok(l) => lines.push(Value64::from_string(rc_new(l))),
                 Err(e) => {
-                    return Err(HerdError::new(format!(
+                    return Err(HerdError::native_code(format!(
                         "Error reading line from file {}: {}",
                         path_str, e
                     )));
@@ -989,7 +991,7 @@ pub extern "C" fn readln(error_out: ErrorOut) -> Value64 {
         let mut input = String::new();
         match std::io::stdin().read_line(&mut input) {
             Ok(_) => Ok(Value64::from_string(rc_new(input.trim_end().to_string()))),
-            Err(e) => Err(HerdError::new(format!("Error reading line: {}", e))),
+            Err(e) => Err(HerdError::native_code(format!("Error reading line: {}", e))),
         }
     })
 }
@@ -1006,7 +1008,7 @@ pub extern "C" fn alloc_herd_error(
         unsafe { Some(Box::from_raw(inner)) }
     };
     let error = HerdError {
-        message: msg.as_str().unwrap_or("Unknown error").to_string(),
+        message: msg.as_str().unwrap_or("").to_string(),
         pos: Some(pos as usize),
         inner: inner_box,
         file_id: Some(file_id as usize),

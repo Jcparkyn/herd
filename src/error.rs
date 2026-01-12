@@ -9,7 +9,7 @@ pub struct HerdError {
 }
 
 impl HerdError {
-    pub fn new(message: impl Into<String>) -> Self {
+    pub fn native_code(message: impl Into<String>) -> Self {
         HerdError {
             message: message.into(),
             pos: None,
@@ -18,7 +18,7 @@ impl HerdError {
         }
     }
 
-    pub fn wrap(self, message: impl Into<String>) -> Self {
+    pub fn wrap_native(self, message: impl Into<String>) -> Self {
         HerdError {
             message: message.into(),
             pos: None,
