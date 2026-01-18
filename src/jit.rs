@@ -538,6 +538,7 @@ impl JIT {
             entry_block,
             builtins_map: &self.builtins_map,
             natives_map: &self.natives_map,
+            func_name: Some("<main>".to_string()),
         };
         let return_value = trans.translate_expr(body);
 
@@ -573,7 +574,8 @@ impl JIT {
                     absolute: pos,
                 });
                 let srcloc_str = format!("{}:{}", filename, loc);
-                result.push_str(&format!("at someMethod ({})\n", srcloc_str));
+                let func_name = err.func_name.as_deref().unwrap_or("<unknown>");
+                result.push_str(&format!("at {} ({})\n", func_name, srcloc_str));
             };
         }
         result
@@ -792,6 +794,7 @@ struct FunctionTranslator<'a> {
     return_block: Block,
     builtins_map: &'a HashMap<&'static str, NativeFunc>,
     natives_map: &'a HashMap<NativeFuncId, NativeFunc>,
+    func_name: Option<String>,
 }
 
 impl<'a> FunctionTranslator<'a> {
@@ -1698,6 +1701,12 @@ impl<'a> FunctionTranslator<'a> {
             entry_block,
             builtins_map: &self.builtins_map,
             natives_map: &self.natives_map,
+            func_name: Some(
+                lambda
+                    .name
+                    .clone()
+                    .unwrap_or_else(|| "<lambda>".to_string()),
+            ),
         };
         trans.translate_function_entry(lambda, entry_block);
 
@@ -1907,7 +1916,12 @@ impl<'a> FunctionTranslator<'a> {
         self.builder.seal_block(fail_block);
         let msg = build_msg(self);
         let null_ptr = self.builder.ins().iconst(PTR, 0);
-        let err_ptr = self.alloc_error(msg, null_ptr, span);
+        let func_name = if let Some(name) = &self.func_name {
+            self.string_literal_borrow(name.clone())
+        } else {
+            self.const_nil()
+        };
+        let err_ptr = self.alloc_error(msg, null_ptr, span, func_name);
         self.translate_return_err(err_ptr);
 
         self.builder.switch_to_block(ok_block);
@@ -1946,7 +1960,12 @@ impl<'a> FunctionTranslator<'a> {
         self.builder.seal_block(fail_block);
 
         let msg = self.const_nil();
-        let err_ptr = self.alloc_error(msg, err_val, span);
+        let func_name = if let Some(name) = &self.func_name {
+            self.string_literal_borrow(name.clone())
+        } else {
+            self.const_nil()
+        };
+        let err_ptr = self.alloc_error(msg, err_val, span, func_name);
         self.translate_return_err(err_ptr);
 
         self.builder.switch_to_block(ok_block);
@@ -1954,10 +1973,13 @@ impl<'a> FunctionTranslator<'a> {
         self.builder.insert_block_after(ok_block, before_block);
     }
 
-    fn alloc_error(&mut self, msg: Value, inner: Value, span: &Span) -> Value {
+    fn alloc_error(&mut self, msg: Value, inner: Value, span: &Span, func_name: Value) -> Value {
         let pos = self.builder.ins().iconst(I64, span.start as i64);
         let file_id = self.builder.ins().iconst(I64, span.file_id as i64);
-        self.call_native(NativeFuncId::AllocError, &[msg, inner, pos, file_id])[0]
+        self.call_native(
+            NativeFuncId::AllocError,
+            &[msg, inner, pos, file_id, func_name],
+        )[0]
     }
 
     fn do_if(&mut self, cond: Value, then: impl FnOnce(&mut Self)) {

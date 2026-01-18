@@ -19,7 +19,7 @@ fn add_invalid_types() {
     let result = eval(program).expect_err_string();
     insta::assert_snapshot!(result, @r###"
     Error: Expected an f64, found '2'
-    at someMethod (main.herd:2:20)
+    at <main> (main.herd:2:20)
     "###);
     assert_rcs_dropped();
 }
@@ -162,7 +162,7 @@ fn index_list_out_of_range() {
     let result = eval(program).expect_err_string();
     insta::assert_snapshot!(result, @r###"
     Error: List index out of range, got 3 but length is 3
-    at someMethod (main.herd:2:16)
+    at <main> (main.herd:2:16)
     "###);
 }
 
@@ -174,7 +174,7 @@ fn index_list_with_string() {
     let result = eval(program).expect_err_string();
     insta::assert_snapshot!(result, @r###"
     Error: List index should be an integer, got '3'
-    at someMethod (main.herd:2:16)
+    at <main> (main.herd:2:16)
     "###);
 }
 
@@ -427,8 +427,8 @@ fn nested_error() {
     let result = eval(program).expect_err_string();
     insta::assert_snapshot!(result, @r###"
     Error: Expected an f64, found '2'
-    at someMethod (main.herd:2:25)
-    at someMethod (main.herd:3:16)
+    at mul (main.herd:2:25)
+    at <main> (main.herd:3:16)
     "###);
 }
 
@@ -546,7 +546,7 @@ fn array_assign_out_of_range() {
     let result = eval(program).expect_err_string();
     insta::assert_snapshot!(result, @r###"
     Error: List index out of range, got 3 but length is 3
-    at someMethod (main.herd:1:1)
+    at <main> (main.herd:1:1)
     "###);
 }
 
@@ -561,7 +561,7 @@ fn array_assign_invalid_type() {
     let result = eval(program).expect_err_string();
     insta::assert_snapshot!(result, @r###"
     Error: List index should be an integer, got '3'
-    at someMethod (main.herd:1:1)
+    at <main> (main.herd:1:1)
     "###);
 }
 
@@ -698,7 +698,7 @@ fn pattern_assignment_const_mismatch() {
     let result = eval(program).expect_err_string();
     insta::assert_snapshot!(result, @r###"
     Error: Pattern match failed: Expected constant 1, found 2
-    at someMethod (main.herd:2:11)
+    at <main> (main.herd:2:11)
     "###);
 }
 
@@ -710,7 +710,7 @@ fn pattern_assignment_const_mismatch_nested() {
     let result = eval(program).expect_err_string();
     insta::assert_snapshot!(result, @r###"
     Error: Pattern match failed: Expected constant 1, found 2
-    at someMethod (main.herd:2:12)
+    at <main> (main.herd:2:12)
     "###);
 }
 
@@ -734,7 +734,7 @@ fn pattern_assignment_list_not_a_list() {
     let result = eval(program).expect_err_string();
     insta::assert_snapshot!(result, @r###"
     Error: Pattern match failed: Expected list, found 1
-    at someMethod (main.herd:2:10)
+    at <main> (main.herd:2:10)
     "###);
 }
 
@@ -746,7 +746,7 @@ fn pattern_assignment_list_wrong_length() {
     let result = eval(program).expect_err_string();
     insta::assert_snapshot!(result, @r###"
     Error: Pattern match failed: Expected list of length 2, found [1, 2, 3]
-    at someMethod (main.herd:2:10)
+    at <main> (main.herd:2:10)
     "###);
 }
 
@@ -769,7 +769,7 @@ fn pattern_assignment_dict_missing_key() {
     let result = eval(program).expect_err_string();
     insta::assert_snapshot!(result, @r###"
     Error: Pattern match failed: Dict key b was not found
-    at someMethod (main.herd:2:14)
+    at <main> (main.herd:2:14)
     "###);
 }
 
@@ -781,7 +781,7 @@ fn pattern_assignment_dict_missing_key_nested() {
     let result = eval(program).expect_err_string();
     insta::assert_snapshot!(result, @r###"
     Error: Pattern match failed: Dict key c was not found
-    at someMethod (main.herd:2:18)
+    at <main> (main.herd:2:18)
     "###);
 }
 
@@ -978,7 +978,7 @@ fn call_non_function() {
     let result = eval(program).expect_err_string();
     insta::assert_snapshot!(result, @r###"
     Error: Tried to call something that isn't a function: 1
-    at someMethod (main.herd:2:16)
+    at <main> (main.herd:2:16)
     "###);
 }
 
@@ -991,6 +991,6 @@ fn call_wrong_arg_count() {
     let result = eval(program).expect_err_string();
     insta::assert_snapshot!(result, @r###"
     Error: Wrong number of arguments passed to function <lambda: f>. Expected 1, got 2
-    at someMethod (main.herd:3:16)
+    at <main> (main.herd:3:16)
     "###);
 }

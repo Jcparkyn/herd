@@ -6,6 +6,7 @@ pub struct HerdError {
     pub inner: Option<Box<HerdError>>,
     pub pos: Option<Pos>,
     pub file_id: Option<usize>,
+    pub func_name: Option<String>,
 }
 
 impl HerdError {
@@ -15,6 +16,7 @@ impl HerdError {
             pos: None,
             inner: None,
             file_id: None,
+            func_name: None,
         }
     }
 
@@ -24,6 +26,7 @@ impl HerdError {
             pos: None,
             file_id: None,
             inner: Some(Box::new(self)),
+            func_name: None,
         }
     }
 }

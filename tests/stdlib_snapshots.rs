@@ -141,9 +141,9 @@ fn parallel_map_error() {
     let result = eval(main_program).prelude(true).expect_err_string();
     insta::assert_snapshot!(result, @r###"
     Error: Expected an f64, found '1'
-    at someMethod (main.herd:3:56)
-    at someMethod (@parallel:1:23)
-    at someMethod (main.herd:3:19)
+    at <lambda> (main.herd:3:56)
+    at parallelMap (@parallel:1:23)
+    at <main> (main.herd:3:19)
     "###);
 }
 
@@ -157,8 +157,8 @@ fn stdlib_sort_error() {
     let result = eval(main_program).expect_err_string();
     insta::assert_snapshot!(result, @r###"
     Error: Expected a list, got {a: 1, b: 2}
-    at someMethod (@list:11:14)
-    at someMethod (main.herd:3:16)
+    at sort (@list:11:14)
+    at <main> (main.herd:3:16)
     "###);
 }
 
@@ -172,8 +172,8 @@ fn stdlib_slice_error() {
     let result = eval(main_program).prelude(true).expect_err_string();
     insta::assert_snapshot!(result, @r###"
     Error: Expected a number, got 'a'
-    at someMethod (@list:43:25)
-    at someMethod (main.herd:3:16)
+    at slice (@list:43:25)
+    at <main> (main.herd:3:16)
     "###);
 }
 
@@ -186,8 +186,8 @@ fn stdlib_map_error() {
     let result = eval(main_program).prelude(true).expect_err_string();
     insta::assert_snapshot!(result, @r###"
     Error: Tried to call something that isn't a function: 123
-    at someMethod (@list:16:19)
-    at someMethod (main.herd:2:25)
+    at map (@list:16:19)
+    at <main> (main.herd:2:25)
     "###);
 }
 
@@ -200,7 +200,7 @@ fn stdlib_import_error_non_existent() {
     let result = eval(main_program).expect_err_string();
     insta::assert_snapshot!(result, @r###"
     Error: Error importing module '@nonexistent_module': MissingStdLibModule("@nonexistent_module")
-    at someMethod (main.herd:2:16)
+    at <main> (main.herd:2:16)
     "###);
 }
 
@@ -213,6 +213,6 @@ fn stdlib_import_error_malformed_path() {
     let result = eval(main_program).expect_err_string();
     insta::assert_snapshot!(result, @r###"
     Error: Error importing module 'malformed/path': File(Custom { kind: NotFound, error: "Module not found: malformed/path" })
-    at someMethod (main.herd:2:16)
+    at <main> (main.herd:2:16)
     "###);
 }

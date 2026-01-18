@@ -165,7 +165,7 @@ fn get_native_func_def(func: NativeFuncId) -> NativeFuncDef {
         NativeFuncId::ConstructLambda => get_def!(5, construct_lambda),
         NativeFuncId::ImportModule => get_def!(3, import_module).fallible().with_vm(),
         NativeFuncId::Print => get_def!(1, print),
-        NativeFuncId::AllocError => get_def!(4, alloc_herd_error),
+        NativeFuncId::AllocError => get_def!(5, alloc_herd_error),
         NativeFuncId::StringTemplate => get_def!(3, string_template),
     }
 }
@@ -864,6 +864,7 @@ pub extern "C" fn parallel_map(
             pos: None,
             inner: Some(Box::new(e)),
             file_id: None,
+            func_name: None,
         });
 
         Ok(Value64::from_list(rc_new(ListInstance::new(
@@ -1001,6 +1002,7 @@ pub extern "C" fn alloc_herd_error(
     inner: *mut HerdError,
     pos: u64,
     file_id: u64,
+    func_name: Value64,
 ) -> *mut HerdError {
     let inner_box = if inner.is_null() {
         None
@@ -1012,6 +1014,7 @@ pub extern "C" fn alloc_herd_error(
         pos: Some(pos as usize),
         inner: inner_box,
         file_id: Some(file_id as usize),
+        func_name: func_name.as_str().map(|s| s.to_string()),
     };
     Box::into_raw(Box::new(error))
 }
