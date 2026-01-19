@@ -219,29 +219,26 @@ impl VmContext {
         let func_ptr = lambda.func_ptr.unwrap();
 
         let mut error_ptr: *const HerdError = std::ptr::null();
-        let result = match params {
-            [x1] => unsafe {
-                let code_fn = mem::transmute::<
-                    _,
-                    extern "C" fn(
-                        &Self,
-                        closure: *const Value64,
-                        error_out: *mut *const HerdError,
-                        x1: Value64,
-                        recursion: Value64,
-                    ) -> Value64,
-                >(func_ptr);
-                code_fn(
-                    self,
-                    lambda.closure.as_ptr(),
-                    &mut error_ptr,
-                    x1.clone(),
-                    lambda_val.cheeky_copy(),
-                )
-            },
-            _ => {
-                panic!("Argument count not supported: {}", params.len())
-            }
+        let result = unsafe {
+            let code_fn = mem::transmute::<
+                _,
+                extern "C" fn(
+                    &Self,
+                    closure: *const Value64,
+                    error_out: *mut *const HerdError,
+                    args_ptr: *const Value64,
+                    args_len: i64,
+                    recursion: Value64,
+                ) -> Value64,
+            >(func_ptr);
+            code_fn(
+                self,
+                lambda.closure.as_ptr(),
+                &mut error_ptr,
+                params.as_ptr(),
+                params.len() as i64,
+                lambda_val.cheeky_copy(),
+            )
         };
         if !error_ptr.is_null() {
             let error_box = unsafe { Box::from_raw(error_ptr as *mut HerdError) };
@@ -799,8 +796,12 @@ struct FunctionTranslator<'a> {
 
 impl<'a> FunctionTranslator<'a> {
     fn translate_function_entry(&mut self, lambda: &LambdaExpr, entry_block: Block) {
+        let args_ptr = self.builder.block_params(entry_block)[3];
         for (i, pattern) in lambda.params.iter().enumerate() {
-            let value = self.builder.block_params(entry_block)[i + 3];
+            let value = self
+                .builder
+                .ins()
+                .load(VAL64, MemFlags::new(), args_ptr, (i * 8) as i32);
             self.translate_match_pattern(pattern, value.assert_owned());
         }
     }
@@ -964,7 +965,7 @@ impl<'a> FunctionTranslator<'a> {
             )
         });
         let mut sig = self.module.make_signature();
-        Self::build_function_signature(&mut sig, args.len());
+        Self::build_function_signature(&mut sig);
         let sig_ref = self.builder.import_signature(sig);
 
         let mut arg_values = Vec::new();
@@ -973,9 +974,19 @@ impl<'a> FunctionTranslator<'a> {
         let err_slot = self.create_stack_slot(I64, 1);
         let err_ptr = self.builder.ins().stack_addr(I64, err_slot, 0);
         arg_values.push(err_ptr);
-        for arg in args {
-            arg_values.push(self.translate_expr(arg).into_owned(self))
+        let args_count = args.len();
+        let args_slot = self.create_stack_slot(VAL64, args_count);
+        for (i, arg) in args.iter().enumerate() {
+            let val = self.translate_expr(arg).into_owned(self);
+            self.builder
+                .ins()
+                .stack_store(val, args_slot, (i * 8) as i32);
         }
+        let args_ptr = self.builder.ins().stack_addr(PTR, args_slot, 0);
+        let args_len = self.builder.ins().iconst(types::I64, args_count as i64);
+        arg_values.push(args_ptr);
+        arg_values.push(args_len);
+
         // Add the function itself as a parameter, to support recursion.
         arg_values.push(callee_val.borrow());
         let call = self
@@ -999,18 +1010,17 @@ impl<'a> FunctionTranslator<'a> {
         self.builder.block_params(self.entry_block)[2]
     }
 
-    fn build_function_signature(sig: &mut Signature, param_count: usize) {
+    fn build_function_signature(sig: &mut Signature) {
         // VM context
         sig.params
             .push(AbiParam::special(PTR, ir::ArgumentPurpose::VMContext));
         // Closure pointer
-        sig.params.push(AbiParam::new(I64));
+        sig.params.push(AbiParam::new(PTR));
         // Error return pointer
         sig.params.push(AbiParam::new(PTR));
-        // User params
-        for _ in 0..param_count {
-            sig.params.push(AbiParam::new(VAL64));
-        }
+        // User params (pointer and length)
+        sig.params.push(AbiParam::new(PTR));
+        sig.params.push(AbiParam::new(types::I64));
         // Self for recursion
         sig.params.push(AbiParam::new(VAL64));
         // Return value
@@ -1674,7 +1684,7 @@ impl<'a> FunctionTranslator<'a> {
         let mut ctx = self.module.make_context();
         ctx.func.collect_debug_info();
 
-        Self::build_function_signature(&mut ctx.func.signature, lambda.params.len());
+        Self::build_function_signature(&mut ctx.func.signature);
 
         let mut builder_context = FunctionBuilderContext::new();
         let mut builder = FunctionBuilder::new(&mut ctx.func, &mut builder_context);
