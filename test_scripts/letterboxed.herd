@@ -27,11 +27,11 @@ render = \state\ (
   ) else (
     println '\n\n\n';
   )
-  printf [' ', renderLetters.[0], ' ', renderLetters.[1], ' ', renderLetters.[2], ' '];
-  printf [renderLetters.[11], ' ', ' ', ' ', ' ', ' ', renderLetters.[3]];
-  printf [renderLetters.[10], ' ', ' ', ' ', ' ', ' ', renderLetters.[4]];
-  printf [renderLetters.[9], ' ', ' ', ' ', ' ', ' ', renderLetters.[5]];
-  printf [' ', renderLetters.[8], ' ', renderLetters.[7], ' ', renderLetters.[6], ' '];
+  println ' ' renderLetters.[0] ' ' renderLetters.[1] ' ' renderLetters.[2] ' ';
+  println renderLetters.[11] ' ' ' ' ' ' ' ' ' ' renderLetters.[3];
+  println renderLetters.[10] ' ' ' ' ' ' ' ' ' ' renderLetters.[4];
+  println renderLetters.[9] ' ' ' ' ' ' ' ' ' ' renderLetters.[5];
+  println ' ' renderLetters.[8] ' ' renderLetters.[7] ' ' renderLetters.[6] ' ';
 
   getWord = \indices\ (
     var word = '';
@@ -140,7 +140,7 @@ generateBoard = \wordList\ (
         nextSide = indexToSide existingIndex;
         if nextSide == currentSide then (
           // Conflict - can't place letter on same side as previous letter
-          printf ['Conflict placing ', char, ' at index ', existingIndex, ' on side ', nextSide];
+          println 'Conflict placing ' char ' at index ' existingIndex ' on side ' nextSide;
           return ();
         )
         set currentSide = nextSide;
@@ -151,7 +151,7 @@ generateBoard = \wordList\ (
           // Must not have been used yet
           | List.filter (\i\ result.[i] == ());
         if availableIndices == [] then (
-          printf ['Aborting arrangement at ', result];
+          println 'Aborting arrangement at ' result;
           return ();
         )
         nextIndex = Random.choice availableIndices;
@@ -179,7 +179,7 @@ generateBoard = \wordList\ (
       return ();
     )
     
-    printf ['Trying ', word1, ' and ', word2];
+    println 'Trying ' word1 ' and ' word2;
     l2 = len word2;
 
     uniqueChars = (String.toChars (word1 ++ word2))
@@ -190,7 +190,7 @@ generateBoard = \wordList\ (
       return ();
     )
 
-    printf ['Selected ', word1, ' and ', word2, '\n'];
+    println 'Selected ' word1 ' and ' word2 '\n';
     edgeLetters = arrangeBoard word1 word2;
     if edgeLetters == () then (
       println ' - couldn\'t arrange letters';
@@ -204,12 +204,12 @@ generateBoard = \wordList\ (
     switch attempt () on {
       () => (),
       result => (
-        printf ['Board generated successfully (', idx, ' attempts): ', result];
+        println 'Board generated successfully (' idx ' attempts): ' result;
         return result;
       ),
     }
   )
-  printf ['Failed to generate board after ', MAX_ATTEMPTS, ' attempts'];
+  println 'Failed to generate board after ' MAX_ATTEMPTS ' attempts';
 );
 
 main = \\ (

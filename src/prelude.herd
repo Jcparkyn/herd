@@ -13,7 +13,6 @@ IO = import '@io';
 !{
   print,
   println,
-  printf,
 } = import '@io';
 
 List = import '@list';

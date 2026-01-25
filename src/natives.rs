@@ -1019,7 +1019,7 @@ pub extern "C" fn alloc_herd_error(
     inner: *mut HerdError,
     pos: u64,
     file_id: u64,
-    func_name: Value64,
+    func_name: Value64Ref,
 ) -> *mut HerdError {
     let inner_box = if inner.is_null() {
         None

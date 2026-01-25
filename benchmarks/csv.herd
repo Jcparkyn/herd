@@ -71,4 +71,4 @@ for run in range 0 RUN_COUNT do (
   )
 )
 
-printf ['Total population over ', RUN_COUNT, ' runs: ', totalPopulation];
+println 'Total population over ' RUN_COUNT ' runs: ' totalPopulation;

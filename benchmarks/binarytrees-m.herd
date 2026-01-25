@@ -19,7 +19,7 @@ run = \n\ (
   minDepth = 4;
   maxDepth = n;
   stretchDepth = maxDepth + 1;
-  printf ['stretch tree of depth ', stretchDepth, ' check: ', (makeCheck stretchDepth)];
+  println 'stretch tree of depth ' stretchDepth ' check: ' (makeCheck stretchDepth);
   longLivedTree = makeTree maxDepth;
   mmd = maxDepth + minDepth;
   results = BUILTIN:parallelMap (range minDepth stretchDepth) \(
@@ -32,9 +32,9 @@ run = \n\ (
     [i, d, cs]
   );
   for [i, d, cs] in results do (
-    printf [i, ' trees of depth ', d, ' check: ', cs];
+    println i ' trees of depth ' d ' check: ' cs;
   )
-  printf ['long lived tree of depth ', maxDepth, ' check: ', (checkTree longLivedTree)];
+  println 'long lived tree of depth ' maxDepth ' check: ' (checkTree longLivedTree);
 );
 
 main = \\ run 16;

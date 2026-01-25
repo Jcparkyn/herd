@@ -12,14 +12,6 @@ println = \..val\ (
   BUILTIN:print '\n';
 );
 
-// This will be replaced by println once variadic functions are implemented.
-printf = \arr\ (
-  for x in arr do (
-    BUILTIN:print x;
-  )
-  BUILTIN:print '\n';
-);
-
 readline = \\ (
   BUILTIN:readline
 );
@@ -27,6 +19,5 @@ readline = \\ (
 return {
   print,
   println,
-  printf,
   readline,
 };

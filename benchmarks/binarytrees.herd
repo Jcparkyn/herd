@@ -19,8 +19,10 @@ run = \n\ (
   minDepth = 4;
   maxDepth = n;
   stretchDepth = maxDepth + 1;
-  printf ['stretch tree of depth ', stretchDepth, ' check: ', (makeCheck stretchDepth)];
+  println 'stretch tree of depth ' stretchDepth ' check: ' (makeCheck stretchDepth);
+
   longLivedTree = makeTree maxDepth;
+
   mmd = maxDepth + minDepth;
   for d in range minDepth stretchDepth do (
     i = shiftLeft 1 (mmd - d);
@@ -28,9 +30,10 @@ run = \n\ (
     for ignored in range 0 i do (
       set cs = cs + (makeCheck d);
     )
-    printf [i, ' trees of depth ', d, ' check: ', cs];
+    println i ' trees of depth ' d ' check: ' cs;
   )
-  printf ['long lived tree of depth ', maxDepth, ' check: ', (checkTree longLivedTree)];
+
+  println 'long lived tree of depth ' maxDepth ' check: ' (checkTree longLivedTree);
 );
 
 main = \\ (

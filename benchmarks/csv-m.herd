@@ -76,4 +76,4 @@ populations = range 0 RUN_COUNT
 
 totalPopulation = List.sum populations;
 
-printf ['Total population over ', RUN_COUNT, ' runs: ', totalPopulation];
+println 'Total population over ' RUN_COUNT ' runs: ' totalPopulation;
