@@ -9,8 +9,14 @@ Herd is a simple interpreted programming language where everything is a value.
 In Herd, everything is pass-by-value, including lists and dicts.
 This means that when you pass a list or dict to a function, **you can guarantee that the function won't modify your copy**.
 
-*But isn't that just immutability?* Not quite, because lists and dicts in Herd are actually mutable.
-This means you can modify them locally just like you would in an imperative language, but there will be no side-effects on other copies of the value.
+You can modify variables locally just like you would in an imperative language, but there will never be any side-effects on other copies of the value.
+
+```dart
+var foo = { a: 1 };
+var bar = foo; // make a copy of foo
+set bar.a = 2; // modify bar (makes a copy)
+println foo.a bar.a; // prints 1 2
+```
 
 ## How does it work?
 
@@ -19,6 +25,13 @@ All reference types in Herd (e.g. strings, lists, dicts) use reference counting.
 - If there's more than one reference to the value, the language makes a shallow copy of it with the modification applied. The copy now has a reference count of one, so subsequent modifications usually don't need to allocate.
 
 There's one very convenient consequence of everything being a value: _Reference cycles are impossible!_ This means the reference counting system doesn't need cycle detection, and can also be used as a garbage collector.
+
+## Comparison to other languages
+
+- Swift: Uses a lot of similar ideas (under the name "Mutable Value Semantics"), but is statically typed and overall a much more complex language, including many types that aren't values.
+- Matlab / R: These languages also use copy-on-write semantics for arrays, but as far as I'm aware they can't reliably track when reference counts decrease back to one, so they have to make copies more often than herd does. (I also dislike these languages for other reasons).
+- PHP: Uses value semantics for arrays but not objects.
+- Perl: Uses value semantics for array and hashes, but exposes many ways to break the guarantees of value semantics.
 
 ## Language tour
 
@@ -166,6 +179,7 @@ doubleEveryItem = \var list\ (
   for [i, x] in List.enumerate list do (
     set list.[i] = x * 2;
   )
+  list
 );
 list1 = [3, 4];
 list2 = doubleEveryItem list1;
