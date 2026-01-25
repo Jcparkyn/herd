@@ -608,6 +608,7 @@ impl Display for Value64 {
 #[derive(PartialEq, Debug)]
 pub struct LambdaFunction {
     pub param_count: usize,
+    pub has_spread: bool,
     pub closure: Vec<Value64>,
     pub self_name: Option<String>,
     pub func_ptr: Option<*const u8>,

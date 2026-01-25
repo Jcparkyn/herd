@@ -215,7 +215,23 @@ impl VmContext {
         params: &[Value64],
     ) -> Result<Value64, HerdError> {
         let lambda = lambda_val.as_lambda().unwrap();
-        assert!(lambda.param_count == params.len());
+        let matches = if lambda.has_spread {
+            params.len() >= lambda.param_count - 1
+        } else {
+            lambda.param_count == params.len()
+        };
+
+        if !matches {
+            let expected_str = if lambda.has_spread {
+                format!("{}+", lambda.param_count - 1)
+            } else {
+                format!("{}", lambda.param_count)
+            };
+            return Err(HerdError::native_code(format!(
+                "Wrong number of arguments passed to function {}. Expected {}, got {}",
+                lambda, expected_str, params.len()
+            )));
+        }
         let func_ptr = lambda.func_ptr.unwrap();
 
         let mut error_ptr: *const HerdError = std::ptr::null();
@@ -797,12 +813,23 @@ struct FunctionTranslator<'a> {
 impl<'a> FunctionTranslator<'a> {
     fn translate_function_entry(&mut self, lambda: &LambdaExpr, entry_block: Block) {
         let args_ptr = self.builder.block_params(entry_block)[3];
+        let args_len = self.builder.block_params(entry_block)[4];
         for (i, pattern) in lambda.params.iter().enumerate() {
-            let value = self
-                .builder
-                .ins()
-                .load(VAL64, MemFlags::new(), args_ptr, (i * 8) as i32);
-            self.translate_match_pattern(pattern, value.assert_owned());
+            if lambda.has_spread && i == lambda.params.len() - 1 {
+                let start_idx = i as i64;
+                let offset = start_idx * 8;
+                let spread_items_ptr = self.builder.ins().iadd_imm(args_ptr, offset);
+                let start_idx_val = self.builder.ins().iconst(I64, start_idx);
+                let spread_len = self.builder.ins().isub(args_len, start_idx_val);
+                let spread_val = self.call_native(NativeFuncId::ListNew, &[spread_len, spread_items_ptr])[0];
+                self.translate_match_pattern(pattern, spread_val.assert_owned());
+            } else {
+                let value = self
+                    .builder
+                    .ins()
+                    .load(VAL64, MemFlags::new(), args_ptr, (i * 8) as i32);
+                self.translate_match_pattern(pattern, value.assert_owned());
+            }
         }
     }
 
@@ -1749,6 +1776,7 @@ impl<'a> FunctionTranslator<'a> {
 
         let func_ptr = self.module.get_finalized_function(func_id);
         let param_count_val = self.builder.ins().iconst(I64, lambda.params.len() as i64);
+        let has_spread_val = self.builder.ins().iconst(types::I8, lambda.has_spread as i64);
         let func_ptr_val = self.builder.ins().iconst(PTR, func_ptr as i64);
         let capture_count_val = self
             .builder
@@ -1773,6 +1801,7 @@ impl<'a> FunctionTranslator<'a> {
             NativeFuncId::ConstructLambda,
             &[
                 param_count_val,
+                has_spread_val,
                 name_val,
                 func_ptr_val,
                 capture_count_val,

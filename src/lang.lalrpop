@@ -6,6 +6,7 @@ use crate::ast::{Expr, Opcode, Statement, Block, AssignmentTarget, VarRef, Lambd
 use crate::parse_helpers::{
     parse_string_literal,
     process_list_match,
+    process_lambda_params,
     process_declaration,
     make_implicit_lambda,
     assignment_target_to_index_expr,
@@ -224,15 +225,23 @@ StringLiteral: String = {
 }
 
 LambdaExpr: Expr = {
-    "\\" <params:Sp<MatchPattern>+> "\\" <body:SpExpr> => Expr::Lambda(
-        LambdaExpr::new(params, Rc::new(body))
-    ),
+    "\\" <params:LambdaParam+> "\\" <body:SpExpr> =>? {
+        let (params, has_spread) = process_lambda_params(params)?;
+        Ok(Expr::Lambda(
+            LambdaExpr::new(params, has_spread, Rc::new(body))
+        ))
+    },
     "\\" <span:Sp<()>> "\\" <body:SpExpr> => {
         let pattern = span.map(|_| MatchPattern::NIL);
         Expr::Lambda(
-            LambdaExpr::new(vec![pattern], Rc::new(body))
+            LambdaExpr::new(vec![pattern], false, Rc::new(body))
         )
     },
+}
+
+LambdaParam: (Spanned<MatchPattern>, bool) = {
+    <p:Sp<MatchPattern>> => (p, false),
+    ".." <p:Sp<MatchPattern>> => (p, true),
 }
 
 ImplicitLambdaExpr: Expr =

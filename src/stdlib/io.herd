@@ -1,8 +1,14 @@
 
-print = \val\ BUILTIN:print val;
+print = \..val\ (
+  for x in val do (
+    BUILTIN:print x;
+  )
+);
 
-println = \val\ (
-  BUILTIN:print val;
+println = \..val\ (
+  for x in val do (
+    BUILTIN:print x;
+  )
   BUILTIN:print '\n';
 );
 

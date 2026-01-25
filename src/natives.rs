@@ -141,6 +141,9 @@ macro_rules! get_def {
     (5, $func:expr) => {
         get_def5(func_name!($func), $func)
     };
+    (6, $func:expr) => {
+        get_def6(func_name!($func), $func)
+    };
 }
 
 fn get_native_func_def(func: NativeFuncId) -> NativeFuncDef {
@@ -162,7 +165,7 @@ fn get_native_func_def(func: NativeFuncId) -> NativeFuncDef {
         NativeFuncId::ValTruthy => get_def!(1, val_truthy_u8),
         NativeFuncId::ValConcat => get_def!(2, val_concat), // TODO
         NativeFuncId::ValGetLambdaDetails => get_def!(4, get_lambda_details).fallible(),
-        NativeFuncId::ConstructLambda => get_def!(5, construct_lambda),
+        NativeFuncId::ConstructLambda => get_def!(6, construct_lambda),
         NativeFuncId::ImportModule => get_def!(3, import_module).fallible().with_vm(),
         NativeFuncId::Print => get_def!(1, print),
         NativeFuncId::AllocError => get_def!(5, alloc_herd_error),
@@ -248,6 +251,7 @@ generate_get_def!(get_def2, T1, T2);
 generate_get_def!(get_def3, T1, T2, T3);
 generate_get_def!(get_def4, T1, T2, T3, T4);
 generate_get_def!(get_def5, T1, T2, T3, T4, T5);
+generate_get_def!(get_def6, T1, T2, T3, T4, T5, T6);
 
 fn handle_c_result<F, TReturn>(error_out: ErrorOut, f: F) -> TReturn
 where
@@ -707,7 +711,7 @@ pub extern "C" fn assert_truthy(error_out: ErrorOut, val: Value64) -> Value64 {
 pub extern "C" fn get_lambda_details(
     error_out: ErrorOut,
     val: Value64Ref,
-    param_count: u64,
+    actual_param_count: u64,
     closure_out: Out<*const Value64>,
 ) -> *const u8 {
     handle_c_result(error_out, || {
@@ -717,10 +721,21 @@ pub extern "C" fn get_lambda_details(
                 val
             )));
         };
-        if lambda.param_count != param_count as usize {
+        let matches = if lambda.has_spread {
+            actual_param_count as usize >= lambda.param_count - 1
+        } else {
+            lambda.param_count == actual_param_count as usize
+        };
+
+        if !matches {
+            let expected_str = if lambda.has_spread {
+                format!("{}+", lambda.param_count - 1)
+            } else {
+                format!("{}", lambda.param_count)
+            };
             return Err(HerdError::native_code(format!(
                 "Wrong number of arguments passed to function {}. Expected {}, got {}",
-                val, lambda.param_count, param_count
+                val, expected_str, actual_param_count
             )));
         } else {
             unsafe {
@@ -734,6 +749,7 @@ pub extern "C" fn get_lambda_details(
 
 pub extern "C" fn construct_lambda(
     param_count: u64,
+    has_spread: u8,
     name: Value64Ref, // string or ()
     func_ptr: *const u8,
     capture_count: u64,
@@ -742,6 +758,7 @@ pub extern "C" fn construct_lambda(
     let closure_slice = unsafe { std::slice::from_raw_parts(captures, capture_count as usize) };
     let lambda = LambdaFunction {
         param_count: param_count as usize,
+        has_spread: has_spread != 0,
         closure: closure_slice.to_vec(),
         self_name: name.as_str().map(|x| x.to_string()),
         func_ptr: Some(func_ptr),

@@ -994,3 +994,60 @@ fn call_wrong_arg_count() {
     at <main> (main.herd:3:16)
     "###);
 }
+
+#[test]
+fn lambda_spread() {
+    let program = r#"
+        f = \a b ..rest\ [a, b, rest];
+        return f 1 2 3 4;
+    "#;
+    let result = eval(program).expect_ok_string();
+    insta::assert_snapshot!(result, @"[1, 2, [3, 4]]");
+    assert_rcs_dropped();
+}
+
+#[test]
+fn lambda_spread_zero_args() {
+    let program = r#"
+        f = \a b ..rest\ [a, b, rest];
+        return f 1 2;
+    "#;
+    let result = eval(program).expect_ok_string();
+    insta::assert_snapshot!(result, @"[1, 2, []]");
+    assert_rcs_dropped();
+}
+
+#[test]
+fn lambda_spread_only() {
+    let program = r#"
+        f = \..rest\ rest;
+        return [f (), f 1, f 1 2 3];
+    "#;
+    let result = eval(program).expect_ok_string();
+    insta::assert_snapshot!(result, @"[[()], [1], [1, 2, 3]]");
+    assert_rcs_dropped();
+}
+
+#[test]
+fn lambda_spread_discard() {
+    let program = r#"
+        f = \a b .._\ a + b;
+        return f 1 2 3 4;
+    "#;
+    let result = eval(program).expect_ok_string();
+    insta::assert_snapshot!(result, @"3");
+    assert_rcs_dropped();
+}
+
+#[test]
+fn lambda_spread_too_few_args() {
+    let program = r#"
+        f = \a b ..rest\ [a, b, rest];
+        return f 1;
+    "#;
+    let result = eval(program).expect_err_string();
+    insta::assert_snapshot!(result, @r###"
+    Error: Wrong number of arguments passed to function <lambda: f>. Expected 2+, got 1
+    at <main> (main.herd:3:16)
+    "###);
+}

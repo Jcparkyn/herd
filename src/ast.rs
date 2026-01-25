@@ -134,7 +134,7 @@ impl MatchPattern {
     }
 }
 
-type SpannedPattern = Spanned<MatchPattern>;
+pub type SpannedPattern = Spanned<MatchPattern>;
 
 #[derive(PartialEq, Debug, Clone)]
 pub enum MatchConstant {
@@ -197,15 +197,21 @@ impl Debug for VarRef {
 #[derive(PartialEq, Debug, Clone)]
 pub struct LambdaExpr {
     pub params: Rc<Vec<SpannedPattern>>,
+    pub has_spread: bool,
     pub body: Rc<SpannedExpr>,
     pub potential_captures: Vec<VarRef>,
     pub name: Option<String>,
 }
 
 impl LambdaExpr {
-    pub fn new(params: Vec<SpannedPattern>, body: Rc<SpannedExpr>) -> LambdaExpr {
+    pub fn new(
+        params: Vec<SpannedPattern>,
+        has_spread: bool,
+        body: Rc<SpannedExpr>,
+    ) -> LambdaExpr {
         LambdaExpr {
             params: Rc::new(params),
+            has_spread,
             body,
             potential_captures: vec![],
             name: None,

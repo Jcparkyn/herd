@@ -68,6 +68,25 @@ pub fn process_list_match(
     }
 }
 
+pub fn process_lambda_params(
+    params: Vec<(Spanned<MatchPattern>, bool)>,
+) -> Result<(Vec<Spanned<MatchPattern>>, bool), &'static str> {
+    let mut has_spread = false;
+    for (i, (_, is_spread)) in params.iter().enumerate() {
+        if *is_spread {
+            if has_spread {
+                return Err("Lambda functions can only contain one spread parameter (..)");
+            }
+            if i != params.len() - 1 {
+                return Err("Spread parameter (..) must be the last parameter");
+            }
+            has_spread = true;
+        }
+    }
+    let params_vec: Vec<Spanned<MatchPattern>> = params.into_iter().map(|p| p.0).collect();
+    Ok((params_vec, has_spread))
+}
+
 pub fn process_declaration(
     name: Spanned<String>,
     decl_type: DeclarationType,
@@ -84,6 +103,7 @@ pub fn make_implicit_lambda(body: Spanned<Block>) -> Expr {
     let param = MatchPattern::Declaration(VarRef::new("_".to_string()), DeclarationType::Mutable);
     Expr::Lambda(LambdaExpr::new(
         vec![Spanned::new(body.span, param)],
+        false,
         Rc::new(body.map(Expr::Block)),
     ))
 }

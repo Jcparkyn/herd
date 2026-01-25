@@ -124,6 +124,22 @@ getRandomNumber = \\ Math.randomInt 0 100;
 println (getRandomNumber ()); // prints a random number
 ```
 
+Functions with a variable number of arguments can be defined using `..` for the last parameter:
+
+```dart
+min = \first ..rest\ (
+  var minVal = first;
+  for x in rest do (
+    if x < minVal then (
+      set minVal = x;
+    )
+  )
+  minVal
+);
+
+println (min 5 3 8); // prints 3
+```
+
 ### Values and mutability
 
 In herd, _everything_ is immutable unless declared with `var`. This includes lists and complex objects that would be mutable in other languages.
@@ -262,7 +278,6 @@ Some very commonly used functions are also available globally:
 - `toString`
 - `print`
 - `println`
-- `printf`
 - `len`
 
 ### Multithreading
