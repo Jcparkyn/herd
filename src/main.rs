@@ -69,9 +69,8 @@ fn run_file(path: &Path, args: &Args) -> ExitCode {
             }
         }
         Ok(Err(err)) => {
-            println!("Error while running program:");
-            // print_herd_error(&err, &jit, 2);
-            println!("{:?}", vmc.jit.lock().unwrap().format_error(&err));
+            let error_string = vmc.jit.lock().unwrap().format_error(&err);
+            println!("{}", error_string);
             return ExitCode::FAILURE;
         }
         Err(err) => {
@@ -183,7 +182,8 @@ fn run_repl(args: Args) {
         match func_return {
             Err(err) => {
                 // TODO: We need to roll back the analyzer state here.
-                println!("Error while running program: {:?}", err);
+                let error_string = vmc.jit.lock().unwrap().format_error(&err);
+                println!("{}", error_string);
             }
             Ok(val) => {
                 let response = get_repl_globals(&val);
