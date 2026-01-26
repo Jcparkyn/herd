@@ -870,11 +870,19 @@ pub extern "C" fn parallel_map(
         let list = guard_into_list(list)?;
         let _ = guard_lambda(&func)?;
 
-        let result = list
-            .values
-            .par_iter()
-            .map(|v| vm.run_lambda(&func, &[v.clone()]))
-            .collect::<Result<Vec<_>, HerdError>>();
+        // Optimisation to avoid cloning the values if we can take ownership
+        let result = match Rc::try_unwrap(list) {
+            Ok(list_instance) => list_instance
+                .into_values()
+                .into_par_iter()
+                .map(|v| vm.run_lambda(&func, &[v]))
+                .collect::<Result<Vec<_>, HerdError>>(),
+            Err(list_rc) => list_rc
+                .values
+                .par_iter()
+                .map(|v| vm.run_lambda(&func, &[v.clone()]))
+                .collect::<Result<Vec<_>, HerdError>>(),
+        };
 
         let result_mapped = result.map_err(|e| HerdError {
             message: String::new(),

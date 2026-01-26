@@ -637,6 +637,10 @@ impl ListInstance {
     pub fn len(&self) -> usize {
         self.values.len()
     }
+
+    pub fn into_values(mut self) -> Vec<Value64> {
+        std::mem::take(&mut self.values)
+    }
 }
 
 impl Clone for ListInstance {
